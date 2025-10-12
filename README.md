@@ -41,7 +41,7 @@ mhealth-data-privacy/
 
 ```bash
 # Clonar repositório
-git clone https://github.com/seu-usuario/mhealth-data-privacy.git
+git clone https://github.com/vasco-fernandes21/mhealth-data-privacy.git
 cd mhealth-data-privacy
 
 # Criar ambiente virtual (recomendado)
@@ -60,7 +60,7 @@ Adicione no início de cada notebook:
 
 ```python
 # Clonar repositório
-!git clone https://github.com/seu-usuario/mhealth-data-privacy.git
+!git clone https://github.com/vasco-fernandes21/mhealth-data-privacy.git
 %cd mhealth-data-privacy
 
 # Instalar projeto
