@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files (too large for git)
+data/raw/
+data/processed/
+*.npy
+*.pkl
+*.h5
+*.hdf5
+*.edf
+*.rec
+*.hyp
+
+# Model files
+models/*.h5
+models/*.keras
+models/*.pb
+
+# Results
+results/*.png
+results/*.jpg
+results/*.pdf
+results/*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep directory structure
+!data/.gitkeep
+!models/.gitkeep
+!results/.gitkeep
+
