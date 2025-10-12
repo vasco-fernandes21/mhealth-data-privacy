@@ -25,16 +25,28 @@ warnings.filterwarnings('ignore')
 def load_sleep_edf_file(edf_path: str, hyp_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
     Load a single Sleep-EDF file and its corresponding hypnogram.
+    Supports both .edf files and .rec/.hyp files (PhysioNet format).
     
     Args:
-        edf_path: Path to .edf file (recording)
-        hyp_path: Path to .edf file (hypnogram)
+        edf_path: Path to .edf or .rec file (recording)
+        hyp_path: Path to .edf or .hyp file (hypnogram)
     
     Returns:
         Tuple of (signals, labels, info_dict)
     """
     print(f"Loading {edf_path}...")
     
+    # Check file format
+    if edf_path.endswith('.rec'):
+        return load_physionet_file(edf_path, hyp_path)
+    else:
+        return load_edf_file(edf_path, hyp_path)
+
+
+def load_edf_file(edf_path: str, hyp_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    """
+    Load EDF format files.
+    """
     # Load recording
     raw = mne.io.read_raw_edf(edf_path, preload=True, verbose=False)
     
@@ -51,6 +63,82 @@ def load_sleep_edf_file(edf_path: str, hyp_path: str) -> Tuple[np.ndarray, np.nd
     # Load hypnogram
     hyp_raw = mne.io.read_raw_edf(hyp_path, preload=True, verbose=False)
     hypnogram = hyp_raw.get_data()[0]
+    
+    # Create info dict
+    info = {
+        'sfreq': sfreq,
+        'channels': signal_labels,
+        'duration': len(eeg_fpz_cz) / sfreq
+    }
+    
+    # Combine signals
+    signals_combined = np.vstack([eeg_fpz_cz, eeg_pz_oz, eog])
+    
+    return signals_combined, hypnogram, info
+
+
+def load_physionet_file(rec_path: str, hyp_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    """
+    Load EDF files with .rec/.hyp extensions (not true PhysioNet format).
+    """
+    import pyedflib
+    
+    # Load recording using pyedflib
+    f = pyedflib.EdfReader(rec_path)
+    
+    # Get signal info
+    n_signals = f.signals_in_file
+    signal_labels = f.getSignalLabels()
+    sfreq = f.getSampleFrequency(0)  # Assume all signals have same frequency
+    
+    # Extract signals
+    eeg_fpz_cz = f.readSignal(0)  # First signal
+    eeg_pz_oz = f.readSignal(1) if n_signals > 1 else eeg_fpz_cz  # Second signal
+    eog = f.readSignal(2) if n_signals > 2 else eeg_pz_oz  # Third signal
+    
+    f.close()
+    
+    # Load hypnogram
+    labels = load_physionet_hypnogram(hyp_path)
+    
+    # Create info dict
+    info = {
+        'sfreq': sfreq,
+        'channels': signal_labels,
+        'duration': len(eeg_fpz_cz) / sfreq
+    }
+    
+    # Combine signals
+    signals_combined = np.vstack([eeg_fpz_cz, eeg_pz_oz, eog])
+    
+    return signals_combined, labels, info
+
+
+def load_physionet_hypnogram(hyp_path: str) -> np.ndarray:
+    """
+    Load hypnogram from PhysioNet .hyp file.
+    """
+    with open(hyp_path, 'r') as f:
+        content = f.read()
+    
+    # Extract numeric values from the entire content
+    # The hypnogram data is at the end of the file as individual digits
+    hypnogram_data = []
+    
+    # Look for digits in the content (skip header information)
+    # The hypnogram starts after the header and contains only digits 0-6
+    for char in content:
+        if char.isdigit() and int(char) <= 6:  # Valid sleep stage values
+            hypnogram_data.append(int(char))
+    
+    # Convert to numpy array and map to standard sleep stages
+    # PhysioNet: 0=W, 1=S1, 2=S2, 3=S3, 4=S4, 5=R, 6=M
+    # Standard: 0=W, 1=N1, 2=N2, 3=N3, 4=R
+    stage_mapping = {0: 0, 1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 0}  # Map S3/S4 to N3, M to W
+    
+    labels = np.array([stage_mapping.get(stage, 0) for stage in hypnogram_data])
+    
+    return labels
     
     # Convert hypnogram to 30-second epochs
     epoch_duration = 30  # seconds
@@ -116,15 +204,14 @@ def segment_epochs(signals: np.ndarray, labels: np.ndarray, sfreq: float,
     # Reshape into epochs
     epochs = signals[:, :n_epochs * n_samples_epoch].reshape(3, n_epochs, n_samples_epoch)
     
-    # Get majority label for each epoch
-    epoch_labels = []
-    for i in range(n_epochs):
-        start_idx = i * n_samples_epoch
-        end_idx = (i + 1) * n_samples_epoch
-        epoch_label = np.bincount(labels[start_idx:end_idx].astype(int)).argmax()
-        epoch_labels.append(epoch_label)
+    # Labels are already in epoch format (one label per 30-second epoch)
+    # Take the minimum between available labels and epochs
+    n_available_labels = len(labels)
+    n_epochs_to_use = min(n_epochs, n_available_labels)
     
-    epoch_labels = np.array(epoch_labels)
+    # Reshape epochs to match available labels
+    epochs = epochs[:, :n_epochs_to_use, :]
+    epoch_labels = labels[:n_epochs_to_use]
     
     return epochs, epoch_labels
 
@@ -188,32 +275,44 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Find all EDF files
+    # Find all recording files (EDF or REC format)
     edf_files = [f for f in os.listdir(data_dir) if f.endswith('.edf') and not f.endswith('.hyp.edf')]
+    rec_files = [f for f in os.listdir(data_dir) if f.endswith('.rec')]
     hyp_files = [f for f in os.listdir(data_dir) if f.endswith('.hyp.edf')]
+    hyp_physionet_files = [f for f in os.listdir(data_dir) if f.endswith('.hyp') and not f.endswith('.hyp.edf')]
     
-    print(f"Found {len(edf_files)} recording files and {len(hyp_files)} hypnogram files")
+    # Combine all recording files
+    recording_files = edf_files + rec_files
+    hypnogram_files = hyp_files + hyp_physionet_files
+    
+    print(f"Found {len(recording_files)} recording files and {len(hypnogram_files)} hypnogram files")
     
     all_features = []
     all_labels = []
     all_info = []
     
     # Process each file
-    for edf_file in edf_files:
+    for recording_file in recording_files:
         # Find corresponding hypnogram
-        subject_id = edf_file.split('-')[0]  # Extract subject ID
-        hyp_file = f"{subject_id}-PSG.edf.hyp.edf"
+        subject_id = recording_file.replace('.edf', '').replace('.rec', '')
         
-        if hyp_file not in hyp_files:
-            print(f"Warning: No hypnogram found for {edf_file}")
+        # Find corresponding hypnogram file
+        hyp_file = None
+        if recording_file.endswith('.edf'):
+            hyp_file = f"{subject_id}-PSG.edf.hyp.edf"
+        else:  # .rec file
+            hyp_file = f"{subject_id}.hyp"
+        
+        if hyp_file not in hypnogram_files:
+            print(f"Warning: No hypnogram found for {recording_file}: {hyp_file}")
             continue
         
-        edf_path = os.path.join(data_dir, edf_file)
+        recording_path = os.path.join(data_dir, recording_file)
         hyp_path = os.path.join(data_dir, hyp_file)
         
         try:
             # Load file
-            signals, labels, info = load_sleep_edf_file(edf_path, hyp_path)
+            signals, labels, info = load_sleep_edf_file(recording_path, hyp_path)
             
             # Filter signals
             filtered_signals = filter_signals(signals, info['sfreq'])
@@ -228,10 +327,10 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
                 all_labels.append(epoch_labels[i])
             
             all_info.append(info)
-            print(f"Processed {edf_file}: {epochs.shape[1]} epochs")
+            print(f"Processed {recording_file}: {epochs.shape[1]} epochs")
             
         except Exception as e:
-            print(f"Error processing {edf_file}: {e}")
+            print(f"Error processing {recording_file}: {e}")
             continue
     
     # Convert to numpy arrays
@@ -240,7 +339,12 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
     
     print(f"\nTotal epochs processed: {len(X)}")
     print(f"Feature shape: {X.shape}")
-    print(f"Label distribution: {np.bincount(y)}")
+    
+    if len(y) > 0:
+        print(f"Label distribution: {np.bincount(y.astype(int))}")
+    else:
+        print("No data processed - check file formats and paths")
+        return None
     
     # Encode labels (W=0, N1=1, N2=2, N3=3, R=4)
     label_encoder = LabelEncoder()

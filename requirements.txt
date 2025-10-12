@@ -17,6 +17,7 @@ flwr[simulation]>=1.0.0
 # Signal processing
 mne>=1.0.0
 pyedflib>=0.1.30
+wfdb>=4.0.0
 
 # Visualization
 matplotlib>=3.5.0

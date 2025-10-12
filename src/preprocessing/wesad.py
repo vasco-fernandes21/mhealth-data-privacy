@@ -36,27 +36,26 @@ def load_wesad_file(pkl_path: str) -> Dict:
     with open(pkl_path, 'rb') as f:
         data = pickle.load(f, encoding='latin1')
     
-    # Extract signals from Empatica E4 (wrist device, index 1)
-    # Signal types: 0=BVP, 1=EDA, 2=Temp, 3=Acc
-    bvp = data['signal'][1][0]  # Blood Volume Pulse (64 Hz)
-    eda = data['signal'][1][1]  # Electrodermal Activity (4 Hz)
-    temp = data['signal'][1][2]  # Temperature (4 Hz)
-    acc = data['signal'][1][3]  # Acceleration (32 Hz)
+    # Extract signals from RespiBAN (chest device) - already synchronized with labels
+    ecg = data['signal']['chest']['ECG']  # Electrocardiogram (700 Hz)
+    eda = data['signal']['chest']['EDA']  # Electrodermal Activity (700 Hz)
+    temp = data['signal']['chest']['Temp']  # Temperature (700 Hz)
+    acc = data['signal']['chest']['ACC']  # Acceleration (700 Hz)
     
     # Extract labels
-    labels = data['label'][:, 1]  # Labels: 0=baseline, 1=stress, 2=amusement, 3=transition
+    labels = data['label']  # Labels: 0=not defined, 1=baseline, 2=stress, 3=amusement, 4=meditation
     
     return {
-        'bvp': bvp,
+        'ecg': ecg,
         'eda': eda,
         'temp': temp,
         'acc': acc,
         'labels': labels,
         'sfreq': {
-            'bvp': 64,
-            'eda': 4,
-            'temp': 4,
-            'acc': 32
+            'ecg': 700,
+            'eda': 700,
+            'temp': 700,
+            'acc': 700
         }
     }
 
@@ -77,26 +76,18 @@ def resample_signals(signals_dict: Dict, target_freq: float = 4) -> Dict:
     resampled = {}
     sfreq = signals_dict['sfreq']
     
-    # Find the minimum length to avoid issues
-    min_length = min(len(signals_dict['bvp']), len(signals_dict['eda']), 
-                     len(signals_dict['temp']), len(signals_dict['acc']))
+    # All signals are at 700 Hz, resample to target frequency
+    original_length = len(signals_dict['ecg'])
+    target_length = int(original_length * target_freq / sfreq['ecg'])
     
-    # Resample BVP (64 Hz -> 4 Hz)
-    n_samples_bvp = int(min_length * target_freq / sfreq['bvp'])
-    resampled['bvp'] = signal.resample(signals_dict['bvp'][:min_length], n_samples_bvp)
+    # Resample all signals from 700 Hz to target frequency
+    resampled['ecg'] = signal.resample(signals_dict['ecg'], target_length)
+    resampled['eda'] = signal.resample(signals_dict['eda'], target_length)
+    resampled['temp'] = signal.resample(signals_dict['temp'], target_length)
+    resampled['acc'] = signal.resample(signals_dict['acc'], target_length)
     
-    # EDA and Temp are already at 4 Hz, just truncate
-    n_samples_eda = int(min_length * target_freq / sfreq['eda'])
-    resampled['eda'] = signals_dict['eda'][:n_samples_eda]
-    resampled['temp'] = signals_dict['temp'][:n_samples_eda]
-    
-    # Resample Acc (32 Hz -> 4 Hz)
-    n_samples_acc = int(min_length * target_freq / sfreq['acc'])
-    resampled['acc'] = signal.resample(signals_dict['acc'][:min_length], n_samples_acc)
-    
-    # Resample labels
-    n_samples_labels = int(min_length * target_freq / sfreq['bvp'])  # Use BVP as reference
-    resampled['labels'] = signals_dict['labels'][:n_samples_labels]
+    # Resample labels to match signal length
+    resampled['labels'] = signal.resample(signals_dict['labels'], target_length)
     
     resampled['sfreq'] = target_freq
     
@@ -118,22 +109,19 @@ def filter_signals(signals_dict: Dict) -> Dict:
     filtered = {}
     sfreq = signals_dict['sfreq']
     
-    # BVP: 5-15 Hz (heart rate range)
-    b_bvp, a_bvp = signal.butter(4, [5, 15], btype='band', fs=sfreq)
-    filtered['bvp'] = signal.sosfilt(signal.butter(4, [5, 15], btype='band', fs=sfreq, output='sos'), 
-                                    signals_dict['bvp'])
+    # ECG: 0.5-1.5 Hz (heart rate range adapted for 4Hz sampling)
+    filtered['ecg'] = signal.sosfilt(signal.butter(4, [0.5, 1.5], btype='band', fs=sfreq, output='sos'), 
+                                    signals_dict['ecg'])
     
     # EDA: 0.05-1 Hz (slow variations)
-    b_eda, a_eda = signal.butter(4, [0.05, 1], btype='band', fs=sfreq)
     filtered['eda'] = signal.sosfilt(signal.butter(4, [0.05, 1], btype='band', fs=sfreq, output='sos'), 
                                     signals_dict['eda'])
     
     # Temperature: no filtering (very slow variations)
     filtered['temp'] = signals_dict['temp']
     
-    # Acceleration: 0.1-5 Hz (body movement)
-    b_acc, a_acc = signal.butter(4, [0.1, 5], btype='band', fs=sfreq)
-    filtered['acc'] = signal.sosfilt(signal.butter(4, [0.1, 5], btype='band', fs=sfreq, output='sos'), 
+    # Acceleration: 0.1-1.5 Hz (body movement adapted for 4Hz sampling)
+    filtered['acc'] = signal.sosfilt(signal.butter(4, [0.1, 1.5], btype='band', fs=sfreq, output='sos'), 
                                     signals_dict['acc'])
     
     filtered['labels'] = signals_dict['labels']
@@ -156,7 +144,7 @@ def create_windows(signals_dict: Dict, window_size: int = 240, stride: int = 120
     """
     print(f"Creating windows (size={window_size}, stride={stride})...")
     
-    bvp = signals_dict['bvp']
+    ecg = signals_dict['ecg']
     eda = signals_dict['eda']
     temp = signals_dict['temp']
     acc = signals_dict['acc']
@@ -165,18 +153,18 @@ def create_windows(signals_dict: Dict, window_size: int = 240, stride: int = 120
     windows = []
     window_labels = []
     
-    for i in range(0, len(bvp) - window_size, stride):
+    for i in range(0, len(ecg) - window_size, stride):
         # Extract window
-        bvp_window = bvp[i:i+window_size]
-        eda_window = eda[i:i+window_size]
-        temp_window = temp[i:i+window_size]
-        acc_window = acc[i:i+window_size]
+        ecg_window = ecg[i:i+window_size, 0]  # Take first channel
+        eda_window = eda[i:i+window_size, 0]  # Take first channel
+        temp_window = temp[i:i+window_size, 0]  # Take first channel
+        acc_window = acc[i:i+window_size, 0]  # Take first channel (x-axis)
         
         # Get majority label for window
         window_label = np.bincount(labels[i:i+window_size].astype(int)).argmax()
         
         # Store window data
-        window_data = np.array([bvp_window, eda_window, temp_window, acc_window])
+        window_data = np.array([ecg_window, eda_window, temp_window, acc_window])
         windows.append(window_data)
         window_labels.append(window_label)
     
@@ -281,15 +269,20 @@ def preprocess_wesad(data_dir: str, output_dir: str,
     
     print(f"\nTotal windows processed: {len(X)}")
     print(f"Feature shape: {X.shape}")
-    print(f"Label distribution: {np.bincount(y)}")
     
-    # Filter labels: keep only stress (1) and amusement (2), remove baseline (0) and transition (3)
-    valid_mask = (y == 1) | (y == 2)
+    if len(y) > 0:
+        print(f"Label distribution: {np.bincount(y.astype(int))}")
+    else:
+        print("No data processed - check file formats and paths")
+        return None
+    
+    # Filter labels: keep only stress (2) and amusement (3), remove baseline (1), meditation (4) and others
+    valid_mask = (y == 2) | (y == 3)
     X_filtered = X[valid_mask]
     y_filtered = y[valid_mask]
     
     # Relabel: stress=0, amusement=1
-    y_filtered = y_filtered - 1
+    y_filtered = y_filtered - 2
     
     print(f"After filtering: {len(X_filtered)} windows")
     print(f"New label distribution: {np.bincount(y_filtered)}")
