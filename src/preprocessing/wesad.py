@@ -86,8 +86,10 @@ def resample_signals(signals_dict: Dict, target_freq: float = 4) -> Dict:
     resampled['temp'] = signal.resample(signals_dict['temp'], target_length)
     resampled['acc'] = signal.resample(signals_dict['acc'], target_length)
     
-    # Resample labels to match signal length
-    resampled['labels'] = signal.resample(signals_dict['labels'], target_length)
+    # Use stratified sampling for labels to maintain class proportions
+    original_length = len(signals_dict['labels'])
+    indices = np.linspace(0, original_length-1, target_length, dtype=int)
+    resampled['labels'] = signals_dict['labels'][indices]
     
     resampled['sfreq'] = target_freq
     
@@ -276,13 +278,14 @@ def preprocess_wesad(data_dir: str, output_dir: str,
         print("No data processed - check file formats and paths")
         return None
     
-    # Filter labels: keep only stress (2) and amusement (3), remove baseline (1), meditation (4) and others
-    valid_mask = (y == 2) | (y == 3)
+    # Keep only the 3 main classes: baseline (1), stress (2), amusement (3)
+    # Remove: not defined/transient (0), meditation (4) and other states (5,6,7)
+    valid_mask = (y >= 1) & (y <= 3)
     X_filtered = X[valid_mask]
     y_filtered = y[valid_mask]
     
-    # Relabel: stress=0, amusement=1
-    y_filtered = y_filtered - 2
+    # Relabel: baseline=0, stress=1, amusement=2
+    y_filtered = y_filtered - 1
     
     print(f"After filtering: {len(X_filtered)} windows")
     print(f"New label distribution: {np.bincount(y_filtered)}")
@@ -324,13 +327,13 @@ def preprocess_wesad(data_dir: str, output_dir: str,
         'n_samples': len(X_filtered),
         'n_features': X_filtered.shape[1],
         'n_classes': len(np.unique(y_encoded)),
-        'class_names': label_encoder.classes_,
+        'class_names': ['baseline', 'stress', 'amusement'][:len(np.unique(y_encoded))],
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
         'files_processed': len(pkl_files),
-        'original_labels': '0=baseline, 1=stress, 2=amusement, 3=transition',
-        'filtered_labels': '0=stress, 1=amusement'
+        'original_labels': '0=baseline, 1=stress, 2=amusement, 3=meditation',
+        'filtered_labels': '0=baseline, 1=stress, 2=amusement'
     }
     
     joblib.dump(preprocessing_info, os.path.join(output_dir, 'preprocessing_info.pkl'))

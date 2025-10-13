@@ -325,10 +325,3 @@ X_val, X_test, y_val, y_test = train_test_split(
 | **Normalização** | StandardScaler | StandardScaler |
 
 ---
-
-## Próximos passos
-
-1. Executar este pré-processamento para ambos datasets
-2. Guardar dados normalizados: `X_train, X_val, X_test, y_train, y_val, y_test`
-3. Treinar 3 modelos baseline simples (RF, XGBoost, SVM)
-4. Depois aplicar técnicas de privacidade (DP, FL)

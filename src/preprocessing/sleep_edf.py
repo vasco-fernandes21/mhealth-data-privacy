@@ -3,9 +3,12 @@ Sleep-EDF Dataset Preprocessing Module
 
 This module handles the preprocessing of Sleep-EDF dataset:
 - Loading EDF files with EEG/EOG signals
+- Loading hypnograms from EDF+ annotations
 - Filtering and segmentation
 - Feature extraction (time and frequency domain)
 - Normalization and train/val/test splitting
+
+Supports both original Sleep-EDF and Sleep-EDF Expanded datasets.
 """
 
 import numpy as np
@@ -17,30 +20,197 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import joblib
 import os
+import glob
 from typing import Tuple, Dict, List
 import warnings
 warnings.filterwarnings('ignore')
 
 
+def load_sleep_edf_expanded_hypnogram(hypno_file: str, target_epoch_duration: int = 30) -> Tuple[List[str], List[int], int, int]:
+    """
+    Carrega hypnogram do Sleep-EDF Expanded baseado nas anotações EDF+
+    
+    Args:
+        hypno_file: Caminho para o ficheiro *-Hypnogram.edf
+        target_epoch_duration: Duração alvo das épocas (30s)
+        
+    Returns:
+        tuple: (sleep_stages, epoch_durations, total_duration, n_epochs)
+    """
+    if not os.path.exists(hypno_file):
+        print(f'❌ Ficheiro não encontrado: {hypno_file}')
+        return None, None, None, None
+    
+    try:
+        f = pyedflib.EdfReader(hypno_file)
+        annotations = f.read_annotation()
+        f.close()
+        
+        # Processar anotações
+        sleep_stages = []
+        epoch_durations = []
+        
+        for onset, duration, description in annotations:
+            desc_str = description.decode('utf-8') if isinstance(description, bytes) else str(description)
+            
+            if 'Sleep stage' in desc_str:
+                # Mapear para sleep stage
+                if 'Sleep stage W' in desc_str:
+                    stage = 'W'
+                elif 'Sleep stage 1' in desc_str:
+                    stage = '1'
+                elif 'Sleep stage 2' in desc_str:
+                    stage = '2'
+                elif 'Sleep stage 3' in desc_str:
+                    stage = '3'
+                elif 'Sleep stage 4' in desc_str:
+                    stage = '4'
+                elif 'Sleep stage R' in desc_str:
+                    stage = 'R'
+                elif 'Sleep stage M' in desc_str:
+                    stage = 'M'
+                else:
+                    stage = '?'
+                
+                # Converter duration para segundos
+                if isinstance(duration, bytes):
+                    try:
+                        duration_sec = int(duration.decode('utf-8'))
+                    except:
+                        duration_sec = 30
+                else:
+                    duration_sec = int(duration)
+                
+                sleep_stages.append(stage)
+                epoch_durations.append(duration_sec)
+        
+        # Calcular duração total e número de épocas
+        total_duration = sum(epoch_durations)
+        n_epochs = int(total_duration / target_epoch_duration)
+        
+        return sleep_stages, epoch_durations, total_duration, n_epochs
+        
+    except Exception as e:
+        print(f'❌ Erro ao ler hypnogram: {e}')
+        return None, None, None, None
+
+
+def convert_hypnogram_to_30s_epochs(sleep_stages: List[str], epoch_durations: List[int], target_epoch_duration: int = 30) -> List[str]:
+    """
+    Converte hypnogram com durações variáveis para épocas de 30s
+    
+    Args:
+        sleep_stages: Lista de sleep stages
+        epoch_durations: Lista de durações em segundos
+        target_epoch_duration: Duração alvo das épocas (30s)
+        
+    Returns:
+        list: Sleep stages para épocas de 30s
+    """
+    target_epochs = []
+    
+    for stage, duration in zip(sleep_stages, epoch_durations):
+        # Calcular quantas épocas de 30s cabem nesta duração
+        n_epochs = int(duration / target_epoch_duration)
+        
+        # Adicionar épocas
+        for _ in range(n_epochs):
+            target_epochs.append(stage)
+        
+        # Se sobrar tempo, adicionar uma época extra
+        remaining_time = duration % target_epoch_duration
+        if remaining_time >= target_epoch_duration / 2:  # Se sobrar pelo menos 15s
+            target_epochs.append(stage)
+    
+    return target_epochs
+
+
+def load_sleep_edf_expanded_file(psg_path: str, hypno_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    """
+    Load a single Sleep-EDF Expanded file (PSG + Hypnogram).
+    
+    Args:
+        psg_path: Path to the PSG .edf file
+        hypno_path: Path to the Hypnogram .edf file
+        
+    Returns:
+        tuple: (signals, labels, info)
+    """
+    print(f'📁 Loading: {os.path.basename(psg_path)}')
+    
+    # Load PSG signals
+    try:
+        f = pyedflib.EdfReader(psg_path)
+        
+        # Extract information
+        info = {
+            'n_channels': f.signals_in_file,
+            'duration': f.file_duration,
+            'start_time': f.getStartdatetime(),
+            'sample_rates': [f.getSampleFrequency(i) for i in range(f.signals_in_file)],
+            'channel_labels': [f.getLabel(i) for i in range(f.signals_in_file)]
+        }
+        
+        # Read EEG/EOG signals (channels 0-2)
+        eeg_fpz_cz = f.readSignal(0)  # EEG Fpz-Cz
+        eeg_pz_oz = f.readSignal(1)   # EEG Pz-Oz
+        eog = f.readSignal(2)         # EOG horizontal
+        
+        f.close()
+        
+        # Combine signals (transpose to get channels x samples format)
+        signals = np.array([eeg_fpz_cz, eeg_pz_oz, eog])
+        
+        print(f'   • Signals: {signals.shape}')
+        print(f'   • Channels: {info["channel_labels"][:3]}')
+        print(f'   • Sample rates: {info["sample_rates"][:3]} Hz')
+        
+    except Exception as e:
+        print(f'❌ Error loading PSG: {e}')
+        return None, None, None
+    
+    # Load hypnogram
+    sleep_stages, epoch_durations, total_duration, n_epochs = load_sleep_edf_expanded_hypnogram(hypno_path)
+    
+    if sleep_stages is None:
+        print(f'❌ Error loading hypnogram')
+        return None, None, None
+    
+    # Convert to 30s epochs
+    labels_30s = convert_hypnogram_to_30s_epochs(sleep_stages, epoch_durations)
+    
+    # Map labels to numbers
+    label_mapping = {'W': 0, '1': 1, '2': 2, '3': 3, '4': 4, 'R': 5, 'M': 6, '?': 7}
+    labels = np.array([label_mapping.get(stage, 7) for stage in labels_30s])
+    
+    print(f'   • Labels: {len(labels)} epochs')
+    print(f'   • Distribution: {np.bincount(labels)}')
+    
+    return signals, labels, info
+
+
 def load_sleep_edf_file(edf_path: str, hyp_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
     Load a single Sleep-EDF file and its corresponding hypnogram.
-    Supports both .edf files and .rec/.hyp files (PhysioNet format).
+    Now supports only Sleep-EDF Expanded format (.edf files).
     
     Args:
-        edf_path: Path to .edf or .rec file (recording)
-        hyp_path: Path to .edf or .hyp file (hypnogram)
+        edf_path: Path to PSG .edf file (recording)
+        hyp_path: Path to Hypnogram .edf file (hypnogram)
     
     Returns:
         Tuple of (signals, labels, info_dict)
     """
     print(f"Loading {edf_path}...")
     
-    # Check file format
-    if edf_path.endswith('.rec'):
-        return load_physionet_file(edf_path, hyp_path)
-    else:
-        return load_edf_file(edf_path, hyp_path)
+    # Check if files exist
+    if not os.path.exists(edf_path):
+        raise FileNotFoundError(f"PSG file not found: {edf_path}")
+    if not os.path.exists(hyp_path):
+        raise FileNotFoundError(f"Hypnogram file not found: {hyp_path}")
+    
+    # Use the new expanded format loader
+    return load_sleep_edf_expanded_file(edf_path, hyp_path)
 
 
 def load_edf_file(edf_path: str, hyp_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
@@ -172,14 +342,31 @@ def filter_signals(signals: np.ndarray, sfreq: float) -> np.ndarray:
     """
     filtered_signals = np.zeros_like(signals)
     
-    # EEG: 0.5-32 Hz
-    b_eeg, a_eeg = signal.butter(3, [0.5, 32], btype='band', fs=sfreq)
-    filtered_signals[0] = signal.filtfilt(b_eeg, a_eeg, signals[0])  # Fpz-Cz
-    filtered_signals[1] = signal.filtfilt(b_eeg, a_eeg, signals[1])  # Pz-Oz
+    # Check if signal is long enough for filtering
+    min_length = 100  # Minimum samples needed for stable filtering
     
-    # EOG: 0.5-10 Hz
-    b_eog, a_eog = signal.butter(3, [0.5, 10], btype='band', fs=sfreq)
-    filtered_signals[2] = signal.filtfilt(b_eog, a_eog, signals[2])  # ROC-LOC
+    for i in range(signals.shape[0]):
+        if len(signals[i]) < min_length:
+            # If signal is too short, just copy it without filtering
+            filtered_signals[i] = signals[i]
+            continue
+            
+        if i < 2:  # EEG channels
+            # EEG: 0.5-32 Hz
+            try:
+                b_eeg, a_eeg = signal.butter(3, [0.5, 32], btype='band', fs=sfreq)
+                filtered_signals[i] = signal.filtfilt(b_eeg, a_eeg, signals[i])
+            except ValueError:
+                # If filtering fails, use original signal
+                filtered_signals[i] = signals[i]
+        else:  # EOG channel
+            # EOG: 0.5-10 Hz
+            try:
+                b_eog, a_eog = signal.butter(3, [0.5, 10], btype='band', fs=sfreq)
+                filtered_signals[i] = signal.filtfilt(b_eog, a_eog, signals[i])
+            except ValueError:
+                # If filtering fails, use original signal
+                filtered_signals[i] = signals[i]
     
     return filtered_signals
 
@@ -201,16 +388,17 @@ def segment_epochs(signals: np.ndarray, labels: np.ndarray, sfreq: float,
     n_samples_epoch = int(sfreq * epoch_duration)
     n_epochs = signals.shape[1] // n_samples_epoch
     
-    # Reshape into epochs
-    epochs = signals[:, :n_epochs * n_samples_epoch].reshape(3, n_epochs, n_samples_epoch)
-    
     # Labels are already in epoch format (one label per 30-second epoch)
     # Take the minimum between available labels and epochs
     n_available_labels = len(labels)
     n_epochs_to_use = min(n_epochs, n_available_labels)
     
-    # Reshape epochs to match available labels
-    epochs = epochs[:, :n_epochs_to_use, :]
+    if n_epochs_to_use == 0:
+        # Return empty arrays if no epochs can be created
+        return np.empty((signals.shape[0], 0, n_samples_epoch)), np.array([])
+    
+    # Reshape into epochs
+    epochs = signals[:, :n_epochs_to_use * n_samples_epoch].reshape(signals.shape[0], n_epochs_to_use, n_samples_epoch)
     epoch_labels = labels[:n_epochs_to_use]
     
     return epochs, epoch_labels
@@ -256,10 +444,10 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
                         test_size: float = 0.15, val_size: float = 0.15,
                         random_state: int = 42) -> Dict:
     """
-    Complete preprocessing pipeline for Sleep-EDF dataset.
+    Complete preprocessing pipeline for Sleep-EDF Expanded dataset.
     
     Args:
-        data_dir: Directory containing Sleep-EDF files
+        data_dir: Directory containing Sleep-EDF Expanded files
         output_dir: Directory to save processed data
         test_size: Fraction for test set
         val_size: Fraction for validation set (from remaining data)
@@ -269,68 +457,84 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
         Dictionary with preprocessing info
     """
     print("="*70)
-    print("SLEEP-EDF PREPROCESSING")
+    print("SLEEP-EDF EXPANDED PREPROCESSING")
     print("="*70)
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Find all recording files (EDF or REC format)
-    edf_files = [f for f in os.listdir(data_dir) if f.endswith('.edf') and not f.endswith('.hyp.edf')]
-    rec_files = [f for f in os.listdir(data_dir) if f.endswith('.rec')]
-    hyp_files = [f for f in os.listdir(data_dir) if f.endswith('.hyp.edf')]
-    hyp_physionet_files = [f for f in os.listdir(data_dir) if f.endswith('.hyp') and not f.endswith('.hyp.edf')]
+    # Find all PSG and Hypnogram files
+    psg_files = glob.glob(os.path.join(data_dir, '**/*-PSG.edf'), recursive=True)
+    hypno_files = glob.glob(os.path.join(data_dir, '**/*-Hypnogram.edf'), recursive=True)
     
-    # Combine all recording files
-    recording_files = edf_files + rec_files
-    hypnogram_files = hyp_files + hyp_physionet_files
-    
-    print(f"Found {len(recording_files)} recording files and {len(hypnogram_files)} hypnogram files")
+    print(f"Found {len(psg_files)} PSG files and {len(hypno_files)} Hypnogram files")
     
     all_features = []
     all_labels = []
     all_info = []
     
-    # Process each file
-    for recording_file in recording_files:
-        # Find corresponding hypnogram
-        subject_id = recording_file.replace('.edf', '').replace('.rec', '')
+    # Process each PSG file
+    for psg_file in psg_files:
+        # Find corresponding hypnogram file by matching base prefix
+        psg_basename = os.path.basename(psg_file)
+        psg_prefix = psg_basename.replace('-PSG.edf', '')
         
-        # Find corresponding hypnogram file
-        hyp_file = None
-        if recording_file.endswith('.edf'):
-            hyp_file = f"{subject_id}-PSG.edf.hyp.edf"
-        else:  # .rec file
-            hyp_file = f"{subject_id}.hyp"
+        # Extract base prefix (subject + night + type, ignoring annotator)
+        # SC4ssNEO -> SC4ssNE, ST7ssNJ0 -> ST7ssNJ
+        if psg_prefix.startswith('SC'):
+            base_prefix = psg_prefix[:-1]  # Remove last character (annotator)
+        elif psg_prefix.startswith('ST'):
+            base_prefix = psg_prefix[:-1]  # Remove last character (annotator)
+        else:
+            base_prefix = psg_prefix
         
-        if hyp_file not in hypnogram_files:
-            print(f"Warning: No hypnogram found for {recording_file}: {hyp_file}")
+        # Find matching hypnogram file
+        hypno_file = None
+        for hypno_path in hypno_files:
+            hypno_basename = os.path.basename(hypno_path)
+            hypno_prefix = hypno_basename.replace('-Hypnogram.edf', '')
+            
+            # Extract base prefix for hypnogram
+            if hypno_prefix.startswith('SC'):
+                hypno_base_prefix = hypno_prefix[:-1]  # Remove last character (annotator)
+            elif hypno_prefix.startswith('ST'):
+                hypno_base_prefix = hypno_prefix[:-1]  # Remove last character (annotator)
+            else:
+                hypno_base_prefix = hypno_prefix
+            
+            if base_prefix == hypno_base_prefix:
+                hypno_file = hypno_path
+                break
+        
+        if hypno_file is None:
+            print(f"Warning: No hypnogram found for {psg_basename} (base: {base_prefix})")
             continue
-        
-        recording_path = os.path.join(data_dir, recording_file)
-        hyp_path = os.path.join(data_dir, hyp_file)
         
         try:
             # Load file
-            signals, labels, info = load_sleep_edf_file(recording_path, hyp_path)
+            signals, labels, info = load_sleep_edf_file(psg_file, hypno_file)
             
-            # Filter signals
-            filtered_signals = filter_signals(signals, info['sfreq'])
+            if signals is None or labels is None:
+                print(f"Error: Failed to load {os.path.basename(psg_file)}")
+                continue
             
-            # Segment into epochs
-            epochs, epoch_labels = segment_epochs(filtered_signals, labels, info['sfreq'])
+            # Filter signals (EEG/EOG at 100 Hz)
+            filtered_signals = filter_signals(signals, 100.0)  # Fixed sample rate for Expanded
+            
+            # Segment into epochs (30s epochs)
+            epochs, epoch_labels = segment_epochs(filtered_signals, labels, 100.0)
             
             # Extract features for each epoch
             for i in range(epochs.shape[1]):
-                features = extract_sleep_features(epochs[:, i], info['sfreq'])
+                features = extract_sleep_features(epochs[:, i], 100.0)
                 all_features.append(features)
                 all_labels.append(epoch_labels[i])
             
             all_info.append(info)
-            print(f"Processed {recording_file}: {epochs.shape[1]} epochs")
+            print(f"Processed {os.path.basename(psg_file)}: {epochs.shape[1]} epochs")
             
         except Exception as e:
-            print(f"Error processing {recording_file}: {e}")
+            print(f"Error processing {os.path.basename(psg_file)}: {e}")
             continue
     
     # Convert to numpy arrays
@@ -346,9 +550,10 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
         print("No data processed - check file formats and paths")
         return None
     
-    # Encode labels (W=0, N1=1, N2=2, N3=3, R=4)
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y)
+    # Labels are already encoded (W=0, 1=1, 2=2, 3=3, 4=4, R=5, M=6, ?=7)
+    # Map to standard 5-class format: W=0, N1=1, N2=2, N3=3, R=4
+    label_mapping = {0: 0, 1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 0, 7: 0}  # Map 4->3 (N3), M->W, ?->W
+    y_encoded = np.array([label_mapping.get(label, 0) for label in y])
     
     # Split data
     X_temp, X_test, y_temp, y_test = train_test_split(
@@ -374,16 +579,15 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
     np.save(os.path.join(output_dir, 'y_val.npy'), y_val)
     np.save(os.path.join(output_dir, 'y_test.npy'), y_test)
     
-    # Save scaler and label encoder
+    # Save scaler
     joblib.dump(scaler, os.path.join(output_dir, 'scaler.pkl'))
-    joblib.dump(label_encoder, os.path.join(output_dir, 'label_encoder.pkl'))
     
     # Save preprocessing info
     preprocessing_info = {
         'n_samples': len(X),
         'n_features': X.shape[1],
         'n_classes': len(np.unique(y_encoded)),
-        'class_names': label_encoder.classes_,
+        'class_names': ['W', 'N1', 'N2', 'N3', 'R'],
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
@@ -402,7 +606,7 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
 
 def load_processed_sleep_edf(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, 
                                                      np.ndarray, np.ndarray, np.ndarray, 
-                                                     StandardScaler, LabelEncoder, Dict]:
+                                                     StandardScaler, Dict]:
     """
     Load preprocessed Sleep-EDF data.
     
@@ -410,7 +614,7 @@ def load_processed_sleep_edf(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.
         data_dir: Directory containing processed data
     
     Returns:
-        Tuple of (X_train, X_val, X_test, y_train, y_val, y_test, scaler, label_encoder, info)
+        Tuple of (X_train, X_val, X_test, y_train, y_val, y_test, scaler, info)
     """
     print(f"Loading processed Sleep-EDF data from {data_dir}...")
     
@@ -422,16 +626,15 @@ def load_processed_sleep_edf(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.
     y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
     y_test = np.load(os.path.join(data_dir, 'y_test.npy'))
     
-    # Load scaler and label encoder
+    # Load scaler and info
     scaler = joblib.load(os.path.join(data_dir, 'scaler.pkl'))
-    label_encoder = joblib.load(os.path.join(data_dir, 'label_encoder.pkl'))
     info = joblib.load(os.path.join(data_dir, 'preprocessing_info.pkl'))
     
     print(f"Loaded data shapes:")
     print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
     print(f"  Classes: {info['n_classes']} ({info['class_names']})")
     
-    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, label_encoder, info
+    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info
 
 
 if __name__ == "__main__":
