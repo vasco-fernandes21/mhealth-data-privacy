@@ -21,6 +21,7 @@ from sklearn.model_selection import train_test_split
 import joblib
 import os
 import glob
+import time
 from typing import Tuple, Dict, List
 import warnings
 warnings.filterwarnings('ignore')
@@ -474,7 +475,12 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
     all_info = []
     
     # Process each PSG file
-    for psg_file in psg_files:
+    total_files = len(psg_files)
+    print(f"Processing {total_files} PSG files...")
+    
+    start_time = time.time()
+    
+    for file_idx, psg_file in enumerate(psg_files, 1):
         # Find corresponding hypnogram file by matching base prefix
         psg_basename = os.path.basename(psg_file)
         psg_prefix = psg_basename.replace('-PSG.edf', '')
@@ -507,7 +513,7 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
                 break
         
         if hypno_file is None:
-            print(f"Warning: No hypnogram found for {psg_basename} (base: {base_prefix})")
+            print(f"[{file_idx}/{total_files}] Warning: No hypnogram found for {psg_basename} (base: {base_prefix})")
             continue
         
         try:
@@ -515,7 +521,7 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
             signals, labels, info = load_sleep_edf_file(psg_file, hypno_file)
             
             if signals is None or labels is None:
-                print(f"Error: Failed to load {os.path.basename(psg_file)}")
+                print(f"[{file_idx}/{total_files}] Error: Failed to load {os.path.basename(psg_file)}")
                 continue
             
             # Filter signals (EEG/EOG at 100 Hz)
@@ -531,10 +537,24 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
                 all_labels.append(epoch_labels[i])
             
             all_info.append(info)
-            print(f"Processed {os.path.basename(psg_file)}: {epochs.shape[1]} epochs")
+            
+            # Calculate progress and time estimates
+            elapsed_time = time.time() - start_time
+            progress_pct = (file_idx / total_files) * 100
+            
+            if file_idx > 1:
+                avg_time_per_file = elapsed_time / file_idx
+                remaining_files = total_files - file_idx
+                estimated_remaining_time = avg_time_per_file * remaining_files
+                remaining_minutes = int(estimated_remaining_time // 60)
+                remaining_seconds = int(estimated_remaining_time % 60)
+                
+                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {os.path.basename(psg_file)}: {epochs.shape[1]} epochs | ETA: {remaining_minutes}m {remaining_seconds}s")
+            else:
+                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {os.path.basename(psg_file)}: {epochs.shape[1]} epochs")
             
         except Exception as e:
-            print(f"Error processing {os.path.basename(psg_file)}: {e}")
+            print(f"[{file_idx}/{total_files}] Error processing {os.path.basename(psg_file)}: {e}")
             continue
     
     # Convert to numpy arrays

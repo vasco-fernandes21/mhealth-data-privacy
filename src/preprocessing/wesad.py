@@ -16,6 +16,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import joblib
 import os
+import time
 from typing import Tuple, Dict, List
 import warnings
 warnings.filterwarnings('ignore')
@@ -237,7 +238,12 @@ def preprocess_wesad(data_dir: str, output_dir: str,
     all_labels = []
     
     # Process each file
-    for pkl_file in pkl_files:
+    total_files = len(pkl_files)
+    print(f"Processing {total_files} WESAD files...")
+    
+    start_time = time.time()
+    
+    for file_idx, pkl_file in enumerate(pkl_files, 1):
         pkl_path = os.path.join(data_dir, pkl_file)
         
         try:
@@ -259,10 +265,23 @@ def preprocess_wesad(data_dir: str, output_dir: str,
                 all_features.append(features)
                 all_labels.append(window_labels[i])
             
-            print(f"Processed {pkl_file}: {len(windows)} windows")
+            # Calculate progress and time estimates
+            elapsed_time = time.time() - start_time
+            progress_pct = (file_idx / total_files) * 100
+            
+            if file_idx > 1:
+                avg_time_per_file = elapsed_time / file_idx
+                remaining_files = total_files - file_idx
+                estimated_remaining_time = avg_time_per_file * remaining_files
+                remaining_minutes = int(estimated_remaining_time // 60)
+                remaining_seconds = int(estimated_remaining_time % 60)
+                
+                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(windows)} windows | ETA: {remaining_minutes}m {remaining_seconds}s")
+            else:
+                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(windows)} windows")
             
         except Exception as e:
-            print(f"Error processing {pkl_file}: {e}")
+            print(f"[{file_idx}/{total_files}] Error processing {pkl_file}: {e}")
             continue
     
     # Convert to numpy arrays
