@@ -658,10 +658,42 @@ def load_processed_sleep_edf(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.
 
 
 if __name__ == "__main__":
-    # Example usage
-    data_dir = "/content/drive/MyDrive/mhealth-data/raw/sleep-edf"
-    output_dir = "/content/drive/MyDrive/mhealth-data/processed/sleep-edf"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Preprocess Sleep-EDF dataset')
+    parser.add_argument('--data_dir', default='../../data/raw/sleep-edf', help='Raw data directory')
+    parser.add_argument('--output_dir', default='../../data/processed/sleep-edf', help='Output directory')
+    parser.add_argument('--test_size', type=float, default=0.15, help='Test set size')
+    parser.add_argument('--val_size', type=float, default=0.15, help='Validation set size')
+    parser.add_argument('--random_state', type=int, default=42, help='Random state')
+    
+    args = parser.parse_args()
+    
+    print("="*70)
+    print("SLEEP-EDF PREPROCESSING")
+    print("="*70)
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Check if raw data exists
+    if not os.path.exists(args.data_dir):
+        print(f"❌ Raw data not found: {args.data_dir}")
+        exit(1)
+    
+    print(f"📁 Raw data: {args.data_dir}")
+    print(f"📁 Output: {args.output_dir}")
+    print(f"📊 Test size: {args.test_size}")
+    print(f"📊 Validation size: {args.val_size}")
     
     # Run preprocessing
-    info = preprocess_sleep_edf(data_dir, output_dir)
+    info = preprocess_sleep_edf(
+        data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        test_size=args.test_size,
+        val_size=args.val_size,
+        random_state=args.random_state
+    )
+    
+    print(f"\n✅ Sleep-EDF preprocessing completed!")
     print(f"Preprocessing info: {info}")

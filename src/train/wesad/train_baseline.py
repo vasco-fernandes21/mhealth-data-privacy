@@ -1,41 +1,43 @@
 #!/usr/bin/env python3
 """
-Script para treinar o modelo baseline do Sleep-EDF
+Train baseline LSTM model for WESAD dataset
 """
 
-import sys
 import os
+import sys
+import json
 from pathlib import Path
 
-# Adicionar src ao path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from preprocessing.sleep_edf import load_processed_sleep_edf
+from preprocessing.wesad import load_processed_wesad
 from models.lstm_baseline import train_baseline, evaluate_model, save_model, get_default_config
 
 def main():
     print("="*70)
-    print("TRAINING SLEEP-EDF BASELINE MODEL")
+    print("TRAINING WESAD BASELINE MODEL")
     print("="*70)
     
     # Paths
-    data_path = "data/processed/sleep-edf"
-    output_dir = "models/sleep-edf"
-    results_dir = "results/sleep-edf"
+    base_dir = Path(__file__).parent.parent.parent.parent
+    data_dir = str(base_dir / "data/processed/wesad")
+    models_output_dir = str(base_dir / "models/wesad/baseline")
+    results_output_dir = str(base_dir / "results/wesad/baseline")
     
-    # Criar diretórios
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(results_dir, exist_ok=True)
+    # Create directories
+    os.makedirs(models_output_dir, exist_ok=True)
+    os.makedirs(results_output_dir, exist_ok=True)
     
-    # Carregar dados processados
-    print("Loading processed Sleep-EDF data...")
-    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_path)
+    # Load processed data
+    print("Loading processed WESAD data...")
+    X_train, X_val, X_test, y_train, y_val, y_test, scaler, label_encoder, info = load_processed_wesad(data_dir)
     
     print(f"\nDataset info:")
     print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
     print(f"  Classes: {info['n_classes']} ({info['class_names']})")
     
-    # Configuração do modelo
+    # Get training configuration
     config = get_default_config()
     config.update({
         'window_size': 10,
@@ -52,21 +54,20 @@ def main():
     for key, value in config.items():
         print(f"  {key}: {value}")
     
-    # Treinar modelo
+    # Train model
     print(f"\nStarting training...")
     model, history = train_baseline(X_train, y_train, X_val, y_val, config)
     
-    # Avaliar modelo
+    # Evaluate model
     print(f"\nEvaluating model...")
     results = evaluate_model(model, X_test, y_test, config['window_size'])
     
-    # Guardar modelo e resultados
+    # Save model and results
     print(f"\nSaving model and results...")
-    save_model(model, history, results, output_dir, "sleep-edf")
+    save_model(model, history, results, models_output_dir, "wesad")
     
-    # Guardar resultados também no diretório de resultados
-    import json
-    results_path = os.path.join(results_dir, 'baseline_results.json')
+    # Save results to results directory
+    results_path = os.path.join(results_output_dir, 'baseline_results.json')
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"Results also saved to: {results_path}")
