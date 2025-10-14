@@ -9,12 +9,12 @@ This module handles:
 """
 
 from .sleep_edf import preprocess_sleep_edf, extract_sleep_features
-from .wesad import preprocess_wesad, extract_wesad_features
+from .wesad import preprocess_wesad_temporal, load_processed_wesad_temporal
 
 __all__ = [
     "preprocess_sleep_edf",
     "extract_sleep_features",
-    "preprocess_wesad",
-    "extract_wesad_features",
+    "preprocess_wesad_temporal",
+    "load_processed_wesad_temporal",
 ]
 

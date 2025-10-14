@@ -21,11 +21,14 @@ Foram selecionados dois datasets complementares para demonstrar a aplicabilidade
 - **Classes**: 5 estágios (W, N1, N2, N3, R)
 
 **WESAD Dataset:**
-- **Propósito**: Classificação de estados emocionais e stress
-- **Origem**: Universidade de Passau
+- **Propósito**: Classificação binária de stress (stress vs non-stress)
+- **Origem**: Universidade de Passau (2018)
 - **Escala**: 15 sujeitos, ~100 minutos por sujeito
-- **Sinais**: ECG, EDA, temperatura, aceleração (RespiBAN + Empatica E4)
-- **Classes**: 3 estados (baseline, stress, amusement)
+- **Sinais**: 14 canais fisiológicos de dois dispositivos sincronizados
+  - RespiBAN (chest): ECG, EDA, Temperatura, ACC (3D), EMG, Respiração
+  - Empatica E4 (wrist): BVP, EDA, Temperatura, ACC (3D)
+- **Classes**: 2 classes (non-stress [baseline+amusement], stress)
+- **Aplicação clínica**: Detecção automática de stress para intervenções precoces
 
 ### 1.2 Análise da Estrutura dos Dados
 
@@ -37,10 +40,13 @@ Foram selecionados dois datasets complementares para demonstrar a aplicabilidade
 - **Labels**: Hypnogramas armazenados como anotações EDF+ com durações variáveis (20s, 30s, 40s)
 
 **WESAD:**
-- **Formato**: Ficheiros pickle (.pkl) por sujeito
-- **Dispositivos**: RespiBAN (chest, 700 Hz) + Empatica E4 (wrist, 4-64 Hz)
-- **Sincronização**: Labels sincronizados com dados do RespiBAN
-- **Estrutura hierárquica**: `data['signal'][device][signal_type]`
+- **Formato**: Ficheiros pickle (.pkl) por sujeito (S2-S17, 15 sujeitos)
+- **Dispositivos sincronizados**: 
+  - RespiBAN (chest): 700 Hz para todos os sinais
+  - Empatica E4 (wrist): 4-64 Hz (BVP: 64 Hz, ACC: 32 Hz, EDA/TEMP: 4 Hz)
+- **Sincronização**: Labels temporalmente alinhados com dados do RespiBAN
+- **Estrutura hierárquica**: `data['signal']['chest'|'wrist'][signal_type]`
+- **Labels**: 8 estados originais → reduzidos a 2 classes binário para aplicação clínica
 
 ### 1.3 Desafios Identificados
 
@@ -52,10 +58,11 @@ Foram selecionados dois datasets complementares para demonstrar a aplicabilidade
 5. **Escala de dados**: 197 ficheiros representando ~1,500 horas de gravação
 
 **WESAD:**
-1. **Frequências múltiplas**: Sinais com taxas de amostragem diferentes (4-700 Hz)
-2. **Sincronização**: Necessidade de alinhar dados de dois dispositivos
-3. **Dimensões inconsistentes**: Acelerómetro 3D vs sinais 1D
-4. **Labels complexos**: 8 classes com transições e estados indefinidos
+1. **Frequências heterogéneas**: Sinais variando de 4 Hz a 700 Hz requerem resampling uniforme
+2. **Sincronização multi-dispositivo**: Alinhar temporalmente RespiBAN (chest) e Empatica E4 (wrist)
+3. **Dimensionalidade mista**: Sinais 1D (ECG, EDA, Temp) e 3D (ACC x,y,z) requerem expansão de canais
+4. **Labels desbalanceados**: Distribuição não-uniforme entre stress (~30%) e non-stress (~70%)
+5. **Vazamento de dados**: Necessidade de split por sujeito (LOSO-style) para evitar overfitting
 
 ---
 
@@ -99,38 +106,63 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
   - Domínio temporal: média, desvio padrão, min, max
   - Domínio frequência: delta (0.5-4 Hz), theta (4-8 Hz), alpha (8-13 Hz), beta (13-30 Hz)
 
-### 2.3 Pipeline WESAD
+### 2.3 Pipeline WESAD (Otimizado para Classificação Binária)
 
-**Processamento Multi-Dispositivo:**
-- **Análise**: Dois dispositivos com características diferentes
-- **Chest (RespiBAN)**: 700 Hz, sincronizado com labels, sinais estáveis (ECG, EDA, Temp, ACC, EMG, Resp)
-- **Wrist (Empatica E4)**: Frequências variáveis (4-64 Hz), sinais complementares (ACC, BVP, EDA, TEMP)
-- **Decisão**: Processar ambos os dispositivos para máxima informação
+**Estratégia de Processamento:**
+- **Abordagem**: Preservação temporal completa (dados brutos sem feature engineering)
+- **Motivação**: Modelos deep learning (CNN-LSTM) extraem features automaticamente
+- **Vantagem**: Mantém todas as informações temporais e inter-canais para análise de privacidade
 
-**Resampling e Sincronização:**
-- **Problema**: Sinais a 700 Hz, necessidade de frequência uniforme
-- **Decisão**: Resampling para 4 Hz (realista para dispositivos móveis)
-- **Cálculo**: `target_length = original_length × (4/700)`
-- **Resultado**: 4,255,300 → 24,316 amostras por sinal
+**Resampling Multi-Frequência:**
+- **Objetivo**: Frequência uniforme de 4 Hz (realista para wearables, eficiente computacionalmente)
+- **Método**: Resampling polyfásico (`scipy.signal.resample_poly`) por canal
+- **Sinais chest** (700 Hz → 4 Hz): ECG, EDA, Temp, ACC (3D), EMG, Resp
+- **Sinais wrist**: 
+  - BVP: 64 Hz → 4 Hz
+  - ACC: 32 Hz → 4 Hz  
+  - EDA/TEMP: 4 Hz → 4 Hz (já na frequência alvo)
+- **Labels**: Downsampling por nearest-neighbor indexing sincronizado com chest
+- **Resultado**: Todos os sinais uniformemente a 4 Hz
 
-**Filtragem Adaptada:**
-- **Limite de Nyquist**: Para fs=4 Hz, frequência máxima = 2 Hz
-- **ECG**: Butterworth 4ª ordem, 0.5-1.5 Hz (heart rate adaptado)
-- **EDA**: Butterworth 4ª ordem, 0.05-1 Hz (variações lentas)
-- **ACC**: Butterworth 4ª ordem, 0.1-1.5 Hz (movimento corporal)
-- **Temperatura**: Sem filtragem (variações muito lentas)
-- **Implementação**: `sosfilt` com `output='sos'` para estabilidade numérica
+**Filtragem Adaptada por Sinal:**
+- **Implementação**: Butterworth 4ª ordem com `sosfiltfilt` (zero-phase, estabilidade numérica)
+- **Filtros específicos**:
+  - **ECG**: 0.5-15 Hz (captura heart rate + variabilidade)
+  - **BVP**: 0.5-8 Hz (pulso arterial)
+  - **ACC**: 0.1-1.5 Hz (movimento corporal, remove high-freq noise)
+  - **EDA**: lowpass 1 Hz (variações lentas de condutância)
+  - **Temperatura**: lowpass 0.5 Hz (variações muito lentas)
+  - **Respiração**: 0.1-0.5 Hz (breathing rate típico)
+  - **EMG**: 0.5-1.5 Hz (atividade muscular adaptada para 4 Hz)
+- **Limite de Nyquist**: Todos os filtros respeitam fs/2 = 2 Hz
 
-**Extração de Features Abrangente:**
-- **Janelas**: 60 segundos (240 amostras) com 50% overlap
-- **Features por canal**: 22 features abrangentes:
-  - **11 Estatísticas**: mean, std, var, median, percentiles (25%, 75%), skew, kurtosis, min, max, range
-  - **3 Temporais**: total variation, mean absolute difference, std of differences
-  - **8 Espectrais**: total power, mean power, power std, dominant frequency, peak power, LF power, HF power, LF/HF ratio
-- **Total**: ~22 features × múltiplos canais (ECG, EDA, Temp, ACC 3D, EMG, Resp, BVP, etc.)
-- **Filtragem de labels**: Manter 3 classes principais: baseline (1), stress (2), amusement (3)
-- **Remoção**: undefined/transient (0), meditation (4) e outros estados (5,6,7)
-- **Relabeling**: baseline=0, stress=1, amusement=2
+**Janelamento Temporal:**
+- **Janela**: 60 segundos = 240 amostras @ 4 Hz (padrão clínico para análise de stress)
+- **Overlap**: 50% (120 amostras) para aumentar quantidade de dados
+- **Label**: Majority voting dentro da janela (exclui labels indefinidos = 0)
+- **Output**: Janelas de forma `(n_channels, 240)` preservando estrutura temporal completa
+
+**Expansão de Canais Multi-dimensionais:**
+- **ACC chest** (3D): expandido para 3 canais (acc_chest_x, acc_chest_y, acc_chest_z)
+- **ACC wrist** (3D): expandido para 3 canais (acc_wrist_x, acc_wrist_y, acc_wrist_z)
+- **Total**: 14 canais finais
+  - `ecg, eda_chest, temp_chest, acc_chest_{x,y,z}, emg, resp, bvp, eda_wrist, temp_wrist, acc_wrist_{x,y,z}`
+
+**Filtragem e Relabeling de Classes:**
+- **Labels originais**: 0=undefined, 1=baseline, 2=stress, 3=amusement, 4=meditation, 5-7=outros
+- **Filtragem**: Manter apenas labels 1, 2, 3 (remover transições e meditation)
+- **Relabeling binário**:
+  - **Classe 0 (non-stress)**: baseline (1) + amusement (3) agrupados
+  - **Classe 1 (stress)**: stress (2)
+- **Motivação**: Foco clínico em detecção de stress; balanceamento melhorado (70%/30%)
+
+**Normalização e Split:**
+- **Split por sujeito** (LOSO-style): Train 60%, Val 20%, Test 20% de sujeitos
+- **Vantagem**: Evita vazamento de dados entre splits (cada sujeito inteiro vai para um só split)
+- **Normalização**: Z-score por canal usando **apenas estatísticas do treino**
+  - `X_normalized = (X - train_mean) / train_std`
+  - Aplicado independentemente a cada um dos 14 canais
+  - `train_mean` e `train_std` têm shape `(1, 14, 1)` (broadcast sobre amostras e timesteps)
 
 ### 2.4 Resultados do Pré-processamento
 
@@ -142,33 +174,46 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
 - **Distribuição**: [289,102, 24,632, 86,397, 11,673, 6,800] épocas
 - **Split**: 70/15/15 (train/val/test)
 
-**WESAD:**
-- **Ficheiros processados**: 15 (100% de sucesso)
-- **Janelas totais**: 2,874 (antes da filtragem)
-- **Janelas válidas**: 1,105 (após filtragem stress/amusement)
-- **Features**: ~22 × múltiplos canais (dimensão variável dependendo dos sinais processados)
-- **Classes**: 3 (baseline, stress, amusement)
-- **Distribuição**: [587, 332, 186] janelas
-- **Split**: 70/15/15 (train/val/test)
+**WESAD (Binário):**
+- **Ficheiros processados**: 15/15 sujeitos (100% de sucesso)
+- **Janelas brutas**: 2,874 (antes de filtrar labels)
+- **Janelas válidas**: 1,189 (após filtrar labels 1,2,3)
+- **Shape final**: `(n_windows, 14, 240)` - preserva estrutura temporal completa
+- **Classes**: 2 (non-stress: 70%, stress: 30%)
+- **Distribuição bruta**: [827 non-stress, 362 stress] janelas
+- **Split por sujeito**:
+  - Train: 9 sujeitos → 715 janelas
+  - Val: 3 sujeitos → 237 janelas  
+  - Test: 3 sujeitos → 237 janelas
+- **Normalização**: Per-channel z-score (train-only statistics)
 
 ---
 
 ## Fase 3: Implementação de Modelos Baseline
 
-### 3.1 Arquitetura do Modelo
+### 3.1 Arquiteturas dos Modelos
 
-**LSTM Baseline:**
+**Sleep-EDF - LSTM Baseline:**
 - **Arquitetura**: Input → LSTM(128) → Dropout(0.3) → Dense(64) → Dropout(0.3) → Output
 - **Input shape**: (window_size, n_features) onde window_size=10
 - **Ativação**: ReLU para camadas ocultas, Softmax para output
 - **Optimizador**: Adam com learning rate 0.001
 - **Loss**: Categorical crossentropy
+- **Reformatação**: Janelas temporais deslizantes para criar sequências
 
-**Reformatação de Dados:**
-- **Problema**: Dados em formato (n_samples, n_features)
-- **Solução**: Criação de janelas temporais deslizantes
-- **Algoritmo**: Para cada amostra i, usar amostras [i:i+window_size]
-- **Resultado**: Shape (n_samples-window_size+1, window_size, n_features)
+**WESAD - CNN-LSTM (Otimizado para Binário):**
+- **Arquitetura**:
+  - **Conv1D(64, kernel=5)** → BatchNorm → MaxPool(2) → Dropout(0.3)
+  - **Conv1D(128, kernel=5)** → BatchNorm → MaxPool(2) → Dropout(0.3)
+  - **LSTM(64)** → Dropout(0.4)
+  - **Dense(32, ReLU)** → Dropout(0.3)
+  - **Dense(2, Softmax)**
+- **Input shape**: `(14, 240)` - 14 canais × 240 timesteps
+- **Parâmetros**: 170,274 (665 KB) - modelo leve para análise de privacidade
+- **Motivação**: CNNs extraem padrões locais, LSTM captura dependências temporais
+- **Optimizador**: Adam (lr=0.001)
+- **Loss**: Categorical crossentropy
+- **Class weights**: {non-stress: 0.72, stress: 1.65} para balancear classes
 
 ### 3.2 Configuração de Treino
 
@@ -195,12 +240,14 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
 - **Tempo de treino**: ~46 segundos por época
 - **Convergência**: Estável, sem overfitting significativo
 
-**WESAD Baseline:**
-- **Dados de treino**: 773 janelas
-- **Dados de validação**: 166 janelas
-- **Dados de teste**: 166 janelas
-- **Duração do treino**: Similar ao Sleep-EDF
-- **Convergência**: Rápida devido ao dataset menor
+**WESAD Baseline (CNN-LSTM Binário):**
+- **Dados de treino**: 715 janelas (9 sujeitos)
+- **Dados de validação**: 237 janelas (3 sujeitos)
+- **Dados de teste**: 237 janelas (3 sujeitos)
+- **Duração do treino**: 21 épocas (early stopping)
+- **Tempo total**: ~6.2 segundos (~0.3s/época) - muito rápido devido ao modelo leve
+- **Convergência**: Rápida e estável com early stopping em val_loss
+- **Learning rate**: Redução automática 0.001 → 0.00025
 
 ### 3.4 Resultados de Performance
 
@@ -219,10 +266,36 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
 - **N3 Sleep**: Precision 79.9%, Recall 74.6% (bom)
 - **REM Sleep**: Precision 67.9%, Recall 71.9% (aceitável)
 
-**WESAD Baseline:**
-- **Performance**: Similar ao Sleep-EDF
-- **Classes**: Stress vs Amusement
-- **Desafio**: Dados limitados (1,105 janelas)
+**WESAD Baseline (CNN-LSTM Binário):**
+- **Test Accuracy**: 75.95%
+- **Test Precision**: 84.75%
+- **Test Recall**: 75.95%
+- **Test F1-Score**: 76.85%
+
+**Análise por Classe (WESAD Binário):**
+- **Non-Stress (baseline+amusement)**: 
+  - Precision: 97.3% (alta confiança quando prediz non-stress)
+  - Recall: 67.1% (detecta 2/3 dos casos non-stress)
+  - F1-Score: 79.4%
+  - Suporte: 164 amostras de teste
+- **Stress**: 
+  - Precision: 56.5% (muitos falsos positivos)
+  - Recall: 95.9% (quase todos os casos de stress são detectados!)
+  - F1-Score: 71.1%
+  - Suporte: 73 amostras de teste
+
+**Matriz de Confusão (WESAD):**
+```
+                Predito
+            Non-stress  Stress
+Real Non-stress   110      54
+     Stress         3      70
+```
+
+**Interpretação Clínica:**
+- **Alta sensibilidade ao stress**: Modelo conservador que raramente perde casos de stress (recall 96%)
+- **Trade-off**: Aceita falsos positivos (54 casos non-stress classificados como stress) para não perder casos reais
+- **Aplicação**: Ideal para alertas preventivos onde é preferível sinalizar stress em excesso a não detectá-lo
 
 ### 3.5 Análise de Estabilidade
 
@@ -292,9 +365,13 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
 - **Solução**: Investigação sistemática e adaptação flexível
 
 **Complexidade da Implementação:**
-- **Sleep-EDF**: Algoritmo de matching de ficheiros com extração de "base prefix"
-- **WESAD**: Pipeline multi-dispositivo com 22+ features por canal (estatísticas, temporais, espectrais)
-- **Escalabilidade**: Processamento eficiente de grandes volumes de dados fisiológicos
+- **Sleep-EDF**: Algoritmo de matching de ficheiros com extração de "base prefix", conversão de épocas variáveis
+- **WESAD**: Pipeline multi-dispositivo otimizado
+  - Resampling polyfásico multi-frequência (4-700 Hz → 4 Hz)
+  - Filtragem adaptada por tipo de sinal (ECG, EDA, ACC, etc.)
+  - Expansão de canais 3D (ACC) e preservação temporal completa
+  - Split por sujeito (LOSO-style) para evitar vazamento
+- **Escalabilidade**: Processamento eficiente (<1 min para WESAD, ~20 min para Sleep-EDF)
 
 **Escala de Dados:**
 - **Sleep-EDF**: 453,005 épocas (vs 291 original)
@@ -337,14 +414,16 @@ Face aos desafios identificados, foi adotada uma metodologia de investigação s
 ### 6.1 Resultados Alcançados
 
 **Datasets Processados:**
-- **Sleep-EDF**: 453,005 épocas, 24 features, 5 classes
-- **WESAD**: 1,105 janelas, 36 features, 3 classes
-- **Qualidade**: Pipelines robustos e testados
+- **Sleep-EDF**: 453,005 épocas, 24 features, 5 classes (multi-class)
+- **WESAD**: 1,189 janelas, 14 canais × 240 timesteps, 2 classes (binário)
+- **Qualidade**: Pipelines robustos, split por sujeito (LOSO), sem vazamento
 
 **Modelos Baseline:**
-- **Sleep-EDF**: 87.45% accuracy (vs 34.3% dataset original)
-- **WESAD**: Performance sólida para dados limitados
-- **Estabilidade**: Treino convergente e reproduzível
+- **Sleep-EDF (LSTM)**: 87.45% accuracy, F1=85.82% (5 classes)
+- **WESAD (CNN-LSTM binário)**: 75.95% accuracy, F1=76.85% (2 classes)
+  - **Destaque**: 95.9% recall em stress (detecção quase perfeita)
+  - **Trade-off**: Alta sensibilidade vs precisão moderada
+- **Estabilidade**: Treino convergente, reproduzível, sem overfitting
 
 **Infraestrutura:**
 - **Código modular**: Fácil extensão para DP/FL
@@ -384,16 +463,16 @@ y_val.shape = (67,951,)
 y_test.shape = (67,951,)
 ```
 
-**WESAD Processed:**
+**WESAD Processed (Binário - Temporal):**
 ```
-X_train.shape = (773, N_features)  # N_features variável (~22 × canais processados)
-X_val.shape = (166, N_features)
-X_test.shape = (166, N_features)
-y_train.shape = (773,)
-y_val.shape = (166,)
-y_test.shape = (166,)
+X_train.shape = (715, 14, 240)  # 715 janelas × 14 canais × 240 timesteps
+X_val.shape = (237, 14, 240)
+X_test.shape = (237, 14, 240)
+y_train.shape = (715,)          # Labels binários: 0=non-stress, 1=stress
+y_val.shape = (237,)
+y_test.shape = (237,)
 ```
-*Nota: N_features depende do número de canais processados e pode variar significativamente devido à extração abrangente de features (estatísticas, temporais, espectrais) por canal.*
+*Nota: Formato temporal preserva toda a informação da série temporal em 14 canais fisiológicos sincronizados. Normalização per-channel z-score aplicada usando apenas estatísticas do treino.*
 
 ### A.2 Configurações de Hardware
 

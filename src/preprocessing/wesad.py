@@ -1,88 +1,72 @@
 """
-WESAD Dataset Preprocessing Module
+WESAD Dataset Preprocessing Module (Optimized)
 
-This module handles the preprocessing of WESAD dataset:
-- Loading pickle files with physiological signals from RespiBAN and Empatica E4
-- Signal filtering and resampling
-- Comprehensive feature extraction (time, frequency, and statistical domain)
-- Sliding window approach for data augmentation
-- Normalization and train/val/test splitting
+Streamlined preprocessing for WESAD stress detection:
+- Load pickle files with physiological signals from RespiBAN and Empatica E4
+- Resample to uniform frequency (4 Hz)
+- Temporal windowing (60s windows, 50% overlap)
+- Subject-wise splitting (LOSO-style to avoid leakage)
+- Per-channel z-score normalization (train-only)
+- Binary (stress vs non-stress) or 3-class (baseline/stress/amusement)
 
 WESAD contains:
-- 15 subjects with ~100 minutes of data each
-- RespiBAN (chest): ECG, EDA, EMG, Temp, Resp, ACC (3D) at 700 Hz
-- Empatica E4 (wrist): ACC (3D), BVP, EDA, TEMP at different frequencies
-- 8 classes: 0=undefined, 1=baseline, 2=stress, 3=amusement, 4=meditation, 5-7=other
+- 15 subjects (~100 min each)
+- RespiBAN (chest): ECG, EDA, EMG, Temp, Resp, ACC (700 Hz)
+- Empatica E4 (wrist): ACC, BVP, EDA, TEMP (various frequencies)
+- Labels: 0=undefined, 1=baseline, 2=stress, 3=amusement, 4=meditation, 5-7=other
 """
 
 import numpy as np
-import pandas as pd
 import pickle
 from scipy import signal
-from scipy.stats import skew, kurtosis
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 import joblib
 import os
 import time
+import glob
 from typing import Tuple, Dict, List
 import warnings
 warnings.filterwarnings('ignore')
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
 
 
 def load_wesad_file(pkl_path: str) -> Dict:
     """
-    Load a single WESAD pickle file with all available signals.
-    
-    Args:
-        pkl_path: Path to .pkl file
+    Load a single WESAD pickle file.
     
     Returns:
-        Dictionary with signals and labels from both RespiBAN and Empatica E4
+        Dictionary with signals, labels, and subject ID
     """
-    print(f"Loading {pkl_path}...")
-    
     with open(pkl_path, 'rb') as f:
         data = pickle.load(f, encoding='latin1')
     
-    # Extract signals from RespiBAN (chest device) - synchronized with labels
-    chest_signals = data['signal']['chest']
-    ecg = chest_signals['ECG']  # Electrocardiogram (700 Hz)
-    eda_chest = chest_signals['EDA']  # Electrodermal Activity (700 Hz)
-    temp_chest = chest_signals['Temp']  # Temperature (700 Hz)
-    acc_chest = chest_signals['ACC']  # Acceleration 3D (700 Hz)
-    emg = chest_signals['EMG']  # Electromyography (700 Hz)
-    resp = chest_signals['Resp']  # Respiration (700 Hz)
-    
-    # Extract signals from Empatica E4 (wrist device) - different frequencies
-    wrist_signals = data['signal']['wrist']
-    acc_wrist = wrist_signals['ACC']  # Acceleration 3D (32 Hz)
-    bvp = wrist_signals['BVP']  # Blood Volume Pulse (64 Hz)
-    eda_wrist = wrist_signals['EDA']  # Electrodermal Activity (4 Hz)
-    temp_wrist = wrist_signals['TEMP']  # Temperature (4 Hz)
-    
-    # Extract labels (synchronized with chest signals)
-    labels = data['label']  # Labels: 0=undefined, 1=baseline, 2=stress, 3=amusement, 4=meditation, 5-7=other
+    # Extract chest signals (RespiBAN) - 700 Hz
+    chest = data['signal']['chest']
+    # Extract wrist signals (Empatica E4) - various frequencies
+    wrist = data['signal']['wrist']
     
     return {
-        # Chest signals (RespiBAN) - 700 Hz
-        'ecg': ecg,
-        'eda_chest': eda_chest,
-        'temp_chest': temp_chest,
-        'acc_chest': acc_chest,
-        'emg': emg,
-        'resp': resp,
-        
-        # Wrist signals (Empatica E4) - different frequencies
-        'acc_wrist': acc_wrist,
-        'bvp': bvp,
-        'eda_wrist': eda_wrist,
-        'temp_wrist': temp_wrist,
-        
-        'labels': labels,
+        # Chest signals (700 Hz)
+        'ecg': chest['ECG'],
+        'eda_chest': chest['EDA'],
+        'temp_chest': chest['Temp'],
+        'acc_chest': chest['ACC'],
+        'emg': chest['EMG'],
+        'resp': chest['Resp'],
+        # Wrist signals (Empatica E4)
+        'acc_wrist': wrist['ACC'],      # 32 Hz
+        'bvp': wrist['BVP'],            # 64 Hz
+        'eda_wrist': wrist['EDA'],      # 4 Hz
+        'temp_wrist': wrist['TEMP'],    # 4 Hz
+        # Labels and metadata
+        'labels': data['label'],
         'subject': data.get('subject', 'unknown'),
         'sfreq': {
-            'chest': 700,  # All chest signals at 700 Hz
+            'chest': 700,
             'acc_wrist': 32,
             'bvp': 64,
             'eda_wrist': 4,
@@ -91,501 +75,519 @@ def load_wesad_file(pkl_path: str) -> Dict:
     }
 
 
-def resample_signals(signals_dict: Dict, target_freq: float = 4) -> Dict:
+def resample_signal(arr: np.ndarray, orig_freq: int, target_freq: int) -> np.ndarray:
     """
-    Resample all signals to the same frequency.
+    Resample signal using polyphase filtering.
+    Handles 1D and 2D (multi-channel) arrays.
+    """
+    if arr.ndim == 1:
+        return signal.resample_poly(arr, int(target_freq), int(orig_freq), axis=0)
+    # Multi-channel: resample each column
+    resampled_cols = []
+    for c in range(arr.shape[1]):
+        resampled_cols.append(signal.resample_poly(arr[:, c], int(target_freq), int(orig_freq), axis=0))
+    return np.stack(resampled_cols, axis=1)
+
+
+def resample_all_signals(data: Dict, target_freq: int = 4) -> Dict:
+    """
+    Resample all signals to target frequency.
     
     Args:
-        signals_dict: Dictionary with signals and sampling frequencies
+        data: Dictionary from load_wesad_file
         target_freq: Target sampling frequency (Hz)
     
     Returns:
         Dictionary with resampled signals
     """
-    print(f"Resampling signals to {target_freq} Hz...")
+    sfreq = data['sfreq']
+    original_length = len(data['ecg'])
+    target_length = int(np.round(original_length * (target_freq / sfreq['chest'])))
     
     resampled = {}
-    sfreq = signals_dict['sfreq']
     
-    # Use chest signals as reference (700 Hz) for labels
-    original_length = len(signals_dict['ecg'])
-    target_length = int(original_length * target_freq / sfreq['chest'])
+    # Resample chest signals (700 Hz → target_freq)
+    resampled['ecg'] = resample_signal(data['ecg'], sfreq['chest'], target_freq)
+    resampled['eda_chest'] = resample_signal(data['eda_chest'], sfreq['chest'], target_freq)
+    resampled['temp_chest'] = resample_signal(data['temp_chest'], sfreq['chest'], target_freq)
+    resampled['acc_chest'] = resample_signal(data['acc_chest'], sfreq['chest'], target_freq)
+    resampled['emg'] = resample_signal(data['emg'], sfreq['chest'], target_freq)
+    resampled['resp'] = resample_signal(data['resp'], sfreq['chest'], target_freq)
     
-    # Resample chest signals from 700 Hz to target frequency
-    resampled['ecg'] = signal.resample(signals_dict['ecg'], target_length)
-    resampled['eda_chest'] = signal.resample(signals_dict['eda_chest'], target_length)
-    resampled['temp_chest'] = signal.resample(signals_dict['temp_chest'], target_length)
-    resampled['acc_chest'] = signal.resample(signals_dict['acc_chest'], target_length)
-    resampled['emg'] = signal.resample(signals_dict['emg'], target_length)
-    resampled['resp'] = signal.resample(signals_dict['resp'], target_length)
+    # Resample wrist signals
+    resampled['acc_wrist'] = resample_signal(data['acc_wrist'], sfreq['acc_wrist'], target_freq)
+    resampled['bvp'] = resample_signal(data['bvp'], sfreq['bvp'], target_freq)
+    resampled['eda_wrist'] = resample_signal(data['eda_wrist'], sfreq['eda_wrist'], target_freq)
+    resampled['temp_wrist'] = resample_signal(data['temp_wrist'], sfreq['temp_wrist'], target_freq)
     
-    # Resample wrist signals to target frequency
-    resampled['acc_wrist'] = signal.resample(signals_dict['acc_wrist'], 
-                                           int(len(signals_dict['acc_wrist']) * target_freq / sfreq['acc_wrist']))
-    resampled['bvp'] = signal.resample(signals_dict['bvp'], 
-                                     int(len(signals_dict['bvp']) * target_freq / sfreq['bvp']))
-    resampled['eda_wrist'] = signal.resample(signals_dict['eda_wrist'], 
-                                           int(len(signals_dict['eda_wrist']) * target_freq / sfreq['eda_wrist']))
-    resampled['temp_wrist'] = signal.resample(signals_dict['temp_wrist'], 
-                                            int(len(signals_dict['temp_wrist']) * target_freq / sfreq['temp_wrist']))
+    # Downsample labels by nearest-neighbor indexing
+    indices = np.linspace(0, original_length - 1, target_length, dtype=int)
+    resampled['labels'] = data['labels'][indices]
     
-    # Use stratified sampling for labels to maintain class proportions
-    indices = np.linspace(0, original_length-1, target_length, dtype=int)
-    resampled['labels'] = signals_dict['labels'][indices]
-    
-    resampled['subject'] = signals_dict['subject']
+    resampled['subject'] = data['subject']
     resampled['sfreq'] = target_freq
     
     return resampled
 
 
-def extract_comprehensive_features(signal_data: np.ndarray, signal_name: str) -> np.ndarray:
+def apply_filters(resampled: Dict, target_freq: int = 4) -> Dict:
     """
-    Extract comprehensive features from a signal.
+    Apply bandpass/lowpass filters to improve SNR.
     
     Args:
-        signal_data: Signal data (can be 1D or 2D)
-        signal_name: Name of the signal for logging
-    
-    Returns:
-        Array of extracted features
-    """
-    features = []
-    
-    # Handle multi-dimensional signals (like ACC)
-    if signal_data.ndim > 1:
-        for i in range(signal_data.shape[1]):
-            channel_features = _extract_single_channel_features(signal_data[:, i], f"{signal_name}_ch{i}")
-            features.extend(channel_features)
-    else:
-        features = _extract_single_channel_features(signal_data, signal_name)
-    
-    return np.array(features)
-
-
-def _extract_single_channel_features(signal_data: np.ndarray, signal_name: str) -> List[float]:
-    """
-    Extract features from a single channel signal.
-    
-    Args:
-        signal_data: 1D signal data
-        signal_name: Name of the signal
-    
-    Returns:
-        List of extracted features
-    """
-    features = []
-    
-    # Statistical features
-    features.extend([
-        np.mean(signal_data),           # Mean
-        np.std(signal_data),            # Standard deviation
-        np.var(signal_data),            # Variance
-        np.median(signal_data),         # Median
-        np.percentile(signal_data, 25), # 25th percentile
-        np.percentile(signal_data, 75), # 75th percentile
-        skew(signal_data),              # Skewness
-        kurtosis(signal_data),          # Kurtosis
-        np.min(signal_data),            # Minimum
-        np.max(signal_data),            # Maximum
-        np.max(signal_data) - np.min(signal_data),  # Range
-    ])
-    
-    # Time domain features
-    features.extend([
-        np.sum(np.abs(np.diff(signal_data))),  # Total variation
-        np.mean(np.abs(np.diff(signal_data))), # Mean absolute difference
-        np.std(np.diff(signal_data)),          # Std of differences
-    ])
-    
-    # Frequency domain features
-    try:
-        # Power spectral density
-        freqs, psd = signal.welch(signal_data, nperseg=min(256, len(signal_data)//4))
-        
-        # Spectral features
-        features.extend([
-            np.sum(psd),                    # Total power
-            np.mean(psd),                   # Mean power
-            np.std(psd),                    # Power std
-            freqs[np.argmax(psd)],          # Dominant frequency
-            np.max(psd),                    # Peak power
-        ])
-        
-        # Frequency band powers (if signal is long enough)
-        if len(freqs) > 10:
-            # Low frequency (0-0.1 Hz)
-            lf_mask = freqs <= 0.1
-            lf_power = np.sum(psd[lf_mask]) if np.any(lf_mask) else 0
-            
-            # High frequency (0.1-0.5 Hz)
-            hf_mask = (freqs > 0.1) & (freqs <= 0.5)
-            hf_power = np.sum(psd[hf_mask]) if np.any(hf_mask) else 0
-            
-            features.extend([lf_power, hf_power])
-            
-            # LF/HF ratio
-            if hf_power > 0:
-                features.append(lf_power / hf_power)
-            else:
-                features.append(0)
-        else:
-            features.extend([0, 0, 0])  # Placeholder for short signals
-            
-    except Exception as e:
-        # If spectral analysis fails, add zeros
-        features.extend([0] * 8)
-    
-    return features
-
-
-def create_sliding_windows(signals_dict: Dict, window_size: int = 60, overlap: float = 0.5) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Create sliding windows from signals for data augmentation.
-    
-    Args:
-        signals_dict: Dictionary with resampled signals
-        window_size: Window size in samples (default: 60 samples = 15 seconds at 4 Hz)
-        overlap: Overlap ratio between windows (0.0 to 0.9)
-    
-    Returns:
-        Tuple of (features_array, labels_array)
-    """
-    print(f"Creating sliding windows (size={window_size}, overlap={overlap})...")
-    
-    # Get reference length from chest signals
-    ref_length = len(signals_dict['ecg'])
-    step_size = int(window_size * (1 - overlap))
-    
-    features_list = []
-    labels_list = []
-    
-    # Create windows
-    for start_idx in range(0, ref_length - window_size + 1, step_size):
-        end_idx = start_idx + window_size
-        
-        # Extract window data
-        window_data = {}
-        for signal_name in ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg', 'resp', 
-                           'acc_wrist', 'bvp', 'eda_wrist', 'temp_wrist']:
-            if signal_name in signals_dict:
-                signal_data = signals_dict[signal_name]
-                # Handle different signal lengths
-                if len(signal_data) >= end_idx:
-                    window_data[signal_name] = signal_data[start_idx:end_idx]
-                else:
-                    # Pad with zeros if signal is shorter
-                    padded_signal = np.zeros(window_size)
-                    available_length = min(len(signal_data) - start_idx, window_size)
-                    if available_length > 0:
-                        padded_signal[:available_length] = signal_data[start_idx:start_idx + available_length]
-                    window_data[signal_name] = padded_signal
-        
-        # Get label for this window (use majority vote)
-        window_labels = signals_dict['labels'][start_idx:end_idx]
-        # Remove undefined labels (0) for voting
-        valid_labels = window_labels[window_labels != 0]
-        if len(valid_labels) > 0:
-            window_label = np.bincount(valid_labels).argmax()
-        else:
-            window_label = 0  # Default to undefined if no valid labels
-        
-        # Extract features from this window
-        window_features = []
-        for signal_name, signal_data in window_data.items():
-            features = extract_comprehensive_features(signal_data, signal_name)
-            window_features.extend(features)
-        
-        features_list.append(window_features)
-        labels_list.append(window_label)
-    
-    return np.array(features_list), np.array(labels_list)
-
-
-def filter_signals(signals_dict: Dict) -> Dict:
-    """
-    Apply bandpass filters to signals.
-    
-    Args:
-        signals_dict: Dictionary with resampled signals
+        resampled: Dictionary with resampled signals
+        target_freq: Sampling frequency
     
     Returns:
         Dictionary with filtered signals
     """
-    print("Applying bandpass filters...")
+    filtered = resampled.copy()
     
-    filtered = {}
-    sfreq = signals_dict['sfreq']
-    
-    # ECG: 0.5-1.5 Hz (heart rate range adapted for 4Hz sampling)
-    filtered['ecg'] = signal.sosfilt(signal.butter(4, [0.5, 1.5], btype='band', fs=sfreq, output='sos'), 
-                                    signals_dict['ecg'])
-    
-    # EDA: 0.05-1 Hz (slow variations)
-    filtered['eda'] = signal.sosfilt(signal.butter(4, [0.05, 1], btype='band', fs=sfreq, output='sos'), 
-                                    signals_dict['eda'])
-    
-    # Temperature: no filtering (very slow variations)
-    filtered['temp'] = signals_dict['temp']
-    
-    # Acceleration: 0.1-1.5 Hz (body movement adapted for 4Hz sampling)
-    filtered['acc'] = signal.sosfilt(signal.butter(4, [0.1, 1.5], btype='band', fs=sfreq, output='sos'), 
-                                    signals_dict['acc'])
-    
-    filtered['labels'] = signals_dict['labels']
-    filtered['sfreq'] = sfreq
+    try:
+        # ECG: 0.5-15 Hz (capture heart rate)
+        sos_ecg = signal.butter(4, [0.5, min(15, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        filtered['ecg'] = signal.sosfiltfilt(sos_ecg, resampled['ecg'], axis=0)
+        
+        # BVP: 0.5-8 Hz (pulse)
+        sos_bvp = signal.butter(4, [0.5, min(8, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        filtered['bvp'] = signal.sosfiltfilt(sos_bvp, resampled['bvp'], axis=0)
+        
+        # ACC: 0.1-1.5 Hz (body movement, avoid high-freq noise)
+        sos_acc = signal.butter(4, [0.1, min(1.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        filtered['acc_chest'] = signal.sosfiltfilt(sos_acc, resampled['acc_chest'], axis=0)
+        filtered['acc_wrist'] = signal.sosfiltfilt(sos_acc, resampled['acc_wrist'], axis=0)
+        
+        # EDA: lowpass 1 Hz (slow variations)
+        sos_eda = signal.butter(4, min(1, target_freq/2.5), btype='low', fs=target_freq, output='sos')
+        filtered['eda_chest'] = signal.sosfiltfilt(sos_eda, resampled['eda_chest'], axis=0)
+        filtered['eda_wrist'] = signal.sosfiltfilt(sos_eda, resampled['eda_wrist'], axis=0)
+        
+        # TEMP: lowpass 0.5 Hz (very slow)
+        sos_temp = signal.butter(4, min(0.5, target_freq/2.5), btype='low', fs=target_freq, output='sos')
+        filtered['temp_chest'] = signal.sosfiltfilt(sos_temp, resampled['temp_chest'], axis=0)
+        filtered['temp_wrist'] = signal.sosfiltfilt(sos_temp, resampled['temp_wrist'], axis=0)
+        
+        # Resp: 0.1-0.5 Hz (breathing rate)
+        sos_resp = signal.butter(4, [0.1, min(0.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        filtered['resp'] = signal.sosfiltfilt(sos_resp, resampled['resp'], axis=0)
+        
+        # EMG: 0.5-1.5 Hz (muscle activity, adapted for low sampling)
+        sos_emg = signal.butter(4, [0.5, min(1.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        filtered['emg'] = signal.sosfiltfilt(sos_emg, resampled['emg'], axis=0)
+        
+    except Exception as e:
+        print(f"  Warning: filtering failed ({e}), using unfiltered signals")
+        return resampled
     
     return filtered
 
 
-def create_windows(signals_dict: Dict, window_size: int = 240, stride: int = 120) -> Tuple[np.ndarray, np.ndarray]:
+def _clip_array_percentiles(arr: np.ndarray, lower_p: float, upper_p: float) -> np.ndarray:
     """
-    Create sliding windows from signals.
+    Clip array values to [lower_p, upper_p] percentiles per channel to reduce outliers.
+    Works for 1D and 2D arrays (time x channels).
+    """
+    if arr is None:
+        return arr
+    if arr.ndim == 1:
+        lo = np.percentile(arr, lower_p)
+        hi = np.percentile(arr, upper_p)
+        return np.clip(arr, lo, hi)
+    clipped_cols = []
+    for c in range(arr.shape[1]):
+        col = arr[:, c]
+        lo = np.percentile(col, lower_p)
+        hi = np.percentile(col, upper_p)
+        clipped_cols.append(np.clip(col, lo, hi))
+    return np.stack(clipped_cols, axis=1)
+
+
+def reduce_outliers(signals: Dict, method: str = 'clip', lower_p: float = 0.5, upper_p: float = 99.5) -> Dict:
+    """
+    Basic outlier mitigation prior to windowing.
+    - method='clip': percentile clipping per signal/channel (default)
+    - method='none': no change
+    """
+    if method == 'none':
+        return signals
+    clipped = signals.copy()
+    keys = ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg', 'resp', 'acc_wrist', 'bvp', 'eda_wrist', 'temp_wrist']
+    for k in keys:
+        if k in clipped and clipped[k] is not None:
+            try:
+                clipped[k] = _clip_array_percentiles(clipped[k], lower_p, upper_p)
+            except Exception:
+                # If clipping fails for any reason, keep original
+                pass
+    return clipped
+
+
+def export_basic_eda(eda_dir: str, class_counts: np.ndarray, class_names: List[str]) -> None:
+    """
+    Save a simple class distribution bar chart to eda_dir, if matplotlib is available.
+    """
+    if plt is None:
+        return
+    try:
+        os.makedirs(eda_dir, exist_ok=True)
+        fig, ax = plt.subplots(figsize=(5, 3))
+        ax.bar(class_names, class_counts)
+        ax.set_title('WESAD Class Distribution')
+        ax.set_ylabel('Num windows')
+        for i, v in enumerate(class_counts):
+            ax.text(i, v + max(class_counts)*0.01, str(int(v)), ha='center', va='bottom', fontsize=8)
+        fig.tight_layout()
+        fig.savefig(os.path.join(eda_dir, 'class_distribution.png'), dpi=150)
+        plt.close(fig)
+    except Exception:
+        pass
+
+def create_temporal_windows(data: Dict, window_size: int = 240, overlap: float = 0.5) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """
+    Create temporal sliding windows for LSTM/CNN.
     
     Args:
-        signals_dict: Dictionary with filtered signals
-        window_size: Window size in samples (60 seconds at 4 Hz)
-        stride: Stride between windows (30 seconds at 4 Hz)
+        data: Dictionary with filtered signals
+        window_size: Window size in samples (default: 240 = 60s at 4 Hz)
+        overlap: Overlap ratio (0.0 to 0.9)
     
     Returns:
-        Tuple of (windows, window_labels)
+        Tuple of (windows, labels, channel_names)
+        - windows: (n_windows, n_channels, window_size)
+        - labels: (n_windows,)
+        - channel_names: list of channel names
     """
-    print(f"Creating windows (size={window_size}, stride={stride})...")
+    step_size = int(window_size * (1 - overlap))
+    ref_length = len(data['ecg'])
     
-    ecg = signals_dict['ecg']
-    eda = signals_dict['eda']
-    temp = signals_dict['temp']
-    acc = signals_dict['acc']
-    labels = signals_dict['labels']
+    # Define signals to use and expand multi-channel
+    signal_names = ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg', 'resp',
+                    'bvp', 'eda_wrist', 'temp_wrist', 'acc_wrist']
     
-    windows = []
-    window_labels = []
+    channel_names = []
+    for name in signal_names:
+        if name not in data:
+            continue
+        arr = data[name]
+        if arr.ndim > 1 and arr.shape[1] > 1:
+            # Multi-channel: label axes
+            axis_labels = ['x', 'y', 'z'] if arr.shape[1] == 3 else [f'ch{i}' for i in range(arr.shape[1])]
+            for ax in axis_labels:
+                channel_names.append(f"{name}_{ax}")
+        else:
+            channel_names.append(name)
     
-    for i in range(0, len(ecg) - window_size, stride):
-        # Extract window
-        ecg_window = ecg[i:i+window_size, 0]  # Take first channel
-        eda_window = eda[i:i+window_size, 0]  # Take first channel
-        temp_window = temp[i:i+window_size, 0]  # Take first channel
-        acc_window = acc[i:i+window_size, 0]  # Take first channel (x-axis)
+    n_channels = len(channel_names)
+    windows_list = []
+    labels_list = []
+    
+    # Slide windows
+    for start_idx in range(0, ref_length - window_size + 1, step_size):
+        end_idx = start_idx + window_size
         
-        # Get majority label for window
-        window_label = np.bincount(labels[i:i+window_size].astype(int)).argmax()
+        window_data = np.zeros((n_channels, window_size))
+        ch_idx = 0
         
-        # Store window data
-        window_data = np.array([ecg_window, eda_window, temp_window, acc_window])
-        windows.append(window_data)
-        window_labels.append(window_label)
+        for name in signal_names:
+            if name not in data:
+                continue
+            arr = data[name]
+            
+            if arr.ndim > 1 and arr.shape[1] > 1:
+                # Multi-channel
+                for c in range(arr.shape[1]):
+                    if len(arr) >= end_idx:
+                        window_data[ch_idx] = arr[start_idx:end_idx, c]
+                    else:
+                        # Pad if needed
+                        avail = min(len(arr) - start_idx, window_size)
+                        if avail > 0:
+                            window_data[ch_idx, :avail] = arr[start_idx:start_idx + avail, c]
+                    ch_idx += 1
+            else:
+                # Single channel
+                series = arr if arr.ndim == 1 else arr[:, 0]
+                if len(series) >= end_idx:
+                    window_data[ch_idx] = series[start_idx:end_idx]
+                else:
+                    avail = min(len(series) - start_idx, window_size)
+                    if avail > 0:
+                        window_data[ch_idx, :avail] = series[start_idx:start_idx + avail]
+                ch_idx += 1
+        
+        # Get label for this window (majority vote, excluding undefined=0)
+        window_labels = data['labels'][start_idx:end_idx]
+        valid_labels = window_labels[window_labels != 0]
+        if len(valid_labels) > 0:
+            window_label = np.bincount(valid_labels.astype(int)).argmax()
+        else:
+            window_label = 0  # undefined
+        
+        windows_list.append(window_data)
+        labels_list.append(window_label)
     
-    return np.array(windows), np.array(window_labels)
+    return np.array(windows_list), np.array(labels_list), channel_names
 
 
-def extract_wesad_features(window: np.ndarray, sfreq: float = 4) -> np.ndarray:
+def preprocess_wesad_temporal(data_dir: str, output_dir: str,
+                               target_freq: int = 16,
+                               window_size: int = 960,
+                               overlap: float = 0.5,
+                               test_size: float = 0.2,
+                               val_size: float = 0.2,
+                               binary: bool = True,
+                               random_state: int = 42,
+                               outlier_method: str = 'clip',
+                               clip_lower_p: float = 0.5,
+                               clip_upper_p: float = 99.5,
+                               export_eda: bool = True) -> Dict:
     """
-    Extract features from a single window.
+    Complete preprocessing pipeline for WESAD (temporal windows for LSTM/CNN).
     
     Args:
-        window: Array of shape (n_channels, n_samples)
-        sfreq: Sampling frequency
-    
-    Returns:
-        Feature vector of length 27 (9 features per channel)
-    """
-    features = []
-    
-    for channel in window:
-        # Time domain features
-        mean_val = np.mean(channel)
-        std_val = np.std(channel)
-        min_val = np.min(channel)
-        max_val = np.max(channel)
-        
-        # Frequency domain features (Power Spectral Density)
-        freqs, psd = signal.welch(channel, sfreq, nperseg=min(64, len(channel)))
-        
-        # Use first 5 PSD values as features
-        psd_features = psd[:5]
-        
-        # Combine features for this channel
-        channel_features = [mean_val, std_val, min_val, max_val] + list(psd_features)
-        features.extend(channel_features)
-    
-    return np.array(features)
-
-
-def preprocess_wesad(data_dir: str, output_dir: str,
-                    test_size: float = 0.15, val_size: float = 0.15,
-                    random_state: int = 42) -> Dict:
-    """
-    Complete preprocessing pipeline for WESAD dataset.
-    
-    Args:
-        data_dir: Directory containing WESAD pickle files
+        data_dir: Directory containing WESAD pickle files (S2/, S3/, ...)
         output_dir: Directory to save processed data
-        test_size: Fraction for test set
-        val_size: Fraction for validation set (from remaining data)
-        random_state: Random seed for reproducibility
+        target_freq: Target sampling frequency (Hz) - default 16 Hz (optimal trade-off)
+        window_size: Window size in samples (default: 960 = 60s at 16 Hz)
+        overlap: Overlap ratio (0.0-0.9)
+        test_size: Test set size ratio (subject-wise split)
+        val_size: Validation set size ratio (subject-wise split)
+        binary: If True, binary classification (stress vs non-stress).
+                If False, 3-class (baseline/stress/amusement)
+        random_state: Random seed
     
     Returns:
         Dictionary with preprocessing info
+    
+    Note:
+        Default 16 Hz chosen based on empirical comparison (see results/wesad/frequency_comparison_summary.md):
+        - ECG: Preserves R-peak resolution for HRV analysis
+        - BVP: Captures pulse waveform details
+        - ACC: Preserves movement dynamics  
+        - 4.7% F1 improvement over 4 Hz, 17.8% better stress recall
+        - 4x more efficient than 32 Hz with similar performance
+        Use 4 Hz for edge deployment or 32 Hz for maximum signal quality if needed.
     """
     print("="*70)
-    print("WESAD PREPROCESSING")
+    print("WESAD TEMPORAL PREPROCESSING (Optimized)")
     print("="*70)
+    print(f"Target frequency: {target_freq} Hz")
+    print(f"Window size: {window_size} samples ({window_size/target_freq:.1f} seconds)")
+    print(f"Overlap: {overlap*100:.0f}%")
+    print(f"Classification: {'Binary (stress vs non-stress)' if binary else '3-class (baseline/stress/amusement)'}")
+    print(f"\nNote: {target_freq} Hz preserves R-peaks (ECG), pulse details (BVP), and movement dynamics (ACC)")
+    print(f"Outlier handling: {outlier_method} (clip {clip_lower_p}-{clip_upper_p} percentiles)\n")
     
-    # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Find all pickle files in subdirectories
-    import glob
-    pkl_files = glob.glob(os.path.join(data_dir, '**/*.pkl'), recursive=True)
-    print(f"Found {len(pkl_files)} pickle files")
+    # Find all pickle files
+    pkl_files = glob.glob(os.path.join(data_dir, "**/*.pkl"), recursive=True)
+    print(f"Found {len(pkl_files)} pickle files\n")
     
-    all_features = []
+    if not pkl_files:
+        raise ValueError(f"No pickle files found in {data_dir}")
+    
+    all_windows = []
     all_labels = []
-    
-    # Process each file
-    total_files = len(pkl_files)
-    print(f"Processing {total_files} WESAD files...")
+    all_subjects = []
+    channel_names = None
     
     start_time = time.time()
     
     for file_idx, pkl_file in enumerate(pkl_files, 1):
-        pkl_path = os.path.join(data_dir, pkl_file)
-        
         try:
-            # Load file
-            data = load_wesad_file(pkl_path)
+            print(f"[{file_idx}/{len(pkl_files)}] Processing {os.path.basename(pkl_file)}...")
             
-            # Resample signals
-            resampled = resample_signals(data)
+            # Load and resample
+            data = load_wesad_file(pkl_file)
+            subject = data['subject']
+            resampled = resample_all_signals(data, target_freq)
             
-            # Filter signals
-            filtered = filter_signals(resampled)
+            # Apply simple outlier mitigation before filtering
+            outlier_reduced = reduce_outliers(resampled, method=outlier_method, lower_p=clip_lower_p, upper_p=clip_upper_p)
             
-            # Create windows
-            windows, window_labels = create_windows(filtered)
+            # Apply filters
+            filtered = apply_filters(outlier_reduced, target_freq)
             
-            # Extract features for each window
-            for i in range(len(windows)):
-                features = extract_wesad_features(windows[i])
-                all_features.append(features)
-                all_labels.append(window_labels[i])
+            # Create temporal windows
+            windows, labels, ch_names = create_temporal_windows(filtered, window_size, overlap)
             
-            # Calculate progress and time estimates
-            elapsed_time = time.time() - start_time
-            progress_pct = (file_idx / total_files) * 100
+            if channel_names is None:
+                channel_names = ch_names
             
-            if file_idx > 1:
-                avg_time_per_file = elapsed_time / file_idx
-                remaining_files = total_files - file_idx
-                estimated_remaining_time = avg_time_per_file * remaining_files
-                remaining_minutes = int(estimated_remaining_time // 60)
-                remaining_seconds = int(estimated_remaining_time % 60)
-                
-                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(windows)} windows | ETA: {remaining_minutes}m {remaining_seconds}s")
-            else:
-                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(windows)} windows")
+            all_windows.append(windows)
+            all_labels.append(labels)
+            all_subjects.extend([subject] * len(windows))
+            
+            print(f"  → {len(windows)} windows, shape: {windows.shape}")
             
         except Exception as e:
-            print(f"[{file_idx}/{total_files}] Error processing {pkl_file}: {e}")
+            print(f"  ✗ Error: {e}")
             continue
     
-    # Convert to numpy arrays
-    X = np.array(all_features)
-    y = np.array(all_labels)
+    if not all_windows:
+        raise ValueError("No valid data processed")
     
-    print(f"\nTotal windows processed: {len(X)}")
-    print(f"Feature shape: {X.shape}")
+    # Combine all data
+    print(f"\nCombining data from {len(pkl_files)} files...")
+    X = np.concatenate(all_windows, axis=0)
+    y = np.concatenate(all_labels, axis=0)
+    subjects_arr = np.array(all_subjects)
     
-    if len(y) > 0:
-        print(f"Label distribution: {np.bincount(y.astype(int))}")
+    print(f"Total windows: {len(X)}")
+    print(f"Window shape: {X.shape} (n_windows, n_channels, window_size)")
+    print(f"Label distribution (raw): {np.bincount(y.astype(int))}")
+    
+    # Filter and relabel
+    if binary:
+        # Binary: stress (2) vs non-stress (1=baseline, 3=amusement)
+        # Keep labels 1, 2, 3
+        valid_mask = (y >= 1) & (y <= 3)
+        X = X[valid_mask]
+        y = y[valid_mask]
+        subjects_arr = subjects_arr[valid_mask]
+        
+        # Relabel: 1,3 → 0 (non-stress), 2 → 1 (stress)
+        y_relabeled = (y == 2).astype(int)
+        class_names = ['non-stress', 'stress']
+        
+        print(f"\nAfter filtering and relabeling (binary):")
+        print(f"  Total windows: {len(X)}")
+        print(f"  Non-stress (0): {np.sum(y_relabeled == 0)} ({np.sum(y_relabeled == 0)/len(y_relabeled)*100:.1f}%)")
+        print(f"  Stress (1): {np.sum(y_relabeled == 1)} ({np.sum(y_relabeled == 1)/len(y_relabeled)*100:.1f}%)")
+        if export_eda:
+            export_basic_eda(os.path.join(output_dir, 'eda'), np.array([
+                np.sum(y_relabeled == 0), np.sum(y_relabeled == 1)
+            ]), class_names)
     else:
-        print("No data processed - check file formats and paths")
-        return None
+        # 3-class: baseline (1), stress (2), amusement (3)
+        valid_mask = (y >= 1) & (y <= 3)
+        X = X[valid_mask]
+        y = y[valid_mask]
+        subjects_arr = subjects_arr[valid_mask]
+        
+        # Relabel: 1→0 (baseline), 2→1 (stress), 3→2 (amusement)
+        y_relabeled = y - 1
+        class_names = ['baseline', 'stress', 'amusement']
+        
+        print(f"\nAfter filtering and relabeling (3-class):")
+        print(f"  Total windows: {len(X)}")
+        for i, name in enumerate(class_names):
+            count = np.sum(y_relabeled == i)
+            print(f"  {name} ({i}): {count} ({count/len(y_relabeled)*100:.1f}%)")
+        if export_eda:
+            counts = np.array([np.sum(y_relabeled == i) for i in range(len(class_names))])
+            export_basic_eda(os.path.join(output_dir, 'eda'), counts, class_names)
     
-    # Keep only the 3 main classes: baseline (1), stress (2), amusement (3)
-    # Remove: not defined/transient (0), meditation (4) and other states (5,6,7)
-    valid_mask = (y >= 1) & (y <= 3)
-    X_filtered = X[valid_mask]
-    y_filtered = y[valid_mask]
+    # Subject-wise split (LOSO-style to avoid leakage)
+    print(f"\nSplitting by subject (test={test_size}, val={val_size})...")
+    unique_subjects = np.array(sorted(list(set(subjects_arr))))
+    print(f"Total subjects: {len(unique_subjects)}")
     
-    # Relabel: baseline=0, stress=1, amusement=2
-    y_filtered = y_filtered - 1
-    
-    print(f"After filtering: {len(X_filtered)} windows")
-    print(f"New label distribution: {np.bincount(y_filtered)}")
-    
-    # Encode labels
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y_filtered)
-    
-    # Split data
-    X_temp, X_test, y_temp, y_test = train_test_split(
-        X_filtered, y_encoded, test_size=test_size, random_state=random_state, stratify=y_encoded
+    # Split subjects: train+val vs test
+    subj_trainval, subj_test = train_test_split(
+        unique_subjects, test_size=test_size, random_state=random_state
     )
-    
+    # Split train+val: train vs val
     val_size_adjusted = val_size / (1 - test_size)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp, test_size=val_size_adjusted, random_state=random_state, stratify=y_temp
+    subj_train, subj_val = train_test_split(
+        subj_trainval, test_size=val_size_adjusted, random_state=random_state
     )
     
-    # Normalize features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
-    X_test_scaled = scaler.transform(X_test)
+    # Create masks
+    train_mask = np.isin(subjects_arr, subj_train)
+    val_mask = np.isin(subjects_arr, subj_val)
+    test_mask = np.isin(subjects_arr, subj_test)
     
-    # Save processed data
-    np.save(os.path.join(output_dir, 'X_train.npy'), X_train_scaled)
-    np.save(os.path.join(output_dir, 'X_val.npy'), X_val_scaled)
-    np.save(os.path.join(output_dir, 'X_test.npy'), X_test_scaled)
-    np.save(os.path.join(output_dir, 'y_train.npy'), y_train)
-    np.save(os.path.join(output_dir, 'y_val.npy'), y_val)
-    np.save(os.path.join(output_dir, 'y_test.npy'), y_test)
+    X_train, y_train = X[train_mask], y_relabeled[train_mask]
+    X_val, y_val = X[val_mask], y_relabeled[val_mask]
+    X_test, y_test = X[test_mask], y_relabeled[test_mask]
     
-    # Save scaler and label encoder
-    joblib.dump(scaler, os.path.join(output_dir, 'scaler.pkl'))
-    joblib.dump(label_encoder, os.path.join(output_dir, 'label_encoder.pkl'))
+    print(f"Subject splits:")
+    print(f"  Train: {len(subj_train)} subjects → {len(X_train)} windows")
+    print(f"  Val: {len(subj_val)} subjects → {len(X_val)} windows")
+    print(f"  Test: {len(subj_test)} subjects → {len(X_test)} windows")
+    
+    # Per-channel z-score normalization (using train statistics only)
+    print("\nApplying per-channel z-score normalization (train-only stats)...")
+    train_mean = X_train.mean(axis=(0, 2), keepdims=True)  # shape (1, n_channels, 1)
+    train_std = X_train.std(axis=(0, 2), keepdims=True) + 1e-8
+    
+    X_train = (X_train - train_mean) / train_std
+    X_val = (X_val - train_mean) / train_std
+    X_test = (X_test - train_mean) / train_std
+    
+    print(f"Normalized shapes:")
+    print(f"  Train: {X_train.shape}")
+    print(f"  Val: {X_val.shape}")
+    print(f"  Test: {X_test.shape}")
+    
+    # Save data
+    print(f"\nSaving to {output_dir}...")
+    np.save(os.path.join(output_dir, "X_train.npy"), X_train)
+    np.save(os.path.join(output_dir, "X_val.npy"), X_val)
+    np.save(os.path.join(output_dir, "X_test.npy"), X_test)
+    np.save(os.path.join(output_dir, "y_train.npy"), y_train)
+    np.save(os.path.join(output_dir, "y_val.npy"), y_val)
+    np.save(os.path.join(output_dir, "y_test.npy"), y_test)
+    
+    # Save label encoder
+    label_encoder = LabelEncoder()
+    label_encoder.fit(class_names)
+    joblib.dump(label_encoder, os.path.join(output_dir, "label_encoder.pkl"))
     
     # Save preprocessing info
     preprocessing_info = {
-        'n_samples': len(X_filtered),
-        'n_features': X_filtered.shape[1],
-        'n_classes': len(np.unique(y_encoded)),
-        'class_names': ['baseline', 'stress', 'amusement'][:len(np.unique(y_encoded))],
+        'n_windows': len(X),
+        'n_channels': X.shape[1],
+        'window_size': X.shape[2],
+        'n_classes': len(class_names),
+        'class_names': class_names,
+        'binary': binary,
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
-        'files_processed': len(pkl_files),
-        'original_labels': '0=baseline, 1=stress, 2=amusement, 3=meditation',
-        'filtered_labels': '0=baseline, 1=stress, 2=amusement'
+        'target_freq': target_freq,
+        'overlap': overlap,
+        'window_duration_s': window_size / target_freq,
+        'channels': channel_names,
+        'subject_splits': {
+            'train_subjects': [str(s) for s in subj_train],
+            'val_subjects': [str(s) for s in subj_val],
+            'test_subjects': [str(s) for s in subj_test]
+        },
+        'normalization': 'per-channel z-score (train-only)',
+        'files_processed': len(pkl_files)
     }
     
-    joblib.dump(preprocessing_info, os.path.join(output_dir, 'preprocessing_info.pkl'))
+    joblib.dump(preprocessing_info, os.path.join(output_dir, "preprocessing_info.pkl"))
     
-    print(f"\nPreprocessing complete!")
-    print(f"Train: {X_train_scaled.shape}, Val: {X_val_scaled.shape}, Test: {X_test_scaled.shape}")
-    print(f"Classes: {preprocessing_info['n_classes']} ({preprocessing_info['class_names']})")
-    print(f"Data saved to: {output_dir}")
+    elapsed = time.time() - start_time
+    print(f"\n{'='*70}")
+    print(f"✓ Preprocessing complete in {elapsed:.1f}s")
+    print(f"  Classes: {class_names}")
+    print(f"  Channels: {X.shape[1]}")
+    print(f"  Window: {window_size} samples ({window_size/target_freq:.1f}s)")
+    print(f"  Data saved to: {output_dir}")
+    print(f"{'='*70}")
     
     return preprocessing_info
 
 
-def load_processed_wesad(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, 
-                                                 np.ndarray, np.ndarray, np.ndarray, 
-                                                 StandardScaler, LabelEncoder, Dict]:
+def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
+                                                          np.ndarray, np.ndarray, np.ndarray,
+                                                          LabelEncoder, Dict]:
     """
-    Load preprocessed WESAD data.
+    Load preprocessed WESAD temporal data.
     
     Args:
         data_dir: Directory containing processed data
     
     Returns:
-        Tuple of (X_train, X_val, X_test, y_train, y_val, y_test, scaler, label_encoder, info)
+        Tuple of (X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info)
     """
     print(f"Loading processed WESAD data from {data_dir}...")
     
-    # Load arrays
     X_train = np.load(os.path.join(data_dir, 'X_train.npy'))
     X_val = np.load(os.path.join(data_dir, 'X_val.npy'))
     X_test = np.load(os.path.join(data_dir, 'X_test.npy'))
@@ -593,234 +595,50 @@ def load_processed_wesad(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndar
     y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
     y_test = np.load(os.path.join(data_dir, 'y_test.npy'))
     
-    # Load scaler and label encoder
-    scaler = joblib.load(os.path.join(data_dir, 'scaler.pkl'))
     label_encoder = joblib.load(os.path.join(data_dir, 'label_encoder.pkl'))
     info = joblib.load(os.path.join(data_dir, 'preprocessing_info.pkl'))
     
-    print(f"Loaded data shapes:")
-    print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-    print(f"  Classes: {info['n_classes']} ({info['class_names']})")
+    print(f"Loaded:")
+    print(f"  Train: {X_train.shape}")
+    print(f"  Val: {X_val.shape}")
+    print(f"  Test: {X_test.shape}")
+    print(f"  Classes: {info['class_names']}")
+    print(f"  Channels: {info['n_channels']}")
     
-    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, label_encoder, info
-
-
-def preprocess_wesad_improved(data_dir: str, output_dir: str, target_freq: float = 4,
-                             window_size: int = 60, overlap: float = 0.5,
-                             test_size: float = 0.15, val_size: float = 0.15,
-                             random_state: int = 42) -> Dict:
-    """
-    Improved preprocessing pipeline for WESAD dataset with comprehensive feature extraction.
-    
-    Args:
-        data_dir: Directory containing WESAD pickle files
-        output_dir: Directory to save processed data
-        target_freq: Target sampling frequency (Hz)
-        window_size: Window size in samples (default: 60 = 15 seconds at 4 Hz)
-        overlap: Overlap ratio between windows
-        test_size: Fraction for test set
-        val_size: Fraction for validation set
-        random_state: Random seed for reproducibility
-    
-    Returns:
-        Dictionary with preprocessing info
-    """
-    print("="*70)
-    print("WESAD IMPROVED PREPROCESSING")
-    print("="*70)
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Find all pickle files in subdirectories
-    import glob
-    pkl_files = glob.glob(os.path.join(data_dir, '**/*.pkl'), recursive=True)
-    print(f"Found {len(pkl_files)} pickle files")
-    
-    all_features = []
-    all_labels = []
-    all_subjects = []
-    
-    # Process each file
-    total_files = len(pkl_files)
-    print(f"Processing {total_files} WESAD files...")
-    
-    start_time = time.time()
-    
-    for file_idx, pkl_file in enumerate(pkl_files, 1):
-        pkl_path = os.path.join(data_dir, pkl_file)
-        
-        try:
-            # Load file
-            data = load_wesad_file(pkl_path)
-            subject = data['subject']
-            
-            # Resample signals
-            resampled = resample_signals(data, target_freq)
-            
-            # Create sliding windows with comprehensive features
-            features, labels = create_sliding_windows(resampled, window_size, overlap)
-            
-            all_features.append(features)
-            all_labels.append(labels)
-            all_subjects.extend([subject] * len(features))
-            
-            # Calculate progress and time estimates
-            elapsed_time = time.time() - start_time
-            progress_pct = (file_idx / total_files) * 100
-            
-            if file_idx > 1:
-                avg_time_per_file = elapsed_time / file_idx
-                remaining_files = total_files - file_idx
-                estimated_remaining_time = avg_time_per_file * remaining_files
-                remaining_minutes = int(estimated_remaining_time // 60)
-                remaining_seconds = int(estimated_remaining_time % 60)
-                
-                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(features)} windows | ETA: {remaining_minutes}m {remaining_seconds}s")
-            else:
-                print(f"[{file_idx}/{total_files}] ({progress_pct:.1f}%) Processed {pkl_file}: {len(features)} windows")
-            
-        except Exception as e:
-            print(f"[{file_idx}/{total_files}] Error processing {pkl_file}: {e}")
-            continue
-    
-    # Combine all data
-    X = np.vstack(all_features) if all_features else np.array([])
-    y = np.hstack(all_labels) if all_labels else np.array([])
-    subjects = np.array(all_subjects)
-    
-    print(f"\nTotal windows processed: {len(X)}")
-    print(f"Feature shape: {X.shape}")
-    print(f"Number of features per window: {X.shape[1] if len(X) > 0 else 0}")
-    
-    if len(y) > 0:
-        unique_classes, class_counts = np.unique(y, return_counts=True)
-        print(f"Classes found: {unique_classes}")
-        print(f"Class distribution:")
-        for cls, count in zip(unique_classes, class_counts):
-            percentage = count / len(y) * 100
-            print(f"  Class {cls}: {count} samples ({percentage:.1f}%)")
-    
-    # Remove undefined labels (class 0) for training
-    valid_mask = y != 0
-    X_valid = X[valid_mask]
-    y_valid = y[valid_mask]
-    subjects_valid = subjects[valid_mask]
-    
-    print(f"\nAfter removing undefined labels:")
-    print(f"Valid samples: {len(X_valid)}")
-    
-    if len(y_valid) > 0:
-        unique_classes, class_counts = np.unique(y_valid, return_counts=True)
-        print(f"Valid classes: {unique_classes}")
-        print(f"Valid class distribution:")
-        for cls, count in zip(unique_classes, class_counts):
-            percentage = count / len(y_valid) * 100
-            print(f"  Class {cls}: {count} samples ({percentage:.1f}%)")
-    
-    # Split data
-    if len(X_valid) > 0:
-        # First split: train+val vs test
-        X_temp, X_test, y_temp, y_test = train_test_split(
-            X_valid, y_valid, test_size=test_size, random_state=random_state, stratify=y_valid
-        )
-        
-        # Second split: train vs val
-        val_size_adjusted = val_size / (1 - test_size)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=val_size_adjusted, random_state=random_state, stratify=y_temp
-        )
-        
-        # Normalize features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_val_scaled = scaler.transform(X_val)
-        X_test_scaled = scaler.transform(X_test)
-        
-        # Encode labels
-        label_encoder = LabelEncoder()
-        y_train_encoded = label_encoder.fit_transform(y_train)
-        y_val_encoded = label_encoder.transform(y_val)
-        y_test_encoded = label_encoder.transform(y_test)
-        
-        # Save processed data
-        np.save(os.path.join(output_dir, 'X_train.npy'), X_train_scaled)
-        np.save(os.path.join(output_dir, 'X_val.npy'), X_val_scaled)
-        np.save(os.path.join(output_dir, 'X_test.npy'), X_test_scaled)
-        np.save(os.path.join(output_dir, 'y_train.npy'), y_train_encoded)
-        np.save(os.path.join(output_dir, 'y_val.npy'), y_val_encoded)
-        np.save(os.path.join(output_dir, 'y_test.npy'), y_test_encoded)
-        
-        # Save preprocessing objects
-        joblib.dump(scaler, os.path.join(output_dir, 'scaler.pkl'))
-        joblib.dump(label_encoder, os.path.join(output_dir, 'label_encoder.pkl'))
-        
-        # Create preprocessing info
-        preprocessing_info = {
-            'n_features': X_train_scaled.shape[1],
-            'n_classes': len(label_encoder.classes_),
-            'class_names': label_encoder.classes_.tolist(),
-            'train_samples': len(X_train_scaled),
-            'val_samples': len(X_val_scaled),
-            'test_samples': len(X_test_scaled),
-            'target_freq': target_freq,
-            'window_size': window_size,
-            'overlap': overlap,
-            'total_subjects': len(np.unique(subjects_valid)),
-            'subjects': np.unique(subjects_valid).tolist()
-        }
-        
-        joblib.dump(preprocessing_info, os.path.join(output_dir, 'preprocessing_info.pkl'))
-        
-        print(f"\nPreprocessing complete!")
-        print(f"Train: {X_train_scaled.shape}, Val: {X_val_scaled.shape}, Test: {X_test_scaled.shape}")
-        print(f"Features: {X_train_scaled.shape[1]}")
-        print(f"Classes: {len(label_encoder.classes_)} ({label_encoder.classes_})")
-        print(f"Data saved to: {output_dir}")
-        
-        return preprocessing_info
-    else:
-        print("No valid data found!")
-        return {}
+    return X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info
 
 
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='Preprocess WESAD dataset')
-    parser.add_argument('--data_dir', default='../../data/raw/wesad', help='Raw data directory')
-    parser.add_argument('--output_dir', default='../../data/processed/wesad', help='Output directory')
-    parser.add_argument('--test_size', type=float, default=0.15, help='Test set size')
-    parser.add_argument('--val_size', type=float, default=0.15, help='Validation set size')
-    parser.add_argument('--random_state', type=int, default=42, help='Random state')
+    parser = argparse.ArgumentParser(description='Preprocess WESAD dataset (optimized)')
+    parser.add_argument('--data_dir', default='data/raw/wesad', help='Raw data directory')
+    parser.add_argument('--output_dir', default='data/processed/wesad', help='Output directory')
+    parser.add_argument('--target_freq', type=int, default=16, 
+                       help='Target sampling frequency (Hz). 16 Hz optimal (see frequency_comparison_summary.md), 4 Hz for edge, 32 Hz for max quality.')
+    parser.add_argument('--window_size', type=int, default=960, 
+                       help='Window size in samples (960=60s at 16Hz, 240=60s at 4Hz, 1920=60s at 32Hz)')
+    parser.add_argument('--overlap', type=float, default=0.5, help='Window overlap ratio')
+    parser.add_argument('--test_size', type=float, default=0.2, help='Test set size')
+    parser.add_argument('--val_size', type=float, default=0.2, help='Validation set size')
+    parser.add_argument('--binary', action='store_true', help='Binary classification (stress vs non-stress)')
+    parser.add_argument('--multiclass', dest='binary', action='store_false', help='3-class (baseline/stress/amusement)')
+    parser.add_argument('--random_state', type=int, default=42, help='Random seed')
+    parser.set_defaults(binary=True)
     
     args = parser.parse_args()
     
-    print("="*70)
-    print("WESAD PREPROCESSING")
-    print("="*70)
-    
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Check if raw data exists
-    if not os.path.exists(args.data_dir):
-        print(f"❌ Raw data not found: {args.data_dir}")
-        exit(1)
-    
-    print(f"📁 Raw data: {args.data_dir}")
-    print(f"📁 Output: {args.output_dir}")
-    print(f"📊 Test size: {args.test_size}")
-    print(f"📊 Validation size: {args.val_size}")
-    
     # Run preprocessing
-    info = preprocess_wesad(
+    info = preprocess_wesad_temporal(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
+        target_freq=args.target_freq,
+        window_size=args.window_size,
+        overlap=args.overlap,
         test_size=args.test_size,
         val_size=args.val_size,
+        binary=args.binary,
         random_state=args.random_state
     )
     
-    print(f"\n✅ WESAD preprocessing completed!")
-    print(f"Preprocessing info: {info}")
+    print(f"\n✓ Done! Preprocessing info saved.")
