@@ -2,7 +2,7 @@
 """
 Train baseline CNN-LSTM model for WESAD binary stress classification.
 
-Optimized for 16 Hz sampling frequency (empirically validated - see frequency_comparison_summary.md).
+Optimized for 32 Hz sampling frequency for optimal signal quality.
 Simple, efficient architecture suitable for privacy analysis (DP-SGD, Federated Learning).
 """
 
@@ -19,8 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from preprocessing.wesad import load_processed_wesad_temporal
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, LSTM, Dense, Dropout, BatchNormalization, SpatialDropout1D
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import regularizers
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.utils import to_categorical
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
@@ -37,7 +38,7 @@ def build_cnn_lstm_binary(input_shape, n_classes=2, learning_rate=0.001):
     """
     Build CNN-LSTM model for binary stress classification.
     
-    Architecture optimized for 16 Hz, 14 channels, 960 timesteps (60s windows):
+    Architecture optimized for 32 Hz, 14 channels, 1920 timesteps (60s windows):
     - 2 Conv1D blocks: Local pattern extraction
     - 1 LSTM layer: Temporal dependencies
     - Dense layers: Classification
@@ -45,39 +46,42 @@ def build_cnn_lstm_binary(input_shape, n_classes=2, learning_rate=0.001):
     Total params: ~523K (lightweight for privacy analysis)
     
     Args:
-        input_shape: (n_channels, window_size), e.g., (14, 960) for 16 Hz
+        input_shape: (n_channels, window_size), e.g., (14, 1920) for 32 Hz
         n_classes: Number of output classes (default: 2 for binary)
         learning_rate: Adam optimizer learning rate
     
     Returns:
         Compiled Keras model
     """
+    # L2 regularization to reduce overfitting
+    l2_reg = regularizers.l2(1e-4)
+
     model = Sequential([
-        # First Conv block: Extract local patterns
-        Conv1D(64, kernel_size=7, activation='relu', padding='same', input_shape=input_shape),
+        # First Conv block: Fewer filters + L2 + spatial dropout
+        Conv1D(32, kernel_size=7, activation='relu', padding='same', kernel_regularizer=l2_reg, input_shape=input_shape),
         BatchNormalization(),
-        MaxPooling1D(pool_size=4),  # 960 → 240
-        Dropout(0.3),
-        
-        # Second Conv block: Higher-level features
-        Conv1D(128, kernel_size=5, activation='relu', padding='same'),
+        MaxPooling1D(pool_size=4),  # 1920 → 480
+        SpatialDropout1D(0.2),
+
+        # Second Conv block: Fewer filters + L2 + spatial dropout
+        Conv1D(64, kernel_size=5, activation='relu', padding='same', kernel_regularizer=l2_reg),
         BatchNormalization(),
-        MaxPooling1D(pool_size=2),  # 240 → 120
-        Dropout(0.3),
-        
-        # LSTM: Temporal dependencies
-        LSTM(64, return_sequences=False),
+        MaxPooling1D(pool_size=2),  # 480 → 240
+        SpatialDropout1D(0.2),
+
+        # LSTM: Fewer units + dropout
+        LSTM(32, return_sequences=False, kernel_regularizer=l2_reg, recurrent_regularizer=l2_reg),
+        Dropout(0.5),
+
+        # Dense layers: L2 + dropout
+        Dense(32, activation='relu', kernel_regularizer=l2_reg),
         Dropout(0.4),
-        
-        # Dense layers: Classification
-        Dense(32, activation='relu'),
-        Dropout(0.3),
         Dense(n_classes, activation='softmax')
-    ], name='CNN_LSTM_Binary_16Hz')
+    ], name='CNN_LSTM_Binary_32Hz_Regularized')
     
     model.compile(
         optimizer=Adam(learning_rate=learning_rate),
-        loss='categorical_crossentropy',
+        loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
         metrics=['accuracy']
     )
     
@@ -106,7 +110,10 @@ def _simple_oversample(X: np.ndarray, y: np.ndarray):
 
 def train_model(X_train, y_train, X_val, y_val, output_dir, 
                 epochs=100, batch_size=32, learning_rate=0.001,
-                balance: str = 'class_weight'):
+                balance: str = 'class_weight',
+                augment: bool = True,
+                noise_std: float = 0.01,
+                max_time_shift: int = 8):
     """
     Train CNN-LSTM model with early stopping and learning rate reduction.
     
@@ -124,16 +131,6 @@ def train_model(X_train, y_train, X_val, y_val, output_dir,
     print("\n" + "="*70)
     print("TRAINING CNN-LSTM MODEL")
     print("="*70)
-    
-    # Prepare labels
-    n_classes = len(np.unique(y_train))
-    y_train_cat = to_categorical(y_train, n_classes)
-    y_val_cat = to_categorical(y_val, n_classes)
-    
-    print(f"\nData shapes:")
-    print(f"  Train: {X_train.shape} → {y_train_cat.shape}")
-    print(f"  Val:   {X_val.shape} → {y_val_cat.shape}")
-    print(f"  Classes: {n_classes}")
     
     # Optional balancing
     class_weights = None
@@ -164,6 +161,33 @@ def train_model(X_train, y_train, X_val, y_val, output_dir,
             X2d_bal, y_train = sm.fit_resample(X2d, y_train)
             X_train = X2d_bal.reshape(len(y_train), c, t)
             print(f"  New train shape: {X_train.shape}, class distribution: {Counter(y_train.tolist())}")
+
+    # Optional simple temporal augmentation (noise + small time shift)
+    if augment:
+        rng = np.random.default_rng(42)
+        X_aug = X_train.copy()
+        # Gaussian noise
+        X_aug += rng.normal(0, noise_std, size=X_aug.shape)
+        # Small time shift per sample
+        if max_time_shift > 0:
+            for i in range(X_aug.shape[0]):
+                shift = int(rng.integers(-max_time_shift, max_time_shift + 1))
+                if shift != 0:
+                    if shift > 0:
+                        X_aug[i, :, shift:] = X_aug[i, :, :-shift]
+                    else:
+                        X_aug[i, :, :shift] = X_aug[i, :, -shift:]
+        X_train = X_aug
+
+    # Prepare labels (after any balancing)
+    n_classes = len(np.unique(y_train))
+    y_train_cat = to_categorical(y_train, n_classes)
+    y_val_cat = to_categorical(y_val, n_classes)
+    
+    print(f"\nData shapes:")
+    print(f"  Train: {X_train.shape} → {y_train_cat.shape}")
+    print(f"  Val:   {X_val.shape} → {y_val_cat.shape}")
+    print(f"  Classes: {n_classes}")
     
     # Build model
     input_shape = (X_train.shape[1], X_train.shape[2])
@@ -181,21 +205,23 @@ def train_model(X_train, y_train, X_val, y_val, output_dir,
     
     callbacks = [
         EarlyStopping(
-            monitor='val_loss',
-            patience=20,
+            monitor='val_accuracy',
+            mode='max',
+            patience=8,
             restore_best_weights=True,
             verbose=1
         ),
         ReduceLROnPlateau(
             monitor='val_loss',
             factor=0.5,
-            patience=8,
+            patience=6,
             min_lr=1e-6,
             verbose=1
         ),
         ModelCheckpoint(
             model_path,
             monitor='val_accuracy',
+            mode='max',
             save_best_only=True,
             verbose=1
         )
@@ -365,7 +391,7 @@ def main():
     
     print("="*70)
     print("WESAD BINARY STRESS CLASSIFICATION - BASELINE MODEL")
-    print("Dataset: WESAD (16 Hz, binary: stress vs non-stress)")
+    print("Dataset: WESAD (32 Hz, binary: stress vs non-stress)")
     print("Model: CNN-LSTM (optimized for privacy analysis)")
     print("="*70)
     
@@ -402,7 +428,8 @@ def main():
         models_dir,
         epochs=100,
         batch_size=32,
-        learning_rate=0.001
+        learning_rate=0.001,
+        balance='oversample'
     )
     
     # Evaluate

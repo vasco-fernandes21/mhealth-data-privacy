@@ -3,7 +3,7 @@ WESAD Dataset Preprocessing Module (Optimized)
 
 Streamlined preprocessing for WESAD stress detection:
 - Load pickle files with physiological signals from RespiBAN and Empatica E4
-- Resample to uniform frequency (4 Hz)
+- Resample to uniform frequency (32 Hz - optimal for ECG/BVP preservation)
 - Temporal windowing (60s windows, 50% overlap)
 - Subject-wise splitting (LOSO-style to avoid leakage)
 - Per-channel z-score normalization (train-only)
@@ -89,13 +89,13 @@ def resample_signal(arr: np.ndarray, orig_freq: int, target_freq: int) -> np.nda
     return np.stack(resampled_cols, axis=1)
 
 
-def resample_all_signals(data: Dict, target_freq: int = 4) -> Dict:
+def resample_all_signals(data: Dict, target_freq: int = 32) -> Dict:
     """
     Resample all signals to target frequency.
     
     Args:
         data: Dictionary from load_wesad_file
-        target_freq: Target sampling frequency (Hz)
+        target_freq: Target sampling frequency (Hz) - default 32 Hz for optimal signal quality
     
     Returns:
         Dictionary with resampled signals
@@ -130,9 +130,10 @@ def resample_all_signals(data: Dict, target_freq: int = 4) -> Dict:
     return resampled
 
 
-def apply_filters(resampled: Dict, target_freq: int = 4) -> Dict:
+def apply_filters(resampled: Dict, target_freq: int = 32) -> Dict:
     """
     Apply bandpass/lowpass filters to improve SNR.
+    Optimized for 32 Hz sampling to preserve signal quality.
     
     Args:
         resampled: Dictionary with resampled signals
@@ -144,35 +145,37 @@ def apply_filters(resampled: Dict, target_freq: int = 4) -> Dict:
     filtered = resampled.copy()
     
     try:
-        # ECG: 0.5-15 Hz (capture heart rate)
-        sos_ecg = signal.butter(4, [0.5, min(15, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        # ECG: 0.5-15 Hz (capture heart rate and R-peaks)
+        # With 32 Hz, we can preserve up to 15 Hz without aliasing
+        sos_ecg = signal.butter(4, [0.5, min(15, target_freq/2.1)], btype='band', fs=target_freq, output='sos')
         filtered['ecg'] = signal.sosfiltfilt(sos_ecg, resampled['ecg'], axis=0)
         
-        # BVP: 0.5-8 Hz (pulse)
-        sos_bvp = signal.butter(4, [0.5, min(8, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        # BVP: 0.5-12 Hz (pulse waveform details)
+        # Higher frequency limit to preserve pulse morphology
+        sos_bvp = signal.butter(4, [0.5, min(12, target_freq/2.1)], btype='band', fs=target_freq, output='sos')
         filtered['bvp'] = signal.sosfiltfilt(sos_bvp, resampled['bvp'], axis=0)
         
-        # ACC: 0.1-1.5 Hz (body movement, avoid high-freq noise)
-        sos_acc = signal.butter(4, [0.1, min(1.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        # ACC: 0.1-2 Hz (body movement, slightly higher for 32 Hz)
+        sos_acc = signal.butter(4, [0.1, min(2, target_freq/2.1)], btype='band', fs=target_freq, output='sos')
         filtered['acc_chest'] = signal.sosfiltfilt(sos_acc, resampled['acc_chest'], axis=0)
         filtered['acc_wrist'] = signal.sosfiltfilt(sos_acc, resampled['acc_wrist'], axis=0)
         
-        # EDA: lowpass 1 Hz (slow variations)
-        sos_eda = signal.butter(4, min(1, target_freq/2.5), btype='low', fs=target_freq, output='sos')
+        # EDA: lowpass 1.5 Hz (slow variations, slightly higher for 32 Hz)
+        sos_eda = signal.butter(4, min(1.5, target_freq/2.1), btype='low', fs=target_freq, output='sos')
         filtered['eda_chest'] = signal.sosfiltfilt(sos_eda, resampled['eda_chest'], axis=0)
         filtered['eda_wrist'] = signal.sosfiltfilt(sos_eda, resampled['eda_wrist'], axis=0)
         
         # TEMP: lowpass 0.5 Hz (very slow)
-        sos_temp = signal.butter(4, min(0.5, target_freq/2.5), btype='low', fs=target_freq, output='sos')
+        sos_temp = signal.butter(4, min(0.5, target_freq/2.1), btype='low', fs=target_freq, output='sos')
         filtered['temp_chest'] = signal.sosfiltfilt(sos_temp, resampled['temp_chest'], axis=0)
         filtered['temp_wrist'] = signal.sosfiltfilt(sos_temp, resampled['temp_wrist'], axis=0)
         
         # Resp: 0.1-0.5 Hz (breathing rate)
-        sos_resp = signal.butter(4, [0.1, min(0.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        sos_resp = signal.butter(4, [0.1, min(0.5, target_freq/2.1)], btype='band', fs=target_freq, output='sos')
         filtered['resp'] = signal.sosfiltfilt(sos_resp, resampled['resp'], axis=0)
         
-        # EMG: 0.5-1.5 Hz (muscle activity, adapted for low sampling)
-        sos_emg = signal.butter(4, [0.5, min(1.5, target_freq/2.5)], btype='band', fs=target_freq, output='sos')
+        # EMG: 0.5-2 Hz (muscle activity, higher limit for 32 Hz)
+        sos_emg = signal.butter(4, [0.5, min(2, target_freq/2.1)], btype='band', fs=target_freq, output='sos')
         filtered['emg'] = signal.sosfiltfilt(sos_emg, resampled['emg'], axis=0)
         
     except Exception as e:
@@ -242,13 +245,14 @@ def export_basic_eda(eda_dir: str, class_counts: np.ndarray, class_names: List[s
     except Exception:
         pass
 
-def create_temporal_windows(data: Dict, window_size: int = 240, overlap: float = 0.5) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+def create_temporal_windows(data: Dict, window_size: int = 1920, overlap: float = 0.5) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     """
     Create temporal sliding windows for LSTM/CNN.
+    Only includes complete windows to avoid zero-padding artifacts.
     
     Args:
         data: Dictionary with filtered signals
-        window_size: Window size in samples (default: 240 = 60s at 4 Hz)
+        window_size: Window size in samples (default: 1920 = 60s at 32 Hz)
         overlap: Overlap ratio (0.0 to 0.9)
     
     Returns:
@@ -281,9 +285,23 @@ def create_temporal_windows(data: Dict, window_size: int = 240, overlap: float =
     windows_list = []
     labels_list = []
     
-    # Slide windows
+    # Slide windows - only process complete windows
     for start_idx in range(0, ref_length - window_size + 1, step_size):
         end_idx = start_idx + window_size
+        
+        # Check if all signals have enough data for this window
+        all_signals_complete = True
+        for name in signal_names:
+            if name not in data:
+                continue
+            arr = data[name]
+            if len(arr) < end_idx:
+                all_signals_complete = False
+                break
+        
+        # Skip incomplete windows to avoid zero-padding artifacts
+        if not all_signals_complete:
+            continue
         
         window_data = np.zeros((n_channels, window_size))
         ch_idx = 0
@@ -296,23 +314,12 @@ def create_temporal_windows(data: Dict, window_size: int = 240, overlap: float =
             if arr.ndim > 1 and arr.shape[1] > 1:
                 # Multi-channel
                 for c in range(arr.shape[1]):
-                    if len(arr) >= end_idx:
-                        window_data[ch_idx] = arr[start_idx:end_idx, c]
-                    else:
-                        # Pad if needed
-                        avail = min(len(arr) - start_idx, window_size)
-                        if avail > 0:
-                            window_data[ch_idx, :avail] = arr[start_idx:start_idx + avail, c]
+                    window_data[ch_idx] = arr[start_idx:end_idx, c]
                     ch_idx += 1
             else:
                 # Single channel
                 series = arr if arr.ndim == 1 else arr[:, 0]
-                if len(series) >= end_idx:
-                    window_data[ch_idx] = series[start_idx:end_idx]
-                else:
-                    avail = min(len(series) - start_idx, window_size)
-                    if avail > 0:
-                        window_data[ch_idx, :avail] = series[start_idx:start_idx + avail]
+                window_data[ch_idx] = series[start_idx:end_idx]
                 ch_idx += 1
         
         # Get label for this window (majority vote, excluding undefined=0)
@@ -330,16 +337,16 @@ def create_temporal_windows(data: Dict, window_size: int = 240, overlap: float =
 
 
 def preprocess_wesad_temporal(data_dir: str, output_dir: str,
-                               target_freq: int = 16,
-                               window_size: int = 960,
+                               target_freq: int = 32,
+                               window_size: int = 1920,
                                overlap: float = 0.5,
                                test_size: float = 0.2,
                                val_size: float = 0.2,
                                binary: bool = True,
                                random_state: int = 42,
                                outlier_method: str = 'clip',
-                               clip_lower_p: float = 0.5,
-                               clip_upper_p: float = 99.5,
+                               clip_lower_p: float = 1.0,
+                               clip_upper_p: float = 99.0,
                                export_eda: bool = True) -> Dict:
     """
     Complete preprocessing pipeline for WESAD (temporal windows for LSTM/CNN).
@@ -347,26 +354,29 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     Args:
         data_dir: Directory containing WESAD pickle files (S2/, S3/, ...)
         output_dir: Directory to save processed data
-        target_freq: Target sampling frequency (Hz) - default 16 Hz (optimal trade-off)
-        window_size: Window size in samples (default: 960 = 60s at 16 Hz)
+        target_freq: Target sampling frequency (Hz) - default 32 Hz (optimal signal quality)
+        window_size: Window size in samples (default: 1920 = 60s at 32 Hz)
         overlap: Overlap ratio (0.0-0.9)
         test_size: Test set size ratio (subject-wise split)
         val_size: Validation set size ratio (subject-wise split)
         binary: If True, binary classification (stress vs non-stress).
                 If False, 3-class (baseline/stress/amusement)
         random_state: Random seed
+        outlier_method: Method for outlier handling ('clip' or 'none')
+        clip_lower_p: Lower percentile for clipping (default: 1.0% - less aggressive)
+        clip_upper_p: Upper percentile for clipping (default: 99.0% - less aggressive)
+        export_eda: Whether to export EDA plots
     
     Returns:
         Dictionary with preprocessing info
     
     Note:
-        Default 16 Hz chosen based on empirical comparison (see results/wesad/frequency_comparison_summary.md):
-        - ECG: Preserves R-peak resolution for HRV analysis
-        - BVP: Captures pulse waveform details
-        - ACC: Preserves movement dynamics  
-        - 4.7% F1 improvement over 4 Hz, 17.8% better stress recall
-        - 4x more efficient than 32 Hz with similar performance
-        Use 4 Hz for edge deployment or 32 Hz for maximum signal quality if needed.
+        Default 32 Hz chosen for optimal signal quality:
+        - ECG: Preserves R-peak resolution and HRV analysis
+        - BVP: Captures pulse waveform details without aliasing
+        - ACC: Preserves movement dynamics
+        - Less aggressive clipping (1-99%) preserves important signal peaks
+        - Use 16 Hz for efficiency or 4 Hz for edge deployment if needed.
     """
     print("="*70)
     print("WESAD TEMPORAL PREPROCESSING (Optimized)")
@@ -376,7 +386,7 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     print(f"Overlap: {overlap*100:.0f}%")
     print(f"Classification: {'Binary (stress vs non-stress)' if binary else '3-class (baseline/stress/amusement)'}")
     print(f"\nNote: {target_freq} Hz preserves R-peaks (ECG), pulse details (BVP), and movement dynamics (ACC)")
-    print(f"Outlier handling: {outlier_method} (clip {clip_lower_p}-{clip_upper_p} percentiles)\n")
+    print(f"Outlier handling: {outlier_method} (clip {clip_lower_p}-{clip_upper_p} percentiles - less aggressive)\n")
     
     os.makedirs(output_dir, exist_ok=True)
     
@@ -614,10 +624,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Preprocess WESAD dataset (optimized)')
     parser.add_argument('--data_dir', default='data/raw/wesad', help='Raw data directory')
     parser.add_argument('--output_dir', default='data/processed/wesad', help='Output directory')
-    parser.add_argument('--target_freq', type=int, default=16, 
-                       help='Target sampling frequency (Hz). 16 Hz optimal (see frequency_comparison_summary.md), 4 Hz for edge, 32 Hz for max quality.')
-    parser.add_argument('--window_size', type=int, default=960, 
-                       help='Window size in samples (960=60s at 16Hz, 240=60s at 4Hz, 1920=60s at 32Hz)')
+    parser.add_argument('--target_freq', type=int, default=32, 
+                       help='Target sampling frequency (Hz). 32 Hz optimal for signal quality, 16 Hz for efficiency, 4 Hz for edge deployment.')
+    parser.add_argument('--window_size', type=int, default=1920, 
+                       help='Window size in samples (1920=60s at 32Hz, 960=60s at 16Hz, 240=60s at 4Hz)')
     parser.add_argument('--overlap', type=float, default=0.5, help='Window overlap ratio')
     parser.add_argument('--test_size', type=float, default=0.2, help='Test set size')
     parser.add_argument('--val_size', type=float, default=0.2, help='Validation set size')
