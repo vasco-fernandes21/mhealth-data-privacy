@@ -1,0 +1,649 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage{multicol}
+\usepackage{color} 
+\usepackage{setspace}
+\usepackage{listings}
+\usepackage{wrapfig}
+\usepackage[table,xcdraw]{xcolor}
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+
+\begin{document}
+
+\title{Evaluation of Privacy-Preserving Techniques in Mobile Health Applications: A Comparative Study of Federated Learning and Differential Privacy}
+
+\author{
+    \IEEEauthorblockN{
+    \textsuperscript{1}Vasco Fernandes, 
+    \textsuperscript{2}Pedro Martins}
+    \IEEEauthorblockA{
+    \textsuperscript{1}Department of Informatics, Polytechnic of Viseu, Viseu, Portugal\\
+    \textsuperscript{2}Research Center in Digital Services, Polytechnic of Viseu, Viseu, Portugal \\
+    \vspace{0.2cm}
+    your.email@alunos.estgv.ipv.pt, pedromom@estgv.ipv.pt}
+}
+
+\maketitle
+
+\begin{abstract}
+Mobile health (mHealth) applications collect sensitive physiological and behavioral data from users, introducing significant privacy challenges under the General Data Protection Regulation (GDPR). This paper experimentally evaluates and compares two privacy-preserving techniques—Federated Learning (FL) and Differential Privacy (DP)—applied to physiological signal classification tasks. Using the WESAD stress detection dataset and Sleep-EDF sleep stage classification dataset, we implement lightweight simulations with TensorFlow Federated and PyTorch Opacus to assess the trade-offs between model accuracy, computational efficiency, and privacy protection. Our baseline CNN-LSTM model achieves 77.6\% accuracy on stress detection. Federated Learning maintains comparable accuracy (XX\% accuracy, -X\% vs baseline) while preserving data locality across distributed clients. Differential Privacy with $\epsilon=1.0$ achieves XX\% accuracy (-X\% vs baseline), providing formal privacy guarantees. Results demonstrate practical implications of implementing privacy-preserving techniques in real-world mHealth applications, quantifying accuracy-privacy trade-offs and providing evidence-based recommendations for GDPR-compliant mHealth development.
+\end{abstract}
+
+\begin{IEEEkeywords}
+mobile health, federated learning, differential privacy, GDPR, privacy-preserving machine learning, physiological signals, stress detection, sleep classification
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Mobile health (mHealth) applications have revolutionized healthcare delivery by enabling continuous monitoring of physiological and behavioral data through wearable devices and smartphones. These applications support valuable clinical insights for stress detection, sleep quality assessment, and chronic disease management. However, the collection and processing of sensitive health data raises critical privacy concerns, particularly under the General Data Protection Regulation (GDPR), which mandates strict requirements for data minimization, consent, and security.
+
+Traditional centralized approaches to health data analytics require aggregating raw user data in central repositories, creating significant privacy risks including unauthorized access, data breaches, and potential re-identification. These risks are amplified in mHealth contexts where continuous physiological monitoring generates large volumes of highly sensitive data.
+
+\subsection{Privacy-Preserving Approaches}
+
+Recent advances in privacy-preserving machine learning offer promising alternatives to centralized data processing:
+
+\textbf{Federated Learning (FL)} \cite{mcmahan2017communication} enables collaborative model training across distributed devices without centralizing raw data. Each device trains a local model on its data, and only model updates (gradients or parameters) are shared with a central server for aggregation. This approach aligns well with GDPR's data minimization principle by keeping sensitive data on user devices.
+
+\textbf{Differential Privacy (DP)} \cite{dwork2014algorithmic} provides mathematical guarantees that the inclusion or exclusion of any individual's data has minimal impact on model outputs. By adding calibrated noise to computations, DP ensures that individual privacy is protected even if an adversary has access to the trained model. The privacy level is controlled by the parameter $\epsilon$, where smaller values indicate stronger protection.
+
+\subsection{Research Gap and Motivation}
+
+Despite theoretical advantages, the \textit{practical trade-offs} between data protection, model accuracy, and computational efficiency in real-world mHealth contexts remain insufficiently quantified. Key open questions include:
+
+\begin{itemize}
+    \item How much accuracy degradation should developers expect when implementing FL or DP?
+    \item What privacy budget ($\epsilon$) values are acceptable for clinical applications?
+    \item What are the computational overheads for resource-constrained mobile devices?
+    \item Can FL and DP be combined for enhanced protection?
+\end{itemize}
+
+Understanding these trade-offs is essential for developing privacy-aware mHealth applications that comply with regulatory requirements while maintaining clinical utility.
+
+\subsection{Contributions}
+
+This paper addresses these gaps through systematic experimental evaluation. Our main contributions include:
+
+\begin{enumerate}
+    \item \textbf{Baseline Implementation}: Optimized preprocessing pipeline and CNN-LSTM architectures for two mHealth tasks (stress detection, sleep classification)
+    \item \textbf{Federated Learning Evaluation}: Small-scale FL simulation with multiple clients, quantifying accuracy and communication overhead
+    \item \textbf{Differential Privacy Evaluation}: DP-SGD implementation with varying privacy budgets ($\epsilon \in \{0.5, 1.0, 2.0, 5.0, 10.0\}$)
+    \item \textbf{Comparative Analysis}: Direct comparison of FL and DP on identical datasets and tasks
+    \item \textbf{Practical Guidelines}: Evidence-based recommendations for mHealth developers and GDPR compliance discussion
+\end{enumerate}
+
+\subsection{Paper Organization}
+
+This document is structured as follows: Section \ref{sec:related_work} reviews related work on privacy-preserving techniques in mHealth. Section \ref{sec:methodology} describes datasets, preprocessing, and baseline models. Section \ref{sec:privacy_methods} details FL and DP implementations. Section \ref{sec:experimental_setup} outlines experimental configuration. Section \ref{sec:results} presents results and comparative analysis. Section \ref{sec:discussion} discusses implications for GDPR compliance and mHealth deployment. Finally, Section \ref{sec:conclusions} concludes and suggests future work.
+
+\section{Related Work}
+\label{sec:related_work}
+
+\subsection{Privacy-Preserving Machine Learning in Healthcare}
+
+Federated Learning has emerged as a promising paradigm for collaborative machine learning in healthcare. Rieke et al. \cite{rieke2020future} provide a comprehensive overview of FL applications in digital health, demonstrating its potential for multi-institutional collaboration without data sharing. Bonawitz et al. \cite{bonawitz2017practical} introduced secure aggregation protocols that provide cryptographic guarantees during federated training, ensuring individual device updates remain confidential.
+
+Li et al. \cite{li2020federated} survey federated learning challenges, methods, and future directions, highlighting key considerations including data heterogeneity across clients, communication efficiency, and convergence guarantees. These challenges are particularly relevant for mHealth applications where device capabilities vary and network connectivity may be intermittent.
+
+Differential Privacy has been successfully applied to healthcare analytics. Abadi et al. \cite{abadi2016deep} introduced DP-SGD (Differentially Private Stochastic Gradient Descent), which adds carefully calibrated noise to gradient computations during training. Recent implementations like PyTorch Opacus \cite{yousefpour2021opacus} have made DP more accessible for deep learning, enabling developers to add privacy guarantees with minimal code modifications.
+
+\subsection{mHealth Applications and Datasets}
+
+Stress detection using wearable sensors has become a critical mHealth application. Schmidt et al. \cite{schmidt2018wesad} introduced the WESAD dataset, which has become a benchmark for multimodal stress detection. Can et al. \cite{can2019stress} provide a comprehensive survey of stress detection in daily life scenarios using smartphones and wearables.
+
+Sleep stage classification represents another important mHealth application. The Sleep-EDF dataset \cite{kemp2000analysis} from PhysioNet \cite{goldberger2000physiobank} provides polysomnography recordings for sleep research. Both applications involve sensitive physiological data requiring privacy protection.
+
+\subsection{GDPR Compliance in mHealth}
+
+The General Data Protection Regulation (GDPR) \cite{voigt2017gdpr} establishes strict requirements for processing personal health data. Key principles include data minimization, purpose limitation, storage limitation, and security. Voigt and Von dem Bussche provide practical guidance on GDPR compliance, emphasizing privacy-by-design approaches.
+
+Privacy-preserving techniques like FL and DP align well with GDPR principles by minimizing data collection (FL) and providing technical safeguards (DP). However, practical implementation requires careful consideration of consent mechanisms, data retention policies, and processes for exercising user rights (access, deletion, portability).
+
+\subsection{Gap Analysis}
+
+While previous studies have demonstrated the feasibility of privacy-preserving techniques in healthcare, few provide \textit{quantitative comparisons} of FL and DP on identical mHealth datasets with realistic preprocessing and model architectures. Our work addresses this gap by:
+
+\begin{itemize}
+    \item Implementing both FL and DP using consistent experimental conditions
+    \item Evaluating on two different mHealth tasks (stress, sleep)
+    \item Quantifying accuracy-privacy-efficiency trade-offs
+    \item Providing practical recommendations for developers
+\end{itemize}
+
+\section{Methodology}
+\label{sec:methodology}
+
+This section describes our baseline implementation, which serves as the foundation for evaluating privacy-preserving techniques.
+
+\subsection{Datasets}
+
+We utilize two complementary mHealth datasets to demonstrate generalizability:
+
+\subsubsection{WESAD (Stress Detection)}
+
+The WESAD (Wearable Stress and Affect Detection) dataset \cite{schmidt2018wesad} comprises 15 subjects with synchronized chest-worn (RespiBAN) and wrist-worn (Empatica E4) sensors.
+
+\begin{itemize}
+    \item \textbf{Chest signals} (700 Hz): ECG, EDA, Temperature, 3D Accelerometer, EMG, Respiration
+    \item \textbf{Wrist signals}: BVP (64 Hz), 3D Accelerometer (32 Hz), EDA (4 Hz), Temperature (4 Hz)
+    \item \textbf{Task}: Binary classification (stress vs. non-stress)
+    \item \textbf{Clinical relevance}: Early stress detection for mental health interventions
+\end{itemize}
+
+\subsubsection{Sleep-EDF (Sleep Stage Classification)}
+
+The Sleep-EDF Expanded dataset \cite{kemp2000analysis} contains polysomnography recordings from 197 subjects.
+
+\begin{itemize}
+    \item \textbf{Signals} (100 Hz): EEG (Fpz-Cz, Pz-Oz), EOG horizontal
+    \item \textbf{Task}: 5-class classification (Wake, N1, N2, N3, REM)
+    \item \textbf{Clinical relevance}: Sleep quality assessment and disorder diagnosis
+\end{itemize}
+
+\subsection{Preprocessing Pipeline}
+
+Our preprocessing pipeline addresses signal quality, computational efficiency, and privacy considerations.
+
+\subsubsection{WESAD Preprocessing}
+
+\textbf{Multi-frequency Resampling:} All signals are resampled to uniform 32 Hz using polyphase filtering. This frequency balances signal quality (preserves ECG R-peaks, BVP morphology) with computational efficiency (50\% faster than 64 Hz with only 1.8\% accuracy loss).
+
+\textbf{Adaptive Filtering:} Signal-specific bandpass/lowpass filters optimized for 32 Hz:
+\begin{itemize}
+    \item ECG: 0.5-15 Hz (R-peaks for HRV analysis)
+    \item BVP: 0.5-12 Hz (pulse morphology)
+    \item ACC: 0.1-2 Hz (movement dynamics)
+    \item EDA: lowpass 1.5 Hz (skin conductance)
+    \item Temperature: lowpass 0.5 Hz
+    \item Respiration: 0.1-0.5 Hz
+    \item EMG: 0.5-2 Hz
+\end{itemize}
+
+\textbf{Temporal Windowing:} 60-second windows with 50\% overlap (1,920 samples at 32 Hz). Only complete windows are retained to avoid zero-padding artifacts.
+
+\textbf{Outlier Handling:} Percentile clipping (1.0-99.0\%) to preserve important signal peaks while reducing extreme outliers.
+
+\textbf{Normalization:} Per-channel z-score normalization using training set statistics only. Final shape: $(n_{windows}, 14, 1920)$ for 14 physiological channels.
+
+\subsubsection{Sleep-EDF Preprocessing}
+
+\textbf{Epoch Segmentation:} 30-second epochs (3,000 samples at 100 Hz) following clinical standards.
+
+\textbf{Filtering:} Butterworth filters (EEG: 0.5-32 Hz, EOG: 0.5-10 Hz).
+
+\textbf{Feature Extraction:} 24 features per epoch (temporal: mean, std, min, max; spectral: delta, theta, alpha, beta power for each of 3 signals).
+
+\subsubsection{Data Splitting}
+
+\textbf{Subject-wise split} (Leave-One-Subject-Out style) prevents data leakage:
+\begin{itemize}
+    \item WESAD: 9 train subjects (715 windows), 3 validation (237), 3 test (237)
+    \item Sleep-EDF: 70\% train subjects, 15\% validation, 15\% test
+\end{itemize}
+
+This splitting strategy is critical for realistic privacy evaluation, as it simulates the scenario where different users (clients in FL) have distinct data distributions.
+
+\subsection{Baseline Model Architectures}
+
+\subsubsection{WESAD: CNN-LSTM}
+
+Optimized for temporal physiological signals:
+
+\begin{itemize}
+    \item \textbf{Conv1D Block 1}: 32 filters, kernel=7, BatchNorm, MaxPool(4), SpatialDropout(0.2)
+    \item \textbf{Conv1D Block 2}: 64 filters, kernel=5, BatchNorm, MaxPool(2), SpatialDropout(0.2)
+    \item \textbf{LSTM}: 32 units with L2 regularization
+    \item \textbf{Dense}: 32 units (ReLU), Dropout(0.4)
+    \item \textbf{Output}: 2 units (Softmax)
+    \item \textbf{Parameters}: 454,338 (1.73 MB)
+    \item \textbf{Regularization}: L2 ($10^{-4}$), Label Smoothing (0.05)
+\end{itemize}
+
+\subsubsection{Sleep-EDF: LSTM}
+
+Suitable for sequential feature data:
+
+\begin{itemize}
+    \item \textbf{LSTM}: 128 units
+    \item \textbf{Dense}: 64 units (ReLU), Dropout(0.3)
+    \item \textbf{Output}: 5 units (Softmax)
+    \item \textbf{Parameters}: ~XXX,XXX
+\end{itemize}
+
+\subsection{Training Configuration}
+
+\begin{itemize}
+    \item \textbf{Optimizer}: Adam (lr=0.001)
+    \item \textbf{Loss}: Categorical crossentropy with label smoothing
+    \item \textbf{Batch size}: 32
+    \item \textbf{Max epochs}: 100
+    \item \textbf{Early stopping}: Patience=8 on validation accuracy
+    \item \textbf{Learning rate reduction}: Factor=0.5, patience=6
+    \item \textbf{Class balancing}: Simple oversampling for imbalanced classes
+\end{itemize}
+
+\subsection{Baseline Results}
+
+Table \ref{tab:baseline_results} presents baseline performance without privacy mechanisms.
+
+\begin{table}[htbp]
+\centering
+\caption{Baseline Model Performance (No Privacy)}
+\label{tab:baseline_results}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Time} \\
+ & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & \textbf{(s)} \\ \midrule
+WESAD    & 77.64 & 79.02 & 77.64 & 78.09 & 11.0 \\
+Sleep-EDF & 87.45 & 85.72 & 87.45 & 85.82 & XX.X \\ \bottomrule
+\end{tabular}
+\end{table}
+
+These baselines establish upper bounds for accuracy that privacy-preserving techniques will approach.
+
+\section{Privacy-Preserving Techniques}
+\label{sec:privacy_methods}
+
+\subsection{Federated Learning Implementation}
+
+\subsubsection{Architecture}
+
+We implement federated learning using TensorFlow Federated \cite{tensorflow_federated}, simulating distributed clients:
+
+\begin{enumerate}
+    \item \textbf{Client Selection}: Random subset of clients per round
+    \item \textbf{Local Training}: Each client trains on local data for $E$ epochs
+    \item \textbf{Aggregation}: Federated averaging (FedAvg) \cite{mcmahan2017communication}
+    \item \textbf{Global Update}: Aggregated model distributed back to clients
+\end{enumerate}
+
+\subsubsection{Configuration}
+
+\begin{itemize}
+    \item \textbf{Number of clients}: 3, 5, 10 (simulating different deployment scales)
+    \item \textbf{Data distribution}: Subject-wise split (each client = 1-3 subjects)
+    \item \textbf{Communication rounds}: 50
+    \item \textbf{Local epochs per round}: 2
+    \item \textbf{Client participation rate}: 100\% (all clients in each round)
+    \item \textbf{Secure aggregation}: Optional (for analysis)
+\end{itemize}
+
+\subsubsection{Evaluation Metrics}
+
+\begin{itemize}
+    \item Accuracy convergence across rounds
+    \item Communication overhead (bytes transmitted per round)
+    \item Total training time
+    \item Per-client performance variance
+\end{itemize}
+
+\subsection{Differential Privacy Implementation}
+
+\subsubsection{DP-SGD Mechanism}
+
+We implement DP-SGD using PyTorch Opacus \cite{yousefpour2021opacus}:
+
+\begin{enumerate}
+    \item \textbf{Gradient Clipping}: Per-sample gradients clipped to norm $C$
+    \item \textbf{Noise Addition}: Gaussian noise $\mathcal{N}(0, \sigma^2 C^2)$ added to averaged gradients
+    \item \textbf{Privacy Accounting}: Track cumulative privacy loss using moments accountant
+\end{enumerate}
+
+The privacy guarantee is expressed as $(\epsilon, \delta)$-differential privacy, where:
+\begin{equation}
+\epsilon = \text{privacy budget (lower = stronger privacy)}
+\end{equation}
+\begin{equation}
+\delta = \text{failure probability (typically} < 10^{-5})
+\end{equation}
+
+\subsubsection{Configuration}
+
+\begin{itemize}
+    \item \textbf{Target $\epsilon$}: 0.5, 1.0, 2.0, 5.0, 10.0
+    \item \textbf{Delta}: $10^{-5}$
+    \item \textbf{Clipping norm $C$}: 1.0 (tuned)
+    \item \textbf{Noise multiplier $\sigma$}: Automatically calculated for target $\epsilon$
+    \item \textbf{Batch size}: 32 (physical), 256 (virtual for noise scaling)
+\end{itemize}
+
+\subsubsection{Evaluation Metrics}
+
+\begin{itemize}
+    \item Accuracy vs. privacy budget ($\epsilon$)
+    \item Training time overhead
+    \item Convergence behavior
+    \item Per-class performance impact
+\end{itemize}
+
+\subsection{Hybrid FL + DP}
+
+We also evaluate a hybrid approach combining both techniques:
+
+\begin{itemize}
+    \item Federated Learning for data localization
+    \item DP-SGD applied locally on each client
+    \item Secure aggregation at server
+\end{itemize}
+
+This provides defense-in-depth: practical privacy (FL) + formal guarantees (DP).
+
+\section{Experimental Setup}
+\label{sec:experimental_setup}
+
+\subsection{Implementation Details}
+
+\textbf{Software Stack:}
+\begin{itemize}
+    \item Python 3.8+
+    \item TensorFlow 2.x, TensorFlow Federated
+    \item PyTorch 1.x, Opacus
+    \item NumPy, pandas, matplotlib, scikit-learn
+    \item Jupyter Notebook for interactive experimentation
+\end{itemize}
+
+\textbf{Hardware:}
+\begin{itemize}
+    \item M1 MacBook Pro, 16GB RAM
+    \item CPU-based training (realistic for mobile scenarios)
+\end{itemize}
+
+\subsection{Experimental Design}
+
+We conduct three sets of experiments:
+
+\subsubsection{Experiment 1: Baseline Characterization}
+\begin{itemize}
+    \item Train centralized models without privacy
+    \item Establish accuracy upper bounds
+    \item Profile computational requirements
+\end{itemize}
+
+\subsubsection{Experiment 2: Federated Learning Evaluation}
+\begin{itemize}
+    \item Vary number of clients: 3, 5, 10
+    \item Compare IID vs. non-IID data distributions
+    \item Measure convergence and communication overhead
+\end{itemize}
+
+\subsubsection{Experiment 3: Differential Privacy Evaluation}
+\begin{itemize}
+    \item Sweep privacy budget: $\epsilon \in \{0.5, 1.0, 2.0, 5.0, 10.0\}$
+    \item Analyze accuracy-privacy trade-off
+    \item Measure computational overhead
+\end{itemize}
+
+\subsubsection{Experiment 4: Hybrid FL + DP}
+\begin{itemize}
+    \item Combine FL (5 clients) with DP ($\epsilon=1.0$)
+    \item Compare with FL-only and DP-only
+    \item Assess cumulative privacy benefits
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+
+\textbf{Performance Metrics:}
+\begin{itemize}
+    \item Accuracy, Precision, Recall, F1-Score
+    \item Per-class metrics (especially for minority classes)
+    \item Confusion matrices
+\end{itemize}
+
+\textbf{Privacy Metrics:}
+\begin{itemize}
+    \item FL: Data exposure (none), model update leakage (qualitative)
+    \item DP: $\epsilon$ value, $\delta$ value
+\end{itemize}
+
+\textbf{Efficiency Metrics:}
+\begin{itemize}
+    \item Training time (wall-clock)
+    \item Communication overhead (FL)
+    \item Memory usage
+\end{itemize}
+
+\subsection{Reproducibility}
+
+\begin{itemize}
+    \item Fixed random seeds (numpy=42, torch=42, tensorflow=42)
+    \item Deterministic algorithms enabled
+    \item Code and configurations publicly available (upon publication)
+\end{itemize}
+
+\section{Results and Analysis}
+\label{sec:results}
+
+% TODO: Completar com resultados reais após implementação
+
+\subsection{Federated Learning Results}
+
+\subsubsection{Convergence Analysis}
+
+Figure \ref{fig:fl_convergence} shows accuracy evolution across federated rounds for different client configurations.
+
+% \begin{figure}[htbp]
+% \centering
+% \includegraphics[width=0.48\textwidth]{figures/fl_convergence.pdf}
+% \caption{Federated Learning: Accuracy Convergence}
+% \label{fig:fl_convergence}
+% \end{figure}
+
+Key observations:
+\begin{itemize}
+    \item FL converges within XX rounds
+    \item Final accuracy: XX.X\% (vs XX.X\% baseline, $\Delta = -X.X\%$)
+    \item More clients improve generalization but slow convergence
+\end{itemize}
+
+\subsubsection{Communication Overhead}
+
+Table \ref{tab:fl_overhead} quantifies communication costs.
+
+\begin{table}[htbp]
+\centering
+\caption{Federated Learning: Communication Overhead}
+\label{tab:fl_overhead}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Clients} & \textbf{Rounds} & \textbf{Bytes/Round} & \textbf{Total} & \textbf{Time} \\
+ & & \textbf{(MB)} & \textbf{(MB)} & \textbf{(s)} \\ \midrule
+3  & 50 & X.X & XX.X & XXX \\
+5  & 50 & X.X & XX.X & XXX \\
+10 & 50 & X.X & XX.X & XXX \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Differential Privacy Results}
+
+\subsubsection{Accuracy vs. Privacy Trade-off}
+
+Figure \ref{fig:dp_tradeoff} illustrates the fundamental accuracy-privacy trade-off.
+
+% \begin{figure}[htbp]
+% \centering
+% \includegraphics[width=0.48\textwidth]{figures/dp_tradeoff.pdf}
+% \caption{Differential Privacy: Accuracy vs. $\epsilon$}
+% \label{fig:dp_tradeoff}
+% \end{figure}
+
+Table \ref{tab:dp_results} presents detailed results.
+
+\begin{table}[htbp]
+\centering
+\caption{Differential Privacy: Performance vs. Privacy Budget}
+\label{tab:dp_results}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{$\epsilon$} & \textbf{Accuracy} & \textbf{$\Delta$} & \textbf{F1} & \textbf{Time} & \textbf{Overhead} \\
+ & \textbf{(\%)} & \textbf{Baseline} & \textbf{(\%)} & \textbf{(s)} & \textbf{(\%)} \\ \midrule
+\textit{Baseline} & 77.64 & -- & 78.09 & 11.0 & -- \\
+0.5  & XX.X & -XX.X & XX.X & XX.X & +XX\% \\
+1.0  & XX.X & -XX.X & XX.X & XX.X & +XX\% \\
+2.0  & XX.X & -X.X & XX.X & XX.X & +XX\% \\
+5.0  & XX.X & -X.X & XX.X & XX.X & +XX\% \\
+10.0 & XX.X & -X.X & XX.X & XX.X & +XX\% \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Key findings:
+\begin{itemize}
+    \item Strong privacy ($\epsilon < 1$) incurs significant accuracy loss (XX\%)
+    \item Moderate privacy ($\epsilon \approx 2-5$) maintains usable accuracy (XX\%)
+    \item Computational overhead: XX-XX\% increase in training time
+\end{itemize}
+
+\subsection{Comparative Analysis}
+
+Table \ref{tab:comparison} directly compares FL, DP, and hybrid approaches.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparison: FL vs. DP vs. Hybrid}
+\label{tab:comparison}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Method} & \textbf{Accuracy} & \textbf{Privacy} & \textbf{Time} & \textbf{Deployment} \\
+ & \textbf{(\%)} & \textbf{Guarantee} & \textbf{(s)} & \textbf{Complexity} \\ \midrule
+Baseline   & 77.64 & None & 11.0 & Low \\
+FL (5 clients) & XX.X & Practical & XX.X & Medium \\
+DP ($\epsilon=1.0$) & XX.X & Formal & XX.X & Low \\
+FL + DP & XX.X & Both & XX.X & High \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-Class Analysis}
+
+Privacy techniques may disproportionately impact minority classes. Table \ref{tab:per_class} shows per-class metrics for WESAD stress detection.
+
+\begin{table}[htbp]
+\centering
+\caption{Per-Class Performance: Stress Detection}
+\label{tab:per_class}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Method} & \multicolumn{2}{c}{\textbf{Non-Stress}} & \multicolumn{2}{c}{\textbf{Stress}} \\
+ & \textbf{Prec} & \textbf{Rec} & \textbf{Prec} & \textbf{Rec} \\ \midrule
+Baseline & 86.8 & 79.9 & 61.6 & 72.6 \\
+FL       & XX.X & XX.X & XX.X & XX.X \\
+DP       & XX.X & XX.X & XX.X & XX.X \\
+FL + DP  & XX.X & XX.X & XX.X & XX.X \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Privacy-Utility Trade-offs}
+
+Our results demonstrate clear trade-offs between privacy protection and model accuracy:
+
+\textbf{Federated Learning} provides strong \textit{practical privacy} by preventing data centralization. Raw data never leaves user devices, significantly reducing exposure to breaches. However, FL lacks formal mathematical privacy guarantees—sophisticated attacks could potentially infer information from model updates \cite{nasr2019comprehensive}.
+
+\textbf{Differential Privacy} provides \textit{provable guarantees} that individual records cannot be inferred. However, this comes at the cost of reduced accuracy, especially for strong privacy ($\epsilon < 1$). The challenge lies in selecting appropriate $\epsilon$ values: too small degrades utility; too large provides minimal protection.
+
+\textbf{Hybrid FL + DP} offers defense-in-depth by combining both protections. This may be necessary for highly sensitive health data, though at increased implementation complexity and computational cost.
+
+\subsection{GDPR Compliance Analysis}
+
+Both techniques support key GDPR principles (Article 5):
+
+\begin{enumerate}
+    \item \textbf{Data Minimization (Art. 5.1.c)}: FL avoids centralizing raw data; DP limits information leakage from trained models.
+    
+    \item \textbf{Purpose Limitation (Art. 5.1.b)}: Technical constraints enforce intended use—FL clients only compute specific model updates; DP prevents arbitrary queries.
+    
+    \item \textbf{Storage Limitation (Art. 5.1.e)}: FL enables on-device processing with ephemeral server storage of model updates only.
+    
+    \item \textbf{Security (Art. 32)}: Both provide technical safeguards—cryptographic aggregation (FL), noise addition (DP).
+\end{enumerate}
+
+However, full GDPR compliance requires additional measures:
+
+\begin{itemize}
+    \item \textbf{Lawful Basis (Art. 6)}: Clear consent or other legal basis for processing
+    \item \textbf{Transparency (Art. 12-14)}: Informing users about FL/DP mechanisms
+    \item \textbf{User Rights (Art. 15-22)}: Processes for access, deletion, portability
+    \item \textbf{Data Protection Impact Assessment (Art. 35)}: Required for high-risk processing
+\end{itemize}
+
+\subsection{Practical Recommendations for mHealth Developers}
+
+Based on our findings, we recommend:
+
+\begin{enumerate}
+    \item \textbf{Low-risk applications} (fitness tracking): FL alone may suffice with minimal accuracy impact
+    
+    \item \textbf{Medium-risk applications} (stress monitoring): FL + moderate DP ($\epsilon \approx 5$) balances privacy and utility
+    
+    \item \textbf{High-risk applications} (clinical diagnosis): FL + strong DP ($\epsilon < 2$) or additional safeguards (secure enclaves)
+    
+    \item \textbf{Computational constraints}: FL with fewer clients reduces overhead while maintaining privacy benefits
+    
+    \item \textbf{Regulatory compliance}: Combine technical measures (FL/DP) with organizational measures (consent, DPO, audits)
+\end{enumerate}
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item Small-scale simulations (limited number of clients)
+    \item Subject-wise split may not reflect real-world non-IID distributions
+    \item CPU-based training (mobile deployment requires further optimization)
+    \item Privacy attack evaluation not included (future work)
+\end{itemize}
+
+\section{Conclusions and Future Work}
+\label{sec:conclusions}
+
+This paper presented a systematic experimental evaluation of Federated Learning and Differential Privacy applied to mobile health applications. Using two physiological signal classification tasks (stress detection, sleep staging), we quantified the practical trade-offs between privacy protection, model accuracy, and computational efficiency.
+
+\subsection{Key Findings}
+
+\begin{enumerate}
+    \item \textbf{Federated Learning} maintains high accuracy (XX\% vs XX\% baseline) while providing practical privacy through data localization. Communication overhead is acceptable for mobile scenarios (XX MB per round).
+    
+    \item \textbf{Differential Privacy} with moderate privacy budgets ($\epsilon \approx 2-5$) achieves usable accuracy (XX\%) while providing formal guarantees. Strong privacy ($\epsilon < 1$) incurs significant utility loss (XX\% accuracy degradation).
+    
+    \item \textbf{Hybrid FL + DP} provides defense-in-depth for highly sensitive health data, at the cost of increased complexity and computational overhead.
+    
+    \item Both techniques support GDPR compliance principles but require complementary organizational measures for full regulatory compliance.
+\end{enumerate}
+
+\subsection{Contributions}
+
+Our work provides:
+\begin{itemize}
+    \item First quantitative comparison of FL and DP on identical mHealth datasets
+    \item Evidence-based guidelines for privacy budget selection
+    \item Optimized preprocessing pipeline for physiological signals (32 Hz sampling)
+    \item Open-source implementation (to be released)
+\end{itemize}
+
+\subsection{Future Work}
+
+Several directions warrant further investigation:
+
+\begin{enumerate}
+    \item \textbf{Large-scale deployment}: Real-world evaluation with hundreds of users
+    \item \textbf{Advanced attacks}: Membership inference, model inversion on FL/DP models
+    \item \textbf{Adaptive privacy}: Dynamic $\epsilon$ adjustment based on data sensitivity
+    \item \textbf{Multimodal fusion}: Privacy-preserving fusion of multiple sensor streams
+    \item \textbf{Edge optimization}: On-device training with quantization, pruning
+    \item \textbf{User studies}: Privacy perception and acceptance of FL/DP
+    \item \textbf{Regulatory analysis}: Detailed GDPR compliance assessment
+    \item \textbf{Secure hardware}: Integration with Trusted Execution Environments (TEEs)
+\end{enumerate}
+
+\section*{Acknowledgements}
+This work is funded by National Funds through the FCT – Foundation for Science and Technology, I.P., within the scope of the project Ref. UIDB/05583/2020. Furthermore, we thank the Research Center in Digital Services (CISeD) and the Polytechnic Institute of Viseu for their support.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
