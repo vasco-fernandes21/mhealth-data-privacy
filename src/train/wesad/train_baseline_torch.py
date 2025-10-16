@@ -16,6 +16,7 @@ import os
 import sys
 import json
 import time
+import random
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -26,6 +27,16 @@ from torch.utils.data import TensorDataset, DataLoader
 from collections import Counter
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
+
+# Fix random seeds for reproducible results
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from preprocessing.wesad import load_processed_wesad_temporal
@@ -103,17 +114,28 @@ def _simple_oversample(X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.nda
     return Xb[perm], yb[perm]
 
 def _augment_temporal(X: np.ndarray, noise_std: float = 0.01, max_time_shift: int = 8, seed: int = 42) -> np.ndarray:
+    """Apply deterministic temporal augmentation with fixed seed."""
     rng = np.random.default_rng(seed)
     X_aug = X.copy()
-    X_aug += rng.normal(0, noise_std, size=X_aug.shape)
+
+    # Generate all random numbers at once for complete determinism
+    n_samples = X_aug.shape[0]
+    noise = rng.normal(0, noise_std, size=X_aug.shape)
+    shifts = rng.integers(-max_time_shift, max_time_shift + 1, size=n_samples)
+
+    # Apply noise
+    X_aug += noise
+
+    # Apply time shifts
     if max_time_shift > 0:
-        for i in range(X_aug.shape[0]):
-            shift = int(rng.integers(-max_time_shift, max_time_shift + 1))
+        for i in range(n_samples):
+            shift = shifts[i]
             if shift != 0:
                 if shift > 0:
                     X_aug[i, :, shift:] = X_aug[i, :, :-shift]
                 else:
                     X_aug[i, :, :shift] = X_aug[i, :, -shift:]
+
     return X_aug
 
 def build_dataloaders(X_train: np.ndarray, y_train: np.ndarray,
@@ -141,7 +163,7 @@ def build_dataloaders(X_train: np.ndarray, y_train: np.ndarray,
     return train_loader, val_loader, test_loader
 
 # --- Training & evaluation ---
-def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, device: str) -> Tuple[float, float]:
+def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, device: str, clip_grad_norm: float = 1.0) -> Tuple[float, float]:
     model.train()
     running_loss = 0.0
     correct = 0
@@ -152,6 +174,10 @@ def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer, 
         logits = model(Xb)
         loss = criterion(logits, yb)
         loss.backward()
+
+        # Gradient clipping to prevent exploding gradients
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
+
         optimizer.step()
         running_loss += loss.item() * Xb.size(0)
         correct += (logits.argmax(dim=1) == yb).sum().item()
@@ -223,6 +249,21 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = CNNLSTMWESAD(input_channels=X_train.shape[1], num_classes=len(info['class_names'])).to(device)
 
+    # Initialize weights deterministically for reproducible results
+    def init_weights(m):
+        if isinstance(m, (nn.Conv1d, nn.Linear)):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.LSTM):
+            for name, param in m.named_parameters():
+                if 'weight' in name:
+                    nn.init.xavier_uniform_(param)
+                elif 'bias' in name:
+                    nn.init.zeros_(param)
+
+    model.apply(init_weights)
+
     # Class weights for imbalanced data
     class_weights = torch.tensor(compute_class_weight('balanced', classes=np.unique(y_train), y=y_train),
                                  dtype=torch.float32, device=device)
@@ -236,6 +277,9 @@ def main():
         optimizer, mode='max', factor=0.5, patience=6, min_lr=1e-6
     )
 
+    # Gradient clipping to prevent exploding gradients
+    clip_grad_norm = 1.0
+
     os.makedirs(models_dir, exist_ok=True)
     best_val_acc, epochs_no_improve = -1.0, 0
     history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": []}
@@ -244,7 +288,7 @@ def main():
     epochs, patience = 100, 8
 
     for epoch in range(1, epochs + 1):
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, clip_grad_norm)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
 
         # Update learning rate based on validation accuracy

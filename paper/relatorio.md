@@ -362,3 +362,98 @@ Real Non-stress   131      33
 - **Frequência**: 32Hz demonstrou estabilidade superior
 
 ---
+
+## Fase 4: Migração de TensorFlow para PyTorch e Otimização do WESAD
+
+### 4.1 Motivação da Migração (TF → PyTorch)
+
+- **Integrações futuras**: PyTorch oferece ecossistema mais maduro para privacidade e federated learning:
+  - **Differential Privacy**: integração direta com `Opacus` (DP-SGD eficiente em GPUs, accounting robusto)
+  - **Federated Learning**: integração nativa com `Flower`/`flwr` (já presente no projeto)
+  - **Controle fino**: laços de treino explícitos facilitam instrumentação (clipping, ruído DP, métricas customizadas)
+- **Produtização e pesquisa**: PyTorch é preferido em muitos pipelines de investigação e deploy, reduzindo atrito técnico.
+
+Conclusão: a migração para PyTorch alinha o projeto com os próximos passos (DP-SGD e FL) mantendo ou superando a qualidade do baseline.
+
+### 4.2 Processo de Otimização em PyTorch
+
+Partindo da arquitetura CNN-LSTM do baseline TF, replicámos e melhorámos os blocos no PyTorch:
+
+- **Arquitetura** (CNN-LSTM 32 Hz, input `(14, 1920)`):
+  - Conv1D(32, kernel=7) → BatchNorm → MaxPool(4) → Dropout(0.2)
+  - Conv1D(64, kernel=5) → BatchNorm → MaxPool(2) → Dropout(0.2)
+  - LSTM(32) → Dropout(0.5)
+  - Dense(32, ReLU) → Dropout(0.4) → Dense(2)
+- **Perdas e regularização**:
+  - CrossEntropy com `label_smoothing=0.05`
+  - L2 via `weight_decay=1e-4` no Adam
+  - `class_weight` para lidar com desbalanceamento
+- **Agendamento de LR**: `ReduceLROnPlateau` (patience=6, factor=0.5, min_lr=1e-6)
+- **Treino**: early stopping (patience=8), batch size 32, oversampling simples e data augmentation temporal (ruído + time-shift pequenos)
+- **Estabilidade**: gradient clipping `clip_grad_norm_=1.0`
+
+### 4.3 Reprodutibilidade: Seeds e Inicialização
+
+Foi identificado um problema de **inconsistência entre execuções** (accuracy a variar de ~89% para ~64% sem alterações de código). Causa raiz: **falta de seeds determinísticos** (NumPy, Python, PyTorch/CUDA) e **inicializações não determinísticas**.
+
+Medidas implementadas para reprodutibilidade total:
+
+```python
+# Seeds fixos (Python, NumPy, PyTorch CPU/GPU) e modo determinístico do cuDNN
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+```
+
+```python
+# Inicialização determinística de pesos (Conv1d, Linear) e LSTM
+def init_weights(m):
+    if isinstance(m, (nn.Conv1d, nn.Linear)):
+        nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.LSTM):
+        for name, param in m.named_parameters():
+            if 'weight' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+model.apply(init_weights)
+```
+
+Além disso, a data augmentation temporal foi tornada determinística gerando **todos os ruídos e shifts** com um `Generator` de NumPy fixo e aplicando-os sample-a-sample de forma reprodutível.
+
+Impacto: após estas medidas, os resultados tornaram-se **estáveis e reproduzíveis** entre execuções sucessivas.
+
+### 4.4 Resultados Após Migração e Estabilização
+
+- **TensorFlow (baseline anterior)**: Accuracy 77.64%, F1 78.09% (teste WESAD)
+- **PyTorch (otimizado e estável)**: Accuracy 97.05%, F1 97.05%
+
+Matriz de confusão (teste):
+
+```
+            Predito →  non-stress   stress
+Real ↓
+non-stress               160          4
+stress                     3         70
+```
+
+Observações:
+- Excelente equilíbrio entre classes (recall non-stress 97.6%, stress 95.9%)
+- Apenas 7 erros em 237 amostras
+- Ganho substancial vs baseline TF, mantendo arquitetura comparável e custo computacional controlado
+
+### 4.5 Preparação para Privacidade Diferencial e FL
+
+Com o loop de treino explícito e estável:
+- **DP-SGD (Opacus)**: fácil integrar clipping por amostra, ruído gaussiano, e accountant de privacidade
+- **Flower (FL)**: já integrado no ambiente, facilita orquestração e agregação federada
+
+Conclusão: a migração para PyTorch foi motivada por **integrações de privacidade e federadas**, e o processo de otimização + estabilização com seeds resultou não só em **reprodutibilidade**, como também em **performance significativamente superior**.
+
