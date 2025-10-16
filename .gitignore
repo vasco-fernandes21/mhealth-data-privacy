@@ -47,6 +47,7 @@ data/processed/
 *.edf
 *.rec
 *.hyp
+*.zip
 
 # Model files
 models/*.h5
