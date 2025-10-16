@@ -11,8 +11,6 @@ __author__ = "Vasco"
 # Make submodules easily accessible
 from . import preprocessing
 from . import models
-from . import privacy
-from . import evaluation
 
-__all__ = ["preprocessing", "models", "privacy", "evaluation"]
+__all__ = ["preprocessing", "models"]
 
