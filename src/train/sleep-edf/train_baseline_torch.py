@@ -1,44 +1,22 @@
 #!/usr/bin/env python3
 """
-Train PyTorch LSTM baseline for Sleep-EDF dataset with high efficiency and ETA tracking.
-
-Optimized for large dataset with progress monitoring and performance optimizations:
-- Efficient data loading and batching
-- ETA calculation for long training sessions
-- Memory optimization for large datasets
-- Reproducible results with fixed seeds
-- Optimized LSTM architecture for sleep stage classification
+Train PyTorch LSTM baseline for Sleep-EDF dataset
 """
 
 import os
 import sys
 import json
 import time
-import random
-from pathlib import Path
-from typing import Dict, Tuple, List
-import warnings
-warnings.filterwarnings('ignore')
-
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
-from collections import Counter
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
-from sklearn.utils.class_weight import compute_class_weight
+from pathlib import Path
+from typing import Tuple
 
-# Fix random seeds for reproducible results
-SEED = 42
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
+# Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from preprocessing.sleep_edf import load_processed_sleep_edf
 
 # --- Progress Bar with ETA ---
@@ -94,75 +72,29 @@ class ProgressBar:
         self.update(self.total - self.current)
         print()  # New line
 
-# --- Optimized LSTM Model for Sleep-EDF ---
-class SleepEDFLSTM(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_classes: int, dropout: float = 0.3):
+# --- Simple LSTM Model ---
+class SimpleLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
         super().__init__()
-
-        # Optimized LSTM architecture
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0,
-            bidirectional=True  # Bidirectional for better temporal modeling
-        )
-
-        # Attention mechanism for better feature extraction
-        self.attention = nn.Linear(hidden_size * 2, 1)  # *2 for bidirectional
-
-        # Dense layers with residual connections
-        self.fc1 = nn.Linear(hidden_size * 2, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, num_classes)
-
-        # Regularization
-        self.dropout = nn.Dropout(dropout)
-        self.layer_norm = nn.LayerNorm(hidden_size * 2)
-
-        # Activation
-        self.relu = nn.ReLU()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
-        # LSTM forward pass
-        lstm_out, (hn, cn) = self.lstm(x)  # lstm_out: (batch, seq_len, hidden_size * 2)
+        lstm_out, (hn, cn) = self.lstm(x)
+        out = self.fc(hn[-1])
+        return out
 
-        # Attention mechanism
-        attention_weights = torch.softmax(self.attention(lstm_out), dim=1)  # (batch, seq_len, 1)
-        context_vector = torch.sum(attention_weights * lstm_out, dim=1)  # (batch, hidden_size * 2)
-
-        # Layer normalization
-        x = self.layer_norm(context_vector)
-
-        # Dense layers with residual connections
-        residual = x
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.fc2(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.fc3(x)
-
-        return x
-
-# --- Efficient Data Loading ---
+# --- Data Loading ---
 class SleepEDFDataLoader:
-    """Optimized data loader for large Sleep-EDF dataset"""
+    """Simple data loader for Sleep-EDF dataset"""
 
-    def __init__(self, data_dir: str, batch_size: int = 128, num_workers: int = 4):
+    def __init__(self, data_dir: str, batch_size: int = 64):
         self.data_dir = data_dir
         self.batch_size = batch_size
-        self.num_workers = num_workers
 
-        # Memory mapping for large files
-        self.X_train = np.load(os.path.join(data_dir, 'X_train.npy'), mmap_mode='r')
+        # Load arrays
+        self.X_train = np.load(os.path.join(data_dir, 'X_train.npy'))
         self.y_train = np.load(os.path.join(data_dir, 'y_train.npy'))
-
-        # For validation and test, load normally (smaller)
         self.X_val = np.load(os.path.join(data_dir, 'X_val.npy'))
         self.y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
         self.X_test = np.load(os.path.join(data_dir, 'X_test.npy'))
@@ -171,41 +103,33 @@ class SleepEDFDataLoader:
         print(f"Dataset loaded: Train={self.X_train.shape}, Val={self.X_val.shape}, Test={self.X_test.shape}")
 
     def get_dataloaders(self, window_size: int = 10) -> Tuple[DataLoader, DataLoader, DataLoader]:
-        """Create optimized data loaders with windowing"""
+        """Create data loaders with windowing"""
 
         print(f"Creating LSTM windows (window_size={window_size})...")
 
-        # Create windows efficiently
+        # Create windows
         def create_windows(X, y, window_size):
             n_samples, n_features = X.shape
             n_windows = n_samples - window_size + 1
 
-            # Pre-allocate arrays for efficiency
             X_windows = np.zeros((n_windows, window_size, n_features), dtype=X.dtype)
             y_windows = np.zeros(n_windows, dtype=y.dtype)
 
-            # Vectorized window creation
+            # Progress bar for window creation
+            progress = ProgressBar(n_windows, "Windows")
+
             for i in range(n_windows):
                 X_windows[i] = X[i:i+window_size]
-                y_windows[i] = y[i+window_size-1]  # Label from last timestep
+                y_windows[i] = y[i+window_size-1]
+                progress.update(1)
 
+            progress.finish()
             return X_windows, y_windows
 
-        # Create windows with progress tracking
-        print("Creating training windows...")
-        progress = ProgressBar(len(self.X_train) - window_size + 1, "Train windows")
+        # Create windows
         X_train_windows, y_train_windows = create_windows(self.X_train, self.y_train, window_size)
-        progress.finish()
-
-        print("Creating validation windows...")
-        progress = ProgressBar(len(self.X_val) - window_size + 1, "Val windows")
         X_val_windows, y_val_windows = create_windows(self.X_val, self.y_val, window_size)
-        progress.finish()
-
-        print("Creating test windows...")
-        progress = ProgressBar(len(self.X_test) - window_size + 1, "Test windows")
         X_test_windows, y_test_windows = create_windows(self.X_test, self.y_test, window_size)
-        progress.finish()
 
         # Convert to tensors
         X_train_tensor = torch.tensor(X_train_windows, dtype=torch.float32)
@@ -215,44 +139,21 @@ class SleepEDFDataLoader:
         X_test_tensor = torch.tensor(X_test_windows, dtype=torch.float32)
         y_test_tensor = torch.tensor(y_test_windows, dtype=torch.long)
 
-        # Create datasets
+        # Create datasets and loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
         test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 
-        # Optimized data loaders
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=True,  # Faster GPU transfer
-            persistent_workers=True if self.num_workers > 0 else False
-        )
-
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=True
-        )
-
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=True
-        )
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         print(f"Data loaders created: Train={len(train_dataset)}, Val={len(val_dataset)}, Test={len(test_dataset)}")
 
         return train_loader, val_loader, test_loader
 
 # --- Training Functions ---
-def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer,
-                   device: str, progress_bar: ProgressBar) -> Tuple[float, float]:
+def train_one_epoch(model, loader, criterion, optimizer, device):
     model.train()
     running_loss = 0.0
     correct = 0
@@ -262,25 +163,19 @@ def train_one_epoch(model: nn.Module, loader: DataLoader, criterion, optimizer,
         Xb, yb = Xb.to(device), yb.to(device)
 
         optimizer.zero_grad()
-        logits = model(Xb)
-        loss = criterion(logits, yb)
+        outputs = model(Xb)
+        loss = criterion(outputs, yb)
         loss.backward()
-
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
         optimizer.step()
 
         running_loss += loss.item() * Xb.size(0)
-        correct += (logits.argmax(dim=1) == yb).sum().item()
+        correct += (outputs.argmax(dim=1) == yb).sum().item()
         total += yb.size(0)
-
-        progress_bar.update(Xb.size(0))
 
     return running_loss / total, correct / total
 
 @torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, criterion, device: str) -> Tuple[float, float]:
+def evaluate(model, loader, criterion, device):
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -288,200 +183,183 @@ def evaluate(model: nn.Module, loader: DataLoader, criterion, device: str) -> Tu
 
     for Xb, yb in loader:
         Xb, yb = Xb.to(device), yb.to(device)
-        logits = model(Xb)
-        loss = criterion(logits, yb)
+        outputs = model(Xb)
+        loss = criterion(outputs, yb)
 
         running_loss += loss.item() * Xb.size(0)
-        correct += (logits.argmax(dim=1) == yb).sum().item()
+        correct += (outputs.argmax(dim=1) == yb).sum().item()
         total += yb.size(0)
 
     return running_loss / total, correct / total
 
-# --- Main Training Function ---
 def main():
-    print("=" * 80)
-    print("SLEEP-EDF PYTORCH TRAINING - OPTIMIZED FOR LARGE DATASET")
-    print("=" * 80)
+    print("="*70)
+    print("TRAINING SLEEP-EDF BASELINE MODEL")
+    print("="*70)
 
+    # Paths
     base_dir = Path(__file__).parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/sleep-edf")
-    models_dir = str(base_dir / "models/sleep-edf/baseline_torch")
-    results_dir = str(base_dir / "results/sleep-edf/baseline")
+    models_output_dir = str(base_dir / "models/sleep-edf/baseline_torch")
+    results_output_dir = str(base_dir / "results/sleep-edf/baseline")
 
-    # Load data efficiently
-    print("Loading Sleep-EDF dataset...")
-    data_loader = SleepEDFDataLoader(data_dir, batch_size=256, num_workers=4)
+    # Create directories
+    os.makedirs(models_output_dir, exist_ok=True)
+    os.makedirs(results_output_dir, exist_ok=True)
 
-    # Get data loaders
+    # Load processed data
+    print("Loading processed Sleep-EDF data...")
+    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_dir)
+
+    print(f"\nDataset info:")
+    print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+    print(f"  Classes: {info['n_classes']} ({info['class_names']})")
+
+    # Create data loaders
+    data_loader = SleepEDFDataLoader(data_dir, batch_size=64)
     train_loader, val_loader, test_loader = data_loader.get_dataloaders(window_size=10)
 
     # Model configuration
-    input_size = data_loader.X_train.shape[1]  # n_features
+    input_size = X_train.shape[1]
     hidden_size = 128
     num_layers = 2
-    num_classes = len(np.unique(data_loader.y_train))
-    dropout = 0.3
+    num_classes = len(info['class_names'])
 
     print(f"\nModel configuration:")
     print(f"  Input size: {input_size}")
     print(f"  Hidden size: {hidden_size}")
     print(f"  Num layers: {num_layers}")
     print(f"  Num classes: {num_classes}")
-    print(f"  Dropout: {dropout}")
 
     # Initialize model
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = SleepEDFLSTM(
-        input_size=input_size,
-        hidden_size=hidden_size,
-        num_layers=num_layers,
-        num_classes=num_classes,
-        dropout=dropout
-    ).to(device)
+    model = SimpleLSTM(input_size, hidden_size, num_layers, num_classes).to(device)
 
-    # Initialize weights deterministically
-    def init_weights(m):
-        if isinstance(m, (nn.Linear, nn.LSTM)):
-            if hasattr(m, 'weight') and m.weight is not None:
-                nn.init.xavier_uniform_(m.weight)
-            if hasattr(m, 'bias') and m.bias is not None and isinstance(m.bias, torch.Tensor):
-                nn.init.zeros_(m.bias)
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    model.apply(init_weights)
-
-    # Class weights for imbalanced data
-    class_weights = torch.tensor(
-        compute_class_weight('balanced', classes=np.unique(data_loader.y_train), y=data_loader.y_train),
-        dtype=torch.float32, device=device
-    )
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-
-    # Optimizer with weight decay
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
-
-    # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
-    )
-
-    # Training configuration
-    epochs = 100
-    patience = 15
-    best_val_loss = float('inf')
-    epochs_no_improve = 0
-
-    # Training history
-    history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": []}
-
+    # Training
     print(f"\nStarting training on {device}...")
-    print(f"Total training samples: {len(train_loader.dataset)}")
-    print(f"Total validation samples: {len(val_loader.dataset)}")
-    print(f"Batch size: {train_loader.batch_size}")
+    num_epochs = 100
+    best_val_loss = float('inf')
+    patience_counter = 0
 
-    total_start_time = time.time()
+    for epoch in range(num_epochs):
+        # Training
+        model.train()
+        train_loss = 0.0
+        train_correct = 0
+        train_total = 0
 
-    for epoch in range(1, epochs + 1):
-        epoch_start_time = time.time()
+        # Progress bar for training
+        train_progress = ProgressBar(len(train_loader.dataset), f"Epoch {epoch+1:3d} - Training")
 
-        # Training phase
-        train_progress = ProgressBar(len(train_loader.dataset), f"Epoch {epoch:3d} - Training")
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, train_progress)
+        for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(X_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item() * X_batch.size(0)
+            train_correct += (outputs.argmax(dim=1) == y_batch).sum().item()
+            train_total += y_batch.size(0)
+
+            train_progress.update(X_batch.size(0))
+
         train_progress.finish()
+        train_loss /= train_total
+        train_acc = train_correct / train_total
 
-        # Validation phase
-        val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        val_correct = 0
+        val_total = 0
 
-        # Update scheduler
-        scheduler.step(val_loss)
+        with torch.no_grad():
+            for X_batch, y_batch in val_loader:
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+                outputs = model(X_batch)
+                loss = criterion(outputs, y_batch)
 
-        # Update history
-        history["loss"].append(float(train_loss))
-        history["accuracy"].append(float(train_acc))
-        history["val_loss"].append(float(val_loss))
-        history["val_accuracy"].append(float(val_acc))
+                val_loss += loss.item() * X_batch.size(0)
+                val_correct += (outputs.argmax(dim=1) == y_batch).sum().item()
+                val_total += y_batch.size(0)
 
-        epoch_time = time.time() - epoch_start_time
+        val_loss /= val_total
+        val_acc = val_correct / val_total
 
-        # Print progress
-        print(f" | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f} | "
-              f"LR: {optimizer.param_groups[0]['lr']:.6f} | Time: {epoch_time:.1f}s")
+        print(f"Epoch {epoch+1:3d}: loss={train_loss:.4f} acc={train_acc:.4f} | val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
 
-        # Check for improvement
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), os.path.join(models_dir, 'best_model.pth'))
-            epochs_no_improve = 0
+        # Early stopping
+        if epoch > 10 and val_loss > best_val_loss:
+            patience_counter += 1
+            if patience_counter >= 5:
+                print("Early stopping triggered.")
+                break
         else:
-            epochs_no_improve += 1
-
-        if epochs_no_improve >= patience:
-            print(f"Early stopping triggered after {epoch} epochs.")
-            break
-
-    total_time = time.time() - total_start_time
-
-    # Load best model
-    model.load_state_dict(torch.load(os.path.join(models_dir, 'best_model.pth'), map_location=device))
+            patience_counter = 0
+            best_val_loss = val_loss
 
     # Evaluate on test set
-    print("\nEvaluating on test set...")
-    test_loss, test_acc = evaluate(model, test_loader, criterion, device)
-
-    # Detailed evaluation
+    print(f"\nEvaluating model...")
     model.eval()
+    test_correct = 0
+    test_total = 0
     y_true, y_pred = [], []
-    for Xb, yb in test_loader:
-        Xb = Xb.to(device)
-        preds = model(Xb).argmax(dim=1).cpu().numpy()
-        y_pred.extend(preds)
-        y_true.extend(yb.numpy())
 
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
+    with torch.no_grad():
+        for X_batch, y_batch in test_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            outputs = model(X_batch)
+            predictions = outputs.argmax(dim=1)
+
+            test_correct += (predictions == y_batch).sum().item()
+            test_total += y_batch.size(0)
+            y_true.extend(y_batch.cpu().numpy())
+            y_pred.extend(predictions.cpu().numpy())
+
+    test_acc = test_correct / test_total
 
     # Calculate detailed metrics
+    from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
     precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
     f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
     cm = confusion_matrix(y_true, y_pred)
 
     # Save results
-    os.makedirs(models_dir, exist_ok=True)
-    os.makedirs(results_dir, exist_ok=True)
-
     results = {
         'accuracy': float(test_acc),
         'precision': float(precision),
         'recall': float(recall),
         'f1_score': float(f1),
         'confusion_matrix': cm.tolist(),
-        'class_names': ['W', 'N1', 'N2', 'N3', 'R']  # Sleep stages
+        'class_names': info['class_names']
     }
 
-    # Save model and results
-    with open(os.path.join(models_dir, 'history_sleep_edf.json'), 'w') as f:
-        json.dump({**history, 'epochs': len(history['loss']), 'total_time': total_time}, f, indent=2)
-
-    with open(os.path.join(models_dir, 'results_sleep_edf.json'), 'w') as f:
+    with open(os.path.join(models_output_dir, 'results_sleep_edf.json'), 'w') as f:
         json.dump(results, f, indent=2)
 
-    with open(os.path.join(results_dir, 'baseline_results.json'), 'w') as f:
+    with open(os.path.join(results_output_dir, 'baseline_results.json'), 'w') as f:
         json.dump(results, f, indent=2)
 
     # Print final results
-    print("\n" + "=" * 80)
+    print(f"\n" + "="*70)
     print("TRAINING COMPLETE!")
-    print("=" * 80)
-    print(f"Final Test Accuracy:  {test_acc:.4f}")
-    print(f"Final Test F1-Score:  {f1:.4f}")
-    print(f"Total Training Time:   {total_time:.1f}s ({total_time/60:.1f} min)")
-    print(f"Best Validation Loss:  {best_val_loss:.4f}")
-    print(f"Epochs Completed:      {len(history['loss'])}")
+    print("="*70)
+    print(f"Final Test Accuracy: {test_acc:.4f}")
+    print(f"Final Test F1-Score: {f1:.4f}")
+
     print(f"\nConfusion Matrix:")
     print(f"  Predicted →")
     print(f"  Actual ↓")
     for i, row in enumerate(cm):
-        print(f"  {results['class_names'][i]:8s}: {row}")
+        print(f"  {info['class_names'][i]:8s}: {row}")
 
     return 0
 
