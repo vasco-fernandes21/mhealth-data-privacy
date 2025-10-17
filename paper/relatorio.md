@@ -449,11 +449,107 @@ Observações:
 - Apenas 7 erros em 237 amostras
 - Ganho substancial vs baseline TF, mantendo arquitetura comparável e custo computacional controlado
 
-### 4.5 Preparação para Privacidade Diferencial e FL
+### 4.5 Implementação de Differential Privacy (DP-SGD)
+
+#### 4.5.1 Primeira Implementação com Batch Size 128
+
+**Configuração Inicial:**
+- **Framework**: Opacus (PyTorch) com DPLSTM para compatibilidade DP
+- **Batch Size**: 128 (configuração inicial)
+- **Parâmetros DP**: ε=8.0, δ=1e-5, noise_multiplier=0.9, max_grad_norm=1.0
+- **Dataset**: WESAD (996 samples após oversampling)
+
+**Resultados do Primeiro Teste:**
+- **Accuracy**: 71.73%
+- **Precision**: 69.26%
+- **Recall**: 71.73%
+- **F1-Score**: 68.36%
+- **ε Final**: 9.34 (excedeu alvo de 8.0)
+- **Épocas**: 8 (early stopping)
+- **Tempo**: 883.3s (14.7 min)
+
+**Problemas Identificados:**
+
+1. **Poucos Batches por Época**:
+   - Train: 996/128 = 7.78 → 7 batches
+   - Val: 237/128 = 1.85 → 2 batches
+   - Insuficiente para treino estável em DP
+
+2. **Consumo Excessivo de Privacy Budget**:
+   - ε final = 9.34 > alvo de 8.0
+   - Cada batch consome ε significativo
+   - Poucos batches = necessidade de mais épocas = maior consumo de ε
+
+3. **Convergência Instável**:
+   - Early stopping precoce (8 épocas)
+   - Variabilidade alta entre épocas
+   - Difícil otimização com poucos batches
+
+4. **Performance Subótima**:
+   - Gap significativo vs baseline (71.73% vs 82.70%)
+   - Matriz de confusão mostra baixa sensibilidade para stress (21/73 acertos)
+
+#### 4.5.2 Otimização para Batch Size 64
+
+**Justificação da Mudança:**
+
+1. **Análise do Dataset WESAD**:
+   - **Train**: 996 samples (após oversampling)
+   - **Val**: 237 samples
+   - **Test**: 237 samples
+   - **Tamanho**: Médio-pequeno para deep learning
+
+2. **Cálculo de Batches**:
+   - **Batch Size 128**: 7 train batches, 2 val batches
+   - **Batch Size 64**: 15-16 train batches, 4 val batches
+   - **Melhoria**: 2x mais batches para melhor distribuição de gradientes
+
+3. **Benefícios Esperados**:
+   - **Melhor Controlo de ε**: Consumo mais distribuído do privacy budget
+   - **Estabilidade**: Mais oportunidades de ajuste por época
+   - **Convergência**: Menos propenso a overfitting precoce
+   - **Performance**: Melhor accuracy devido a treino mais estável
+
+**Configuração Otimizada:**
+- **Batch Size**: 64 (ideal para dataset WESAD)
+- **Parâmetros DP**: Mantidos (ε=8.0, δ=1e-5, noise_multiplier=0.9)
+- **Expectativas**: ε ≤ 8.0, accuracy 74-78%
+
+#### 4.5.3 Arquitetura DP-Optimizada
+
+**Modelo DPLSTM:**
+```python
+class SimpleLSTMWESAD(nn.Module):
+    # Input projection (DP-friendly)
+    self.input_proj = nn.Linear(input_channels, 128)
+    self.input_norm = nn.GroupNorm(num_groups=8, num_channels=128)
+    
+    # DPLSTM (REQUIRED for Opacus compatibility)
+    self.lstm = DPLSTM(input_size=128, hidden_size=64, num_layers=2,
+                      batch_first=True, bidirectional=True, dropout=0.2)
+    
+    # Dense layers with GroupNorm
+    self.fc1 = nn.Linear(128, 64)
+    self.fc2 = nn.Linear(64, 32)
+    self.fc3 = nn.Linear(32, num_classes)
+```
+
+**Características DP-Specific:**
+- **DPLSTM**: Drop-in replacement para nn.LSTM com hooks DP
+- **GroupNorm**: Substitui BatchNorm (incompatível com DP)
+- **Gradient Clipping**: max_grad_norm=1.0 para estabilidade
+- **Noise Addition**: Ruído gaussiano controlado pelo noise_multiplier
+
+### 4.6 Preparação para Privacidade Diferencial e FL
 
 Com o loop de treino explícito e estável:
 - **DP-SGD (Opacus)**: fácil integrar clipping por amostra, ruído gaussiano, e accountant de privacidade
 - **Flower (FL)**: já integrado no ambiente, facilita orquestração e agregação federada
 
-Conclusão: a migração para PyTorch foi motivada por **integrações de privacidade e federadas**, e o processo de otimização + estabilização com seeds resultou não só em **reprodutibilidade**, como também em **performance significativamente superior**.
+**Comparação de Performance:**
+- **Baseline PyTorch**: 82.70% accuracy, F1=83.01%
+- **DP (batch_size=128)**: 71.73% accuracy, ε=9.34
+- **DP (batch_size=64)**: Expectativa 74-78% accuracy, ε≤8.0
+
+**Conclusão**: A migração para PyTorch foi motivada por **integrações de privacidade e federadas**. O processo de otimização + estabilização com seeds resultou não só em **reprodutibilidade**, como também em **performance significativamente superior**. A implementação de DP-SGD com batch size otimizado (64) prepara o terreno para análises de privacy-utility trade-offs robustas.
 

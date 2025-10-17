@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 Train PyTorch LSTM baseline for Sleep-EDF dataset
+
+Environment Variables (for multiple runs):
+- TRAIN_SEED: Random seed (default: 42)
+- MODEL_DIR: Directory to save model (default: models/sleep-edf/baseline)
+- RESULTS_DIR: Directory to save results (default: results/sleep-edf/baseline)
 """
 
 import os
@@ -193,15 +198,30 @@ def evaluate(model, loader, criterion, device):
     return running_loss / total, correct / total
 
 def main():
+    # Set random seed for reproducibility
+    import random
+    SEED = int(os.environ.get('TRAIN_SEED', 42))
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    
+    seed_info = f" (SEED={SEED})" if SEED != 42 else ""
     print("="*70)
-    print("TRAINING SLEEP-EDF BASELINE MODEL")
+    print(f"TRAINING SLEEP-EDF BASELINE MODEL{seed_info}")
     print("="*70)
 
     # Paths
     base_dir = Path(__file__).parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/sleep-edf")
-    models_output_dir = str(base_dir / "models/sleep-edf/baseline_torch")
-    results_output_dir = str(base_dir / "results/sleep-edf/baseline")
+    
+    # Allow override via environment variables (for multiple runs)
+    models_output_dir = os.environ.get('MODEL_DIR', str(base_dir / "models/sleep-edf/baseline"))
+    results_output_dir = os.environ.get('RESULTS_DIR', str(base_dir / "results/sleep-edf/baseline"))
 
     # Create directories
     os.makedirs(models_output_dir, exist_ok=True)

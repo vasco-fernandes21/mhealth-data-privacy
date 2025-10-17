@@ -7,6 +7,11 @@ LSTM-only architecture optimized for:
 - Compatibility with Differential Privacy and Federated Learning
 - Stable convergence across different environments
 - Efficient training and inference
+
+Environment Variables (for multiple runs):
+- TRAIN_SEED: Random seed (default: 42)
+- MODEL_DIR: Directory to save model (default: models/wesad/baseline)
+- RESULTS_DIR: Directory to save results (default: results/wesad/baseline)
 """
 
 import os
@@ -30,7 +35,7 @@ from device_utils import get_optimal_device, print_device_info
 from preprocessing.wesad import load_processed_wesad_temporal
 
 # Fix random seeds for reproducible results
-SEED = 42
+SEED = int(os.environ.get('TRAIN_SEED', 42))
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -210,14 +215,18 @@ def evaluate_full_metrics(model: nn.Module, loader: DataLoader, device: str, cla
 
 # --- Main training loop ---
 def main():
+    # Print seed info
+    seed_info = f" (SEED={SEED})" if SEED != 42 else ""
     print("=" * 70)
-    print("WESAD BINARY STRESS CLASSIFICATION - PYTORCH BASELINE")
+    print(f"WESAD BINARY STRESS CLASSIFICATION - PYTORCH BASELINE{seed_info}")
     print("=" * 70)
 
     base_dir = Path(__file__).parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/wesad")
-    models_dir = str(base_dir / "models/wesad/baseline")
-    results_dir = str(base_dir / "results/wesad/baseline")
+    
+    # Allow override via environment variables (for multiple runs)
+    models_dir = os.environ.get('MODEL_DIR', str(base_dir / "models/wesad/baseline"))
+    results_dir = os.environ.get('RESULTS_DIR', str(base_dir / "results/wesad/baseline"))
 
     X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info = load_processed_wesad_temporal(data_dir)
     if X_train.shape[1] < X_train.shape[2]:

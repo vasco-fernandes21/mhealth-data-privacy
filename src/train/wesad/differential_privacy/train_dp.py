@@ -12,6 +12,12 @@ Based on the optimized LSTM-only baseline for better DP compatibility:
 - Uses the same architecture as the new baseline (SimpleLSTMWESAD)
 - Maintains all DP optimizations (GroupNorm, reduced complexity)
 - Compatible with privacy guarantees and federated learning
+
+Environment Variables (for multiple runs):
+- TRAIN_SEED: Random seed (default: 42)
+- NOISE_MULTIPLIER: DP noise multiplier (default: 0.9)
+- MODEL_DIR: Directory to save model (default: models/wesad/dp)
+- RESULTS_DIR: Directory to save results (default: results/wesad/dp)
 """
 
 import os
@@ -42,7 +48,7 @@ from device_utils import get_optimal_device, print_device_info
 from preprocessing.wesad import load_processed_wesad_temporal
 
 # Fix random seeds for reproducible results
-SEED = 42
+SEED = int(os.environ.get('TRAIN_SEED', 42))
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -250,14 +256,19 @@ def evaluate_full_metrics(model, test_loader, device, class_names):
 
 # --- Main training function ---
 def main():
+    # Print seed and noise multiplier info
+    noise_mult = float(os.environ.get('NOISE_MULTIPLIER', 0.9))
+    seed_info = f" (SEED={SEED}, noise_mult={noise_mult})" if SEED != 42 or noise_mult != 0.9 else ""
     print("=" * 70)
-    print("WESAD BINARY STRESS CLASSIFICATION - DP (OPACUS)")
+    print(f"WESAD BINARY STRESS CLASSIFICATION - DP (OPACUS){seed_info}")
     print("=" * 70)
 
     base_dir = Path(__file__).parent.parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/wesad")
-    models_dir = str(base_dir / "models/wesad/dp")
-    results_dir = str(base_dir / "results/wesad/dp")
+    
+    # Allow override via environment variables (for multiple runs)
+    models_dir = os.environ.get('MODEL_DIR', str(base_dir / "models/wesad/dp"))
+    results_dir = os.environ.get('RESULTS_DIR', str(base_dir / "results/wesad/dp"))
 
     # Create output directories
     os.makedirs(models_dir, exist_ok=True)
@@ -294,7 +305,7 @@ def main():
         torch.tensor(y_test, dtype=torch.long)
     )
 
-    # Optimized batch sizes for DP (try 64 if memory allows)
+    # Optimized batch sizes for DP - 64 is ideal for this dataset size
     batch_size = 64
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True,
@@ -333,19 +344,20 @@ def main():
     # Setup Privacy Engine
     privacy_engine = PrivacyEngine()
 
-    # Make model compatible with DP
+    # Make model compatible with DP (use environment variable for noise_multiplier)
+    noise_multiplier = float(os.environ.get('NOISE_MULTIPLIER', 0.9))
     model, optimizer, train_loader = privacy_engine.make_private(
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
-        noise_multiplier=(1.0 if batch_size == 64 else 0.9),
+        noise_multiplier=noise_multiplier,
         max_grad_norm=MAX_GRAD_NORM,
         target_epsilon=TARGET_EPSILON,
         target_delta=TARGET_DELTA,
         poisson_sampling=True       # Standard accounting, better privacy bounds
     )
 
-    print(f"DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.9, max_grad_norm={MAX_GRAD_NORM}")
+    print(f"DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult={noise_multiplier}, max_grad_norm={MAX_GRAD_NORM}")
     print(f"Training config: {len(train_loader)} train batches, {len(val_loader)} val batches")
     print("Starting DP training loop...")
 
