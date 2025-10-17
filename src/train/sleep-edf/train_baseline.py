@@ -14,9 +14,9 @@ from torch.utils.data import TensorDataset, DataLoader
 from pathlib import Path
 from typing import Tuple
 
-# Add src to path
+# Add src to path and import device utilities
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
+from device_utils import get_optimal_device, print_device_info
 from preprocessing.sleep_edf import load_processed_sleep_edf
 
 # --- Progress Bar with ETA ---
@@ -231,8 +231,11 @@ def main():
     print(f"  Num layers: {num_layers}")
     print(f"  Num classes: {num_classes}")
 
+    # Configure device for hardware acceleration (CUDA > MPS > CPU)
+    device = get_optimal_device()
+
     # Initialize model
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print_device_info()
     model = SimpleLSTM(input_size, hidden_size, num_layers, num_classes).to(device)
 
     # Loss and optimizer

@@ -28,18 +28,27 @@ from collections import Counter
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 
+# Import device utilities
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from device_utils import get_optimal_device, print_device_info
+from preprocessing.wesad import load_processed_wesad_temporal
+
 # Fix random seeds for reproducible results
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from preprocessing.wesad import load_processed_wesad_temporal
+# Configure device-aware seeding and performance
+device = get_optimal_device()
+if device.type == "cuda":
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+elif device.type == "mps":
+    torch.mps.manual_seed(SEED)
+    # MPS doesn't have deterministic/benchmark options like CUDA
 
 # --- Custom CNN-LSTM model with BatchNorm & SpatialDropout equivalent ---
 class CNNLSTMWESAD(nn.Module):
@@ -246,7 +255,8 @@ def main():
                                                               batch_size=32, balance='oversample', augment=True,
                                                               noise_std=0.01, max_time_shift=8)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Device is already configured at module level - just print info
+    print_device_info()
     model = CNNLSTMWESAD(input_channels=X_train.shape[1], num_classes=len(info['class_names'])).to(device)
 
     # Initialize weights deterministically for reproducible results

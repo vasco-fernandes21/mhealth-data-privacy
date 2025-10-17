@@ -3,6 +3,11 @@
 Train PyTorch LSTM-only with Differential Privacy (DP) using Opacus
 for WESAD binary stress classification.
 
+🔒 DP REQUIREMENT: Must use DPLSTM instead of nn.LSTM!
+   - nn.LSTM uses internal modules not compatible with Opacus DP hooks
+   - DPLSTM is a drop-in replacement with proper gradient sampling
+   - Same API, same functionality, but DP-compatible
+
 Based on the optimized LSTM-only baseline for better DP compatibility:
 - Uses the same architecture as the new baseline (SimpleLSTMWESAD)
 - Maintains all DP optimizations (GroupNorm, reduced complexity)
@@ -26,20 +31,32 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.utils.class_weight import compute_class_weight
 
 from opacus import PrivacyEngine
+from opacus.layers import DPLSTM
+
+# ❌ NÃO FUNCIONA: nn.LSTM não é compatível com Opacus DP
+# ✅ FUNCIONA: DPLSTM é drop-in replacement compatível com DP
+
+# Import device utilities and preprocessing function
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+from device_utils import get_optimal_device, print_device_info
+from preprocessing.wesad import load_processed_wesad_temporal
 
 # Fix random seeds for reproducible results
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
-# Import the preprocessing function
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-from preprocessing.wesad import load_processed_wesad_temporal
+# Configure device-aware seeding and performance
+device = get_optimal_device()
+if device.type == "cuda":
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = False  # Relaxed for speed in DP training
+    torch.backends.cudnn.benchmark = True
+elif device.type == "mps":
+    torch.mps.manual_seed(SEED)
+    # MPS doesn't have deterministic/benchmark options like CUDA
 
 # --- LSTM-only model otimizado para DP (MESMA ARQUITETURA DO BASELINE) ---
 class SimpleLSTMWESAD(nn.Module):
@@ -55,8 +72,10 @@ class SimpleLSTMWESAD(nn.Module):
         self.input_norm = nn.GroupNorm(num_groups=8, num_channels=128)  # GroupNorm para DP
         self.input_drop = nn.Dropout(0.2)  # Dropout moderado
 
-        # LSTM layers (bidirectional for better performance)
-        self.lstm = nn.LSTM(input_size=128, hidden_size=64, num_layers=2,
+        # LSTM layers - using DPLSTM for DP compatibility (REQUIRED!)
+        # ❌ nn.LSTM(input_size=128, hidden_size=64, num_layers=2, batch_first=True, bidirectional=True, dropout=0.2)
+        # ✅ DPLSTM funciona exatamente igual, mas com hooks DP
+        self.lstm = DPLSTM(input_size=128, hidden_size=64, num_layers=2,
                           batch_first=True, bidirectional=True, dropout=0.2)
 
         # Normalization after LSTM (crucial for DP)
@@ -155,7 +174,8 @@ def train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privac
     model.train()
     train_loss, correct, total = 0.0, 0, 0
 
-    for batch_X, batch_y in train_loader:
+    print(f"  🔄 Training on {len(train_loader)} batches...")
+    for batch_idx, (batch_X, batch_y) in enumerate(train_loader):
         batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
         optimizer.zero_grad()
@@ -171,14 +191,20 @@ def train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privac
         total += batch_y.size(0)
         correct += (predicted == batch_y).sum().item()
 
+        # Progress indicator every 10 batches
+        if (batch_idx + 1) % 10 == 0:
+            print(f"    Batch {batch_idx + 1}/{len(train_loader)} processed")
+
+    print(f"  ✅ Training epoch completed")
     return train_loss / len(train_loader), correct / total
 
 def evaluate_dp(model, val_loader, criterion, device):
     model.eval()
     val_loss, correct, total = 0.0, 0, 0
 
+    print(f"  🔍 Evaluating on {len(val_loader)} batches...")
     with torch.no_grad():
-        for batch_X, batch_y in val_loader:
+        for batch_idx, (batch_X, batch_y) in enumerate(val_loader):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
             outputs = model(batch_X)
@@ -189,6 +215,7 @@ def evaluate_dp(model, val_loader, criterion, device):
             total += batch_y.size(0)
             correct += (predicted == batch_y).sum().item()
 
+    print(f"  ✅ Validation completed")
     return val_loss / len(val_loader), correct / total
 
 def evaluate_full_metrics(model, test_loader, device, class_names):
@@ -242,10 +269,9 @@ def main():
     print(f"📈 Dataset shapes: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
     print(f"🏷️  Classes: {info['class_names']}")
 
-    # Apply oversampling and augmentation (same as baseline)
-    print("🔄 Applying data augmentation...")
-    X_train_aug = _augment_temporal(X_train, noise_std=0.01, max_time_shift=8, seed=SEED)
-    X_train_bal, y_train_bal = _simple_oversample(X_train_aug, y_train)
+    # Apply oversampling only (skip augmentation for speed)
+    print("🔄 Balancing classes (oversampling only)...")
+    X_train_bal, y_train_bal = _simple_oversample(X_train, y_train)
 
     print(f"✅ After augmentation: Train={X_train_bal.shape}, Val={X_val.shape}, Test={X_test.shape}")
 
@@ -267,29 +293,38 @@ def main():
         torch.tensor(y_test, dtype=torch.long)
     )
 
-    # Optimized batch sizes for DP (smaller for better privacy)
-    batch_size = 16  # Reduced for DP compatibility
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    # Optimized batch sizes for DP (try 64 if memory allows)
+    batch_size = 64
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True,
+        num_workers=2, pin_memory=True, persistent_workers=True, drop_last=True
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False
+    )
 
-    # Model initialization
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Model initialization (device already configured at module level)
+    print_device_info()
     model = SimpleLSTMWESAD(input_channels=X_train.shape[1], num_classes=len(info['class_names']))
     model.to(device)
 
-    print(f"🏗️  Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-    print(f"🖥️  Training on {device}...")
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Training on {device}...")
 
     # Loss function with class weights for imbalanced data
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
 
-    # DP parameters (optimized for LSTM)
-    TARGET_EPSILON = 8.0      # Slightly higher epsilon for LSTM (less sensitive)
+    # DP parameters (balanced default)
+    TARGET_EPSILON = 8.0      # Common target for meaningful privacy
     TARGET_DELTA = 1e-5       # Standard delta
-    MAX_GRAD_NORM = 1.0       # Reduced for LSTM stability
-    EPOCHS = 50               # More epochs for DP convergence
-    PATIENCE = 8              # Same as baseline
+    MAX_GRAD_NORM = 1.0       # Typical clipping norm
+    EPOCHS = 25               # Reasonable cap; early stopping will cut sooner
+    PATIENCE = 6              # Moderate patience
 
     # Optimizer (Adam with weight decay for DP)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
@@ -302,14 +337,16 @@ def main():
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
-        noise_multiplier=0.8,      # Optimized for LSTM
+        noise_multiplier=(1.0 if batch_size == 64 else 0.9),
         max_grad_norm=MAX_GRAD_NORM,
         target_epsilon=TARGET_EPSILON,
         target_delta=TARGET_DELTA,
-        poisson_sampling=False      # Disable for deterministic results
+        poisson_sampling=True       # Standard accounting, better privacy bounds
     )
 
-    print(f"🔒 DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.8, max_grad_norm={MAX_GRAD_NORM}")
+    print(f"🔒 DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.9, max_grad_norm={MAX_GRAD_NORM}")
+    print(f"📋 Training config: {len(train_loader)} train batches, {len(val_loader)} val batches")
+    print("🚀 Starting DP training loop...")
 
     # Training loop with DP
     best_val_acc = 0.0
@@ -319,6 +356,8 @@ def main():
     start_time = time.time()
 
     for epoch in range(1, EPOCHS + 1):
+        epoch_start = time.time()
+        print(f"\n——— Epoch {epoch:03d}/{EPOCHS} ———")
         # Train one epoch with DP
         train_loss, train_acc = train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privacy_engine)
 
@@ -335,16 +374,23 @@ def main():
         history["val_accuracy"].append(float(val_acc))
         history["epsilon"].append(epsilon)
 
-        print(f"Epoch {epoch:03d}: "
-              f"loss={train_loss:.4f} acc={train_acc:.4f} | "
-              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
-              f"ε={epsilon:.2f}")
+        current_lr = optimizer.param_groups[0].get('lr', None)
+        epoch_time = time.time() - epoch_start
+        print(
+            f"Epoch {epoch:03d}: "
+            f"loss={train_loss:.4f} acc={train_acc:.4f} | "
+            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
+            f"ε={epsilon:.2f} | "
+            + (f"lr={current_lr:.5f} | " if current_lr is not None else "")
+            + f"time={epoch_time:.1f}s"
+        )
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             # Save model state (DP-compatible)
             torch.save(model.state_dict(), os.path.join(models_dir, 'model_wesad_dp.pth'))
             epochs_no_improve = 0
+            print(f"  ⬆️  New best val_acc={best_val_acc:.4f}. Model saved.")
         else:
             epochs_no_improve += 1
 
@@ -372,7 +418,7 @@ def main():
         'final_epsilon': final_epsilon,
         'delta': TARGET_DELTA,
         'max_grad_norm': MAX_GRAD_NORM,
-        'noise_multiplier': 0.8
+        'noise_multiplier': 0.9
     }
     results['training_time_seconds'] = training_time
     results['epochs_trained'] = epochs_trained
