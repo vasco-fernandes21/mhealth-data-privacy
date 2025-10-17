@@ -8,12 +8,13 @@ This module handles:
 - Normalization and train/val/test splitting
 """
 
-from .sleep_edf import preprocess_sleep_edf, extract_sleep_features
+from .sleep_edf import preprocess_sleep_edf, extract_sleep_features, load_processed_sleep_edf
 from .wesad import preprocess_wesad_temporal, load_processed_wesad_temporal
 
 __all__ = [
     "preprocess_sleep_edf",
     "extract_sleep_features",
+    "load_processed_sleep_edf",
     "preprocess_wesad_temporal",
     "load_processed_wesad_temporal",
 ]
