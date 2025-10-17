@@ -32,7 +32,8 @@ import flwr as fl
 from flwr.common import Metrics
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent  # /content/mhealth-data-privacy
+sys.path.insert(0, str(repo_root))
 from device_utils import get_optimal_device, print_device_info
 from preprocessing.wesad import load_processed_wesad_temporal
 
