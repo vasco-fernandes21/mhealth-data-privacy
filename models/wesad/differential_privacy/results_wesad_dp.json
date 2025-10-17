@@ -1,12 +1,12 @@
 {
-  "accuracy": 0.6835443037974683,
-  "precision": 0.6585094429025925,
-  "recall": 0.6835443037974683,
-  "f1_score": 0.664325189178539,
+  "accuracy": 0.6708860759493671,
+  "precision": 0.6471843490721799,
+  "recall": 0.6708860759493671,
+  "f1_score": 0.6542232199150575,
   "confusion_matrix": [
     [
-      138,
-      26
+      135,
+      29
     ],
     [
       49,
@@ -18,9 +18,9 @@
     "stress"
   ],
   "dp_params": {
-    "noise_multiplier": 0.8,
-    "max_grad_norm": 1.2,
+    "noise_multiplier": 0.6,
+    "max_grad_norm": 1.5,
     "delta": 1e-05,
-    "epsilon": 19.661751498484445
+    "epsilon": 14.44837758620683
   }
 }

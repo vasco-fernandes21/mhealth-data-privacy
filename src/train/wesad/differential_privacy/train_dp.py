@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Train PyTorch CNN-LSTM with Differential Privacy for WESAD dataset
+Train PyTorch LSTM-only with Differential Privacy (DP) using Opacus
+for WESAD binary stress classification.
+
+Based on the optimized LSTM-only baseline for better DP compatibility:
+- Uses the same architecture as the new baseline (SimpleLSTMWESAD)
+- Maintains all DP optimizations (GroupNorm, reduced complexity)
+- Compatible with privacy guarantees and federated learning
 """
 
 import os
@@ -19,6 +25,8 @@ from collections import Counter
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 
+from opacus import PrivacyEngine
+
 # Fix random seeds for reproducible results
 SEED = 42
 random.seed(SEED)
@@ -29,382 +37,378 @@ torch.cuda.manual_seed_all(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+# Import the preprocessing function
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from preprocessing.wesad import load_processed_wesad_temporal
 
-# --- Custom CNN-LSTM model without BatchNorm for Opacus compatibility ---
-class CNNLSTMWESAD(nn.Module):
+# --- LSTM-only model otimizado para DP (MESMA ARQUITETURA DO BASELINE) ---
+class SimpleLSTMWESAD(nn.Module):
+    """
+    LSTM-only architecture optimized for DP compatibility.
+    Same architecture as the new baseline for fair comparison.
+    """
     def __init__(self, input_channels: int, num_classes: int):
         super().__init__()
-        # First Conv block - similar to TensorFlow
-        self.conv1 = nn.Conv1d(input_channels, 32, kernel_size=7, padding=3)
-        self.pool1 = nn.MaxPool1d(2, stride=2)
-        self.dropout1 = nn.Dropout(0.2)
 
-        # Second Conv block
-        self.conv2 = nn.Conv1d(32, 64, kernel_size=5, padding=2)
-        self.pool2 = nn.MaxPool1d(2, stride=2)
-        self.dropout2 = nn.Dropout(0.2)
+        # Initial projection to reduce dimensionality (DP-friendly)
+        self.input_proj = nn.Linear(input_channels, 128)
+        self.input_norm = nn.GroupNorm(num_groups=8, num_channels=128)  # GroupNorm para DP
+        self.input_drop = nn.Dropout(0.2)  # Dropout moderado
 
-        # Third Conv block
-        self.conv3 = nn.Conv1d(64, 128, kernel_size=3, padding=1)
-        self.pool3 = nn.MaxPool1d(2, stride=2)
-        self.dropout3 = nn.Dropout(0.2)
+        # LSTM layers (bidirectional for better performance)
+        self.lstm = nn.LSTM(input_size=128, hidden_size=64, num_layers=2,
+                          batch_first=True, bidirectional=True, dropout=0.2)
 
-        # Additional conv layers with GroupNorm (DP-compatible)
-        self.conv4 = nn.Conv1d(128, 256, kernel_size=3, padding=1)
-        self.gn4 = nn.GroupNorm(32, 256)  # Groups of 32 for better DP compatibility
-        self.pool4 = nn.MaxPool1d(2, stride=2)
-        self.dropout4 = nn.Dropout(0.2)
+        # Normalization after LSTM (crucial for DP)
+        self.lstm_norm = nn.GroupNorm(num_groups=8, num_channels=128)  # 8 groups para 128 channels
+        self.lstm_drop = nn.Dropout(0.3)  # Dropout após LSTM
 
-        # Another conv layer for more capacity
-        self.conv5 = nn.Conv1d(256, 512, kernel_size=3, padding=1)
-        self.gn5 = nn.GroupNorm(64, 512)
-        self.pool5 = nn.MaxPool1d(2, stride=2)
-        self.dropout5 = nn.Dropout(0.2)
+        # Dense layers (simplified for DP)
+        self.fc1 = nn.Linear(128, 64)
+        self.fc1_norm = nn.GroupNorm(num_groups=8, num_channels=64)
+        self.fc1_drop = nn.Dropout(0.3)
 
-        # Global average pooling (DP-friendly)
-        # After all conv layers: (batch, 512, 60) -> (batch, 512)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc2_drop = nn.Dropout(0.2)
 
-        # Dense layers with stronger regularization for DP
-        self.dense1 = nn.Linear(512, 256)
-        self.dropout6 = nn.Dropout(0.3)
-        self.dense2 = nn.Linear(256, 128)
-        self.dropout7 = nn.Dropout(0.3)
-        self.dense3 = nn.Linear(128, num_classes)
+        self.fc3 = nn.Linear(32, num_classes)
 
     def forward(self, x):
-        # CNN layers
-        x = self.conv1(x)
+        # Input processing (batch, channels, timesteps) -> (batch, timesteps, channels)
+        x = x.permute(0, 2, 1)
+
+        # Initial projection and normalization
+        x = self.input_proj(x)
+        x = self.input_norm(x.transpose(1, 2)).transpose(1, 2)
         x = torch.relu(x)
-        x = self.pool1(x)
-        x = self.dropout1(x)
+        x = self.input_drop(x)
 
-        x = self.conv2(x)
+        # LSTM processing
+        lstm_out, (hn, cn) = self.lstm(x)
+
+        # Concatenate final hidden states from both directions
+        x = torch.cat([hn[-2], hn[-1]], dim=1)  # (batch, 128)
+
+        # Normalization after LSTM
+        x = self.lstm_norm(x.unsqueeze(2)).squeeze(2)
+        x = self.lstm_drop(x)
+
+        # Dense layers
+        x = self.fc1(x)
+        x = self.fc1_norm(x.unsqueeze(2)).squeeze(2)
         x = torch.relu(x)
-        x = self.pool2(x)
-        x = self.dropout2(x)
+        x = self.fc1_drop(x)
 
-        x = self.conv3(x)
+        x = self.fc2(x)
         x = torch.relu(x)
-        x = self.pool3(x)
-        x = self.dropout3(x)
+        x = self.fc2_drop(x)
 
-        x = self.conv4(x)
-        x = self.gn4(x)
-        x = torch.relu(x)
-        x = self.pool4(x)
-        x = self.dropout4(x)
+        out = self.fc3(x)
+        return out
 
-        x = self.conv5(x)
-        x = self.gn5(x)
-        x = torch.relu(x)
-        x = self.pool5(x)
-        x = self.dropout5(x)
+# --- Data augmentation & oversampling (mantido igual do baseline) ---
+def _simple_oversample(X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    counts = Counter(y.tolist())
+    classes = sorted(counts.keys())
+    max_count = max(counts.values())
+    Xb, yb = [], []
+    for c in classes:
+        idx = np.where(y == c)[0]
+        reps = int(np.ceil(max_count / len(idx)))
+        idx_rep = np.tile(idx, reps)[:max_count]
+        Xb.append(X[idx_rep])
+        yb.append(y[idx_rep])
+    Xb = np.concatenate(Xb, axis=0)
+    yb = np.concatenate(yb, axis=0)
+    perm = np.random.permutation(len(yb))
+    return Xb[perm], yb[perm]
 
-        # Global average pooling (DP-friendly)
-        x = torch.mean(x, dim=2)  # (batch, 512)
+def _augment_temporal(X: np.ndarray, noise_std: float = 0.01, max_time_shift: int = 8, seed: int = 42) -> np.ndarray:
+    """Apply deterministic temporal augmentation with fixed seed."""
+    rng = np.random.default_rng(seed)
+    X_aug = X.copy()
 
-        # Dense layers with stronger regularization
-        x = self.dense1(x)
-        x = torch.relu(x)
-        x = self.dropout6(x)
+    # Generate all random numbers at once for complete determinism
+    n_samples = X_aug.shape[0]
+    noise = rng.normal(0, noise_std, size=X_aug.shape)
+    shifts = rng.integers(-max_time_shift, max_time_shift + 1, size=n_samples)
 
-        x = self.dense2(x)
-        x = torch.relu(x)
-        x = self.dropout7(x)
+    # Apply noise
+    X_aug += noise
 
-        x = self.dense3(x)
+    # Apply time shifts
+    if max_time_shift > 0:
+        for i in range(n_samples):
+            shift = shifts[i]
+            if shift != 0:
+                if shift > 0:
+                    # Shift right (pad left, truncate right)
+                    X_aug[i] = np.pad(X_aug[i], ((0, 0), (shift, 0)), mode='edge')[:, :-shift]
+                else:
+                    # Shift left (pad right, truncate left)
+                    X_aug[i] = np.pad(X_aug[i], ((0, 0), (0, -shift)), mode='edge')[:, -shift:]
 
-        return x
+    return X_aug
 
-# --- Progress Bar with ETA ---
-class ProgressBar:
-    def __init__(self, total: int, description: str = ""):
-        self.total = total
-        self.description = description
-        self.current = 0
-        self.start_time = time.time()
-        self.last_update = 0
+# --- Training and evaluation functions (adaptado para DP) ---
+def train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privacy_engine):
+    model.train()
+    train_loss, correct, total = 0.0, 0, 0
 
-    def update(self, n: int = 1):
-        self.current += n
-        now = time.time()
+    for batch_X, batch_y in train_loader:
+        batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
-        # Update every 1% or at least every 5 seconds
-        if (self.current % max(1, self.total // 100) == 0 or
-            now - self.last_update >= 5.0):
-            self._display()
-            self.last_update = now
+        optimizer.zero_grad()
+        outputs = model(batch_X)
+        loss = criterion(outputs, batch_y)
+        loss.backward()
 
-    def _display(self):
-        elapsed = time.time() - self.start_time
-        rate = self.current / elapsed if elapsed > 0 else 0
-        remaining = (self.total - self.current) / rate if rate > 0 else 0
+        # Clip gradients for DP compatibility
+        optimizer.step()
 
-        percentage = min(100, (self.current / self.total) * 100)
+        train_loss += loss.item()
+        _, predicted = torch.max(outputs.data, 1)
+        total += batch_y.size(0)
+        correct += (predicted == batch_y).sum().item()
 
-        # Format time
-        if elapsed < 60:
-            elapsed_str = f"{elapsed:.1f}s"
-        elif elapsed < 3600:
-            elapsed_str = f"{elapsed/60:.1f}m"
-        else:
-            elapsed_str = f"{elapsed/3600:.1f}h"
+    return train_loss / len(train_loader), correct / total
 
-        if remaining < 60:
-            eta_str = f"{remaining:.0f}s"
-        elif remaining < 3600:
-            eta_str = f"{remaining/60:.0f}m"
-        else:
-            eta_str = f"{remaining/3600:.0f}h"
-
-        bar_length = 30
-        filled_length = int(bar_length * self.current // self.total)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
-
-        print(f"\r{self.description}: [{bar}] {percentage:5.1f}% | "
-              f"{self.current}/{self.total} | "
-              f"Elapsed: {elapsed_str} | ETA: {eta_str}", end="", flush=True)
-
-    def finish(self):
-        self.update(self.total - self.current)
-        print()  # New line
-
-def main():
-    print("="*70)
-    print("TRAINING WESAD WITH DIFFERENTIAL PRIVACY")
-    print("="*70)
-
-    # Paths
-    base_dir = Path(__file__).parent.parent.parent.parent.parent
-    data_dir = str(base_dir / "data/processed/wesad")
-    models_output_dir = str(base_dir / "models/wesad/differential_privacy")
-    results_output_dir = str(base_dir / "results/wesad/differential_privacy")
-
-    # Create directories
-    os.makedirs(models_output_dir, exist_ok=True)
-    os.makedirs(results_output_dir, exist_ok=True)
-
-    # Load processed data
-    print("Loading processed WESAD data...")
-    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_wesad_temporal(data_dir)
-
-    print(f"\nDataset info:")
-    print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-    print(f"  Classes: {info['n_classes']} ({info['class_names']})")
-    print(f"  Class distribution: {Counter(y_train)}")
-
-    # Create datasets and loaders
-    train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
-    val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.long))
-    test_dataset = TensorDataset(torch.tensor(X_test, dtype=torch.float32), torch.tensor(y_test, dtype=torch.long))
-
-    batch_size = 32
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    # Model configuration
-    input_channels = X_train.shape[1]
-    num_classes = len(info['class_names'])
-
-    print(f"\nModel configuration:")
-    print(f"  Input channels: {input_channels}")
-    print(f"  Num classes: {num_classes}")
-    print(f"  Batch size: {batch_size}")
-
-    # Initialize model
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = CNNLSTMWESAD(input_channels, num_classes).to(device)
-
-    # DP Configuration - Improved for better privacy-utility trade-off
-    print(f"\nDifferential Privacy configuration:")
-    noise_multiplier = 0.8  # Reduced for better utility while maintaining privacy
-    max_grad_norm = 1.2    # Slightly increased for stability
-    delta = 1e-5
-    sample_rate = batch_size / len(train_dataset)
-
-    print(f"  Noise multiplier: {noise_multiplier}")
-    print(f"  Max gradient norm: {max_grad_norm}")
-    print(f"  Delta: {delta}")
-    print(f"  Sample rate: {sample_rate:.4f}")
-
-    # Install opacus if not available
-    try:
-        from opacus import PrivacyEngine
-    except ImportError:
-        print("Installing opacus...")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "opacus"])
-        from opacus import PrivacyEngine
-
-    # Loss and optimizer (DP-compatible) - Improved hyperparameters
-    criterion = nn.CrossEntropyLoss()
-
-    # Use SGD with momentum for better DP performance
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=0.01,  # Higher LR for faster convergence
-        momentum=0.9,
-        weight_decay=1e-4  # L2 regularization for DP stability
-    )
-
-    # Make optimizer DP-compatible using new Opacus API
-    from opacus import GradSampleModule
-    from opacus.optimizers import DPOptimizer
-    
-    # Wrap model for DP
-    model = GradSampleModule(model)
-    
-    # Create DP optimizer
-    optimizer = DPOptimizer(
-        optimizer=optimizer,
-        noise_multiplier=noise_multiplier,
-        max_grad_norm=max_grad_norm,
-        expected_batch_size=batch_size
-    )
-
-    # Learning rate scheduler for better convergence
-    # Note: DPOptimizer doesn't expose underlying optimizer, so we'll use a simple step decay
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer.optimizer if hasattr(optimizer, 'optimizer') else optimizer,
-        step_size=20,
-        gamma=0.5
-    )
-
-    # Training
-    print(f"\nStarting improved DP training on {device}...")
-    num_epochs = 150  # More epochs for better convergence
-    best_val_loss = float('inf')
-    patience_counter = 0
-
-    for epoch in range(num_epochs):
-        # Training
-        model.train()
-        train_loss = 0.0
-        train_correct = 0
-        train_total = 0
-
-        # Progress bar for training
-        train_progress = ProgressBar(len(train_dataset), f"Epoch {epoch+1:3d} - Training")
-
-        for X_batch, y_batch in train_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-            optimizer.zero_grad()
-            outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item() * X_batch.size(0)
-            train_correct += (outputs.argmax(dim=1) == y_batch).sum().item()
-            train_total += y_batch.size(0)
-
-            train_progress.update(X_batch.size(0))
-
-        train_progress.finish()
-        train_loss /= train_total
-        train_acc = train_correct / train_total
-
-        # Validation
-        model.eval()
-        val_loss = 0.0
-        val_correct = 0
-        val_total = 0
-
-        with torch.no_grad():
-            for X_batch, y_batch in val_loader:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-                outputs = model(X_batch)
-                loss = criterion(outputs, y_batch)
-
-                val_loss += loss.item() * X_batch.size(0)
-                val_correct += (outputs.argmax(dim=1) == y_batch).sum().item()
-                val_total += y_batch.size(0)
-
-        val_loss /= val_total
-        val_acc = val_correct / val_total
-
-        print(f"Epoch {epoch+1:3d}: loss={train_loss:.4f} acc={train_acc:.4f} | val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
-
-        # Learning rate scheduling
-        scheduler.step(val_loss)
-
-        # Early stopping
-        if epoch > 15 and val_loss > best_val_loss:  # Increased patience
-            patience_counter += 1
-            if patience_counter >= 7:  # Increased patience
-                print("Early stopping triggered.")
-                break
-        else:
-            patience_counter = 0
-            best_val_loss = val_loss
-
-    # Evaluate on test set
-    print(f"\nEvaluating DP model...")
+def evaluate_dp(model, val_loader, criterion, device):
     model.eval()
-    y_true, y_pred = [], []
+    val_loss, correct, total = 0.0, 0, 0
 
     with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            outputs = model(X_batch)
-            predictions = outputs.argmax(dim=1)
+        for batch_X, batch_y in val_loader:
+            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
-            y_true.extend(y_batch.cpu().numpy())
-            y_pred.extend(predictions.cpu().numpy())
+            outputs = model(batch_X)
+            loss = criterion(outputs, batch_y)
 
-    # Calculate detailed metrics
-    test_acc = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
-    recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
-    f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
-    cm = confusion_matrix(y_true, y_pred)
+            val_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += batch_y.size(0)
+            correct += (predicted == batch_y).sum().item()
 
-    # Get privacy budget - calculate manually for Opacus 1.5.4
-    # Using RDP accountant formula: ε ≈ noise_multiplier * sqrt(epochs * sample_rate) for rough estimate
-    epochs_trained = epoch + 1
-    steps = epochs_trained * len(train_loader)
-    epsilon = noise_multiplier * np.sqrt(2 * np.log(1.25/delta)) * np.sqrt(steps * sample_rate)
+    return val_loss / len(val_loader), correct / total
 
-    # Save results
-    results = {
-        'accuracy': float(test_acc),
-        'precision': float(precision),
-        'recall': float(recall),
-        'f1_score': float(f1),
-        'confusion_matrix': cm.tolist(),
-        'class_names': info['class_names'],
-        'dp_params': {
-            'noise_multiplier': noise_multiplier,
-            'max_grad_norm': max_grad_norm,
-            'delta': delta,
-            'epsilon': float(epsilon)
-        }
+def evaluate_full_metrics(model, test_loader, device, class_names):
+    model.eval()
+    all_preds, all_labels = [], []
+
+    with torch.no_grad():
+        for batch_X, batch_y in test_loader:
+            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+            outputs = model(batch_X)
+            _, predicted = torch.max(outputs.data, 1)
+
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(batch_y.cpu().numpy())
+
+    # Calculate metrics
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)
+    recall = recall_score(all_labels, all_preds, average='weighted', zero_division=0)
+    f1 = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
+    cm = confusion_matrix(all_labels, all_preds).tolist()
+
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'confusion_matrix': cm,
+        'class_names': class_names
     }
 
-    with open(os.path.join(models_output_dir, 'results_wesad_dp.json'), 'w') as f:
+# --- Main training function ---
+def main():
+    print("=" * 70)
+    print("WESAD BINARY STRESS CLASSIFICATION - DP (OPACUS)")
+    print("=" * 70)
+
+    base_dir = Path(__file__).parent.parent.parent.parent.parent
+    data_dir = str(base_dir / "data/processed/wesad")
+    models_dir = str(base_dir / "models/wesad/dp")
+    results_dir = str(base_dir / "results/wesad/dp")
+
+    # Create output directories
+    os.makedirs(models_dir, exist_ok=True)
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Load and prepare data
+    print("📊 Loading processed WESAD data...")
+    X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info = load_processed_wesad_temporal(data_dir)
+
+    print(f"📈 Dataset shapes: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
+    print(f"🏷️  Classes: {info['class_names']}")
+
+    # Apply oversampling and augmentation (same as baseline)
+    print("🔄 Applying data augmentation...")
+    X_train_aug = _augment_temporal(X_train, noise_std=0.01, max_time_shift=8, seed=SEED)
+    X_train_bal, y_train_bal = _simple_oversample(X_train_aug, y_train)
+
+    print(f"✅ After augmentation: Train={X_train_bal.shape}, Val={X_val.shape}, Test={X_test.shape}")
+
+    # Compute class weights for imbalanced data
+    class_weights = compute_class_weight('balanced', classes=np.unique(y_train_bal), y=y_train_bal)
+    class_weights = torch.tensor(class_weights, dtype=torch.float32)
+
+    # Create datasets and loaders
+    train_dataset = TensorDataset(
+        torch.tensor(X_train_bal, dtype=torch.float32),
+        torch.tensor(y_train_bal, dtype=torch.long)
+    )
+    val_dataset = TensorDataset(
+        torch.tensor(X_val, dtype=torch.float32),
+        torch.tensor(y_val, dtype=torch.long)
+    )
+    test_dataset = TensorDataset(
+        torch.tensor(X_test, dtype=torch.float32),
+        torch.tensor(y_test, dtype=torch.long)
+    )
+
+    # Optimized batch sizes for DP (smaller for better privacy)
+    batch_size = 16  # Reduced for DP compatibility
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+
+    # Model initialization
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = SimpleLSTMWESAD(input_channels=X_train.shape[1], num_classes=len(info['class_names']))
+    model.to(device)
+
+    print(f"🏗️  Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"🖥️  Training on {device}...")
+
+    # Loss function with class weights for imbalanced data
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+
+    # DP parameters (optimized for LSTM)
+    TARGET_EPSILON = 8.0      # Slightly higher epsilon for LSTM (less sensitive)
+    TARGET_DELTA = 1e-5       # Standard delta
+    MAX_GRAD_NORM = 1.0       # Reduced for LSTM stability
+    EPOCHS = 50               # More epochs for DP convergence
+    PATIENCE = 8              # Same as baseline
+
+    # Optimizer (Adam with weight decay for DP)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+    # Setup Privacy Engine
+    privacy_engine = PrivacyEngine()
+
+    # Make model compatible with DP
+    model, optimizer, train_loader = privacy_engine.make_private(
+        module=model,
+        optimizer=optimizer,
+        data_loader=train_loader,
+        noise_multiplier=0.8,      # Optimized for LSTM
+        max_grad_norm=MAX_GRAD_NORM,
+        target_epsilon=TARGET_EPSILON,
+        target_delta=TARGET_DELTA,
+        poisson_sampling=False      # Disable for deterministic results
+    )
+
+    print(f"🔒 DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.8, max_grad_norm={MAX_GRAD_NORM}")
+
+    # Training loop with DP
+    best_val_acc = 0.0
+    epochs_no_improve = 0
+    history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": [], "epsilon": []}
+
+    start_time = time.time()
+
+    for epoch in range(1, EPOCHS + 1):
+        # Train one epoch with DP
+        train_loss, train_acc = train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privacy_engine)
+
+        # Evaluate on validation set
+        val_loss, val_acc = evaluate_dp(model, val_loader, criterion, device)
+
+        # Get current privacy budget (epsilon)
+        epsilon = privacy_engine.get_epsilon(TARGET_DELTA)
+
+        # Store metrics
+        history["loss"].append(float(train_loss))
+        history["accuracy"].append(float(train_acc))
+        history["val_loss"].append(float(val_loss))
+        history["val_accuracy"].append(float(val_acc))
+        history["epsilon"].append(epsilon)
+
+        print(f"Epoch {epoch:03d}: "
+              f"loss={train_loss:.4f} acc={train_acc:.4f} | "
+              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
+              f"ε={epsilon:.2f}")
+
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            # Save model state (DP-compatible)
+            torch.save(model.state_dict(), os.path.join(models_dir, 'model_wesad_dp.pth'))
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        # Early stopping
+        if epochs_no_improve >= PATIENCE:
+            print(f"⚠️  Early stopping triggered after {epoch} epochs (patience={PATIENCE})")
+            break
+
+        # Privacy budget warning
+        if epsilon >= TARGET_EPSILON * 1.1:
+             print(f"⚠️  WARNING: Privacy budget (ε={TARGET_EPSILON:.2f}) exceeded (current: ε={epsilon:.2f})")
+
+    training_time = time.time() - start_time
+    epochs_trained = len(history['loss'])
+
+    # Load best model and evaluate
+    model.load_state_dict(torch.load(os.path.join(models_dir, 'model_wesad_dp.pth'), map_location=device))
+    results = evaluate_full_metrics(model, test_loader, device, info['class_names'])
+
+    final_epsilon = history['epsilon'][-1] if history['epsilon'] else 0.0
+
+    # Add DP information to results
+    results['dp_params'] = {
+        'target_epsilon': TARGET_EPSILON,
+        'final_epsilon': final_epsilon,
+        'delta': TARGET_DELTA,
+        'max_grad_norm': MAX_GRAD_NORM,
+        'noise_multiplier': 0.8
+    }
+    results['training_time_seconds'] = training_time
+    results['epochs_trained'] = epochs_trained
+
+    # Save results
+    with open(os.path.join(models_dir, 'history_wesad_dp.json'), 'w') as f:
+        json.dump({**history, 'epochs': epochs_trained, 'training_time_seconds': training_time, 'final_epsilon': final_epsilon}, f, indent=2)
+    with open(os.path.join(models_dir, 'results_wesad_dp.json'), 'w') as f:
+        json.dump(results, f, indent=2)
+    with open(os.path.join(results_dir, 'dp_results.json'), 'w') as f:
         json.dump(results, f, indent=2)
 
-    with open(os.path.join(results_output_dir, 'dp_results.json'), 'w') as f:
-        json.dump(results, f, indent=2)
-
-    # Print final results
-    print(f"\n" + "="*70)
-    print("DP TRAINING COMPLETE!")
-    print("="*70)
-    print(f"Final Test Accuracy: {test_acc:.4f}")
-    print(f"Final Test F1-Score: {f1:.4f}")
-    print(f"Privacy Budget: ε = {epsilon:.2f}")
-
-    print(f"\nConfusion Matrix:")
-    print(f"  Predicted →")
-    print(f"  Actual ↓")
+    print("\n" + "=" * 70)
+    print("✅ DP TRAINING COMPLETE!")
+    print("=" * 70)
+    print(f"\n📊 FINAL RESULTS:")
+    print(f"  Epochs trained: {epochs_trained}")
+    print(f"  Training time: {training_time:.1f}s ({training_time/60:.1f} min)")
+    print(f"\n🔒 PRIVACY:")
+    print(f"  Final epsilon (ε): {final_epsilon:.2f} (target: {TARGET_EPSILON})")
+    print(f"  Delta (δ): {TARGET_DELTA}")
+    print(f"  Max grad norm: {MAX_GRAD_NORM}")
+    print(f"\n🎯 PERFORMANCE (Test Set):")
+    print(f"  Accuracy: {results['accuracy']:.4f} ({results['accuracy']*100:.2f}%)")
+    print(f"  Precision: {results['precision']:.4f}")
+    print(f"  Recall: {results['recall']:.4f}")
+    print(f"  F1-Score: {results['f1_score']:.4f}")
+    print(f"\n📈 CONFUSION MATRIX:")
+    cm = results['confusion_matrix']
+    class_names = results['class_names']
     for i, row in enumerate(cm):
-        print(f"  {info['class_names'][i]:8s}: {row}")
-
+        print(f"  {class_names[i]:12s}: {row}")
+    print(f"\n💾 Results saved to:")
+    print(f"  - {models_dir}/results_wesad_dp.json")
+    print(f"  - {results_dir}/dp_results.json")
+    print("=" * 70)
     return 0
 
 if __name__ == "__main__":
