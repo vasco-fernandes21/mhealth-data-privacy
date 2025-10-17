@@ -48,13 +48,13 @@ def main():
                 val_size=0.15,
                 random_state=42
             )
-            print("✅ Sleep-EDF preprocessing completed!")
+            print("Sleep-EDF preprocessing completed!")
         else:
-            print(f"❌ Sleep-EDF raw data not found: {sleep_edf_raw}")
+            print(f"Sleep-EDF raw data not found: {sleep_edf_raw}")
     
     # WESAD
     if not args.skip_wesad:
-        print("\n😰 Processing WESAD dataset...")
+        print("\nProcessing WESAD dataset...")
         wesad_raw = raw_dir / 'wesad'
         wesad_processed = processed_dir / 'wesad'
         
@@ -66,9 +66,9 @@ def main():
                 val_size=0.15,
                 random_state=42
             )
-            print("✅ WESAD preprocessing completed!")
+            print("WESAD preprocessing completed!")
         else:
-            print(f"❌ WESAD raw data not found: {wesad_raw}")
+            print(f"WESAD raw data not found: {wesad_raw}")
     
     print("\n" + "="*70)
     print("PREPROCESSING COMPLETE!")

@@ -3,7 +3,7 @@
 Train PyTorch LSTM-only with Differential Privacy (DP) using Opacus
 for WESAD binary stress classification.
 
-🔒 DP REQUIREMENT: Must use DPLSTM instead of nn.LSTM!
+DP REQUIREMENT: Must use DPLSTM instead of nn.LSTM!
    - nn.LSTM uses internal modules not compatible with Opacus DP hooks
    - DPLSTM is a drop-in replacement with proper gradient sampling
    - Same API, same functionality, but DP-compatible
@@ -33,8 +33,8 @@ from sklearn.utils.class_weight import compute_class_weight
 from opacus import PrivacyEngine
 from opacus.layers import DPLSTM
 
-# ❌ NÃO FUNCIONA: nn.LSTM não é compatível com Opacus DP
-# ✅ FUNCIONA: DPLSTM é drop-in replacement compatível com DP
+# NÃO FUNCIONA: nn.LSTM não é compatível com Opacus DP
+# FUNCIONA: DPLSTM é drop-in replacement compatível com DP
 
 # Import device utilities and preprocessing function
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -73,8 +73,8 @@ class SimpleLSTMWESAD(nn.Module):
         self.input_drop = nn.Dropout(0.2)  # Dropout moderado
 
         # LSTM layers - using DPLSTM for DP compatibility (REQUIRED!)
-        # ❌ nn.LSTM(input_size=128, hidden_size=64, num_layers=2, batch_first=True, bidirectional=True, dropout=0.2)
-        # ✅ DPLSTM funciona exatamente igual, mas com hooks DP
+        # nn.LSTM(input_size=128, hidden_size=64, num_layers=2, batch_first=True, bidirectional=True, dropout=0.2)
+        # DPLSTM funciona exatamente igual, mas com hooks DP
         self.lstm = DPLSTM(input_size=128, hidden_size=64, num_layers=2,
                           batch_first=True, bidirectional=True, dropout=0.2)
 
@@ -174,7 +174,7 @@ def train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privac
     model.train()
     train_loss, correct, total = 0.0, 0, 0
 
-    print(f"  🔄 Training on {len(train_loader)} batches...")
+    print(f"  Training on {len(train_loader)} batches...")
     for batch_idx, (batch_X, batch_y) in enumerate(train_loader):
         batch_X, batch_y = batch_X.to(device), batch_y.to(device)
 
@@ -191,18 +191,19 @@ def train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privac
         total += batch_y.size(0)
         correct += (predicted == batch_y).sum().item()
 
-        # Progress indicator every 10 batches
-        if (batch_idx + 1) % 10 == 0:
-            print(f"    Batch {batch_idx + 1}/{len(train_loader)} processed")
+        # Progress indicator every 3 batches (more frequent for DP training)
+        if (batch_idx + 1) % 3 == 0:
+            current_acc = correct / total
+            print(f"    Batch {batch_idx + 1}/{len(train_loader)} - Loss: {loss.item():.4f} - Acc: {current_acc:.4f}")
 
-    print(f"  ✅ Training epoch completed")
+    print(f"  Training epoch completed")
     return train_loss / len(train_loader), correct / total
 
 def evaluate_dp(model, val_loader, criterion, device):
     model.eval()
     val_loss, correct, total = 0.0, 0, 0
 
-    print(f"  🔍 Evaluating on {len(val_loader)} batches...")
+    print(f"  Evaluating on {len(val_loader)} batches...")
     with torch.no_grad():
         for batch_idx, (batch_X, batch_y) in enumerate(val_loader):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
@@ -215,7 +216,7 @@ def evaluate_dp(model, val_loader, criterion, device):
             total += batch_y.size(0)
             correct += (predicted == batch_y).sum().item()
 
-    print(f"  ✅ Validation completed")
+    print(f"  Validation completed")
     return val_loss / len(val_loader), correct / total
 
 def evaluate_full_metrics(model, test_loader, device, class_names):
@@ -263,17 +264,17 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
 
     # Load and prepare data
-    print("📊 Loading processed WESAD data...")
+    print("Loading processed WESAD data...")
     X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info = load_processed_wesad_temporal(data_dir)
 
-    print(f"📈 Dataset shapes: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
-    print(f"🏷️  Classes: {info['class_names']}")
+    print(f"Dataset shapes: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
+    print(f"Classes: {info['class_names']}")
 
     # Apply oversampling only (skip augmentation for speed)
-    print("🔄 Balancing classes (oversampling only)...")
+    print("Balancing classes (oversampling only)...")
     X_train_bal, y_train_bal = _simple_oversample(X_train, y_train)
 
-    print(f"✅ After augmentation: Train={X_train_bal.shape}, Val={X_val.shape}, Test={X_test.shape}")
+    print(f"After augmentation: Train={X_train_bal.shape}, Val={X_val.shape}, Test={X_test.shape}")
 
     # Compute class weights for imbalanced data
     class_weights = compute_class_weight('balanced', classes=np.unique(y_train_bal), y=y_train_bal)
@@ -344,9 +345,9 @@ def main():
         poisson_sampling=True       # Standard accounting, better privacy bounds
     )
 
-    print(f"🔒 DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.9, max_grad_norm={MAX_GRAD_NORM}")
-    print(f"📋 Training config: {len(train_loader)} train batches, {len(val_loader)} val batches")
-    print("🚀 Starting DP training loop...")
+    print(f"DP Parameters: ε={TARGET_EPSILON}, δ={TARGET_DELTA}, noise_mult=0.9, max_grad_norm={MAX_GRAD_NORM}")
+    print(f"Training config: {len(train_loader)} train batches, {len(val_loader)} val batches")
+    print("Starting DP training loop...")
 
     # Training loop with DP
     best_val_acc = 0.0
@@ -357,7 +358,7 @@ def main():
 
     for epoch in range(1, EPOCHS + 1):
         epoch_start = time.time()
-        print(f"\n——— Epoch {epoch:03d}/{EPOCHS} ———")
+        print(f"\n--- Epoch {epoch:03d}/{EPOCHS} ---")
         # Train one epoch with DP
         train_loss, train_acc = train_one_epoch_dp(model, train_loader, criterion, optimizer, device, privacy_engine)
 
@@ -390,18 +391,18 @@ def main():
             # Save model state (DP-compatible)
             torch.save(model.state_dict(), os.path.join(models_dir, 'model_wesad_dp.pth'))
             epochs_no_improve = 0
-            print(f"  ⬆️  New best val_acc={best_val_acc:.4f}. Model saved.")
+            print(f"  New best val_acc={best_val_acc:.4f}. Model saved.")
         else:
             epochs_no_improve += 1
 
         # Early stopping
         if epochs_no_improve >= PATIENCE:
-            print(f"⚠️  Early stopping triggered after {epoch} epochs (patience={PATIENCE})")
+            print(f"Early stopping triggered after {epoch} epochs (patience={PATIENCE})")
             break
 
         # Privacy budget warning
         if epsilon >= TARGET_EPSILON * 1.1:
-             print(f"⚠️  WARNING: Privacy budget (ε={TARGET_EPSILON:.2f}) exceeded (current: ε={epsilon:.2f})")
+             print(f"WARNING: Privacy budget (ε={TARGET_EPSILON:.2f}) exceeded (current: ε={epsilon:.2f})")
 
     training_time = time.time() - start_time
     epochs_trained = len(history['loss'])
@@ -432,26 +433,26 @@ def main():
         json.dump(results, f, indent=2)
 
     print("\n" + "=" * 70)
-    print("✅ DP TRAINING COMPLETE!")
+    print("DP TRAINING COMPLETE!")
     print("=" * 70)
-    print(f"\n📊 FINAL RESULTS:")
+    print(f"\nFINAL RESULTS:")
     print(f"  Epochs trained: {epochs_trained}")
     print(f"  Training time: {training_time:.1f}s ({training_time/60:.1f} min)")
-    print(f"\n🔒 PRIVACY:")
+    print(f"\nPRIVACY:")
     print(f"  Final epsilon (ε): {final_epsilon:.2f} (target: {TARGET_EPSILON})")
     print(f"  Delta (δ): {TARGET_DELTA}")
     print(f"  Max grad norm: {MAX_GRAD_NORM}")
-    print(f"\n🎯 PERFORMANCE (Test Set):")
+    print(f"\nPERFORMANCE (Test Set):")
     print(f"  Accuracy: {results['accuracy']:.4f} ({results['accuracy']*100:.2f}%)")
     print(f"  Precision: {results['precision']:.4f}")
     print(f"  Recall: {results['recall']:.4f}")
     print(f"  F1-Score: {results['f1_score']:.4f}")
-    print(f"\n📈 CONFUSION MATRIX:")
+    print(f"\nCONFUSION MATRIX:")
     cm = results['confusion_matrix']
     class_names = results['class_names']
     for i, row in enumerate(cm):
         print(f"  {class_names[i]:12s}: {row}")
-    print(f"\n💾 Results saved to:")
+    print(f"\nResults saved to:")
     print(f"  - {models_dir}/results_wesad_dp.json")
     print(f"  - {results_dir}/dp_results.json")
     print("=" * 70)

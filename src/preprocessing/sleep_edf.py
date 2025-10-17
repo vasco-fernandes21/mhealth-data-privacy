@@ -39,7 +39,7 @@ def load_sleep_edf_expanded_hypnogram(hypno_file: str, target_epoch_duration: in
         tuple: (sleep_stages, epoch_durations, total_duration, n_epochs)
     """
     if not os.path.exists(hypno_file):
-        print(f'❌ Ficheiro não encontrado: {hypno_file}')
+        print(f'Ficheiro não encontrado: {hypno_file}')
         return None, None, None, None
     
     try:
@@ -92,7 +92,7 @@ def load_sleep_edf_expanded_hypnogram(hypno_file: str, target_epoch_duration: in
         return sleep_stages, epoch_durations, total_duration, n_epochs
         
     except Exception as e:
-        print(f'❌ Erro ao ler hypnogram: {e}')
+        print(f'Erro ao ler hypnogram: {e}')
         return None, None, None, None
 
 
@@ -137,7 +137,7 @@ def load_sleep_edf_expanded_file(psg_path: str, hypno_path: str) -> Tuple[np.nda
     Returns:
         tuple: (signals, labels, info)
     """
-    print(f'📁 Loading: {os.path.basename(psg_path)}')
+    print(f'Loading: {os.path.basename(psg_path)}')
     
     # Load PSG signals
     try:
@@ -167,14 +167,14 @@ def load_sleep_edf_expanded_file(psg_path: str, hypno_path: str) -> Tuple[np.nda
         print(f'   • Sample rates: {info["sample_rates"][:3]} Hz')
         
     except Exception as e:
-        print(f'❌ Error loading PSG: {e}')
+        print(f'Error loading PSG: {e}')
         return None, None, None
     
     # Load hypnogram
     sleep_stages, epoch_durations, total_duration, n_epochs = load_sleep_edf_expanded_hypnogram(hypno_path)
     
     if sleep_stages is None:
-        print(f'❌ Error loading hypnogram')
+        print(f'Error loading hypnogram')
         return None, None, None
     
     # Convert to 30s epochs
@@ -678,13 +678,13 @@ if __name__ == "__main__":
     
     # Check if raw data exists
     if not os.path.exists(args.data_dir):
-        print(f"❌ Raw data not found: {args.data_dir}")
+        print(f"Raw data not found: {args.data_dir}")
         exit(1)
     
-    print(f"📁 Raw data: {args.data_dir}")
-    print(f"📁 Output: {args.output_dir}")
-    print(f"📊 Test size: {args.test_size}")
-    print(f"📊 Validation size: {args.val_size}")
+    print(f"Raw data: {args.data_dir}")
+    print(f"Output: {args.output_dir}")
+    print(f"Test size: {args.test_size}")
+    print(f"Validation size: {args.val_size}")
     
     # Run preprocessing
     info = preprocess_sleep_edf(
@@ -695,5 +695,5 @@ if __name__ == "__main__":
         random_state=args.random_state
     )
     
-    print(f"\n✅ Sleep-EDF preprocessing completed!")
+    print(f"\nSleep-EDF preprocessing completed!")
     print(f"Preprocessing info: {info}")
