@@ -2,6 +2,11 @@
 """
 Train PyTorch LSTM with Differential Privacy for Sleep-EDF dataset
 
+DP REQUIREMENT: Must use DPLSTM instead of nn.LSTM!
+   - nn.LSTM uses internal modules not compatible with Opacus DP hooks
+   - DPLSTM is a drop-in replacement with proper gradient sampling
+   - Same API, same functionality, but DP-compatible
+
 Environment Variables (for multiple runs):
 - TRAIN_SEED: Random seed (default: 42)
 - NOISE_MULTIPLIER: DP noise multiplier (default: 0.9)
@@ -19,6 +24,8 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 from pathlib import Path
 from typing import Tuple
+
+from opacus.layers import DPLSTM
 
 # Add src to path and import device utilities (adjust for new structure)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -82,7 +89,8 @@ class ProgressBar:
 class SimpleLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
         super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        # Use DPLSTM instead of nn.LSTM for Opacus DP compatibility
+        self.lstm = DPLSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
