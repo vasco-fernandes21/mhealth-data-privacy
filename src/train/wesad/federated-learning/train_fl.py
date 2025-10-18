@@ -31,13 +31,14 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import flwr as fl
 from flwr.common import Metrics
 
-# Add src to path
-repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent  # /content/mhealth-data-privacy
-sys.path.insert(0, str(repo_root))
+
+repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+src_path = repo_root / "src"
+sys.path.insert(0, str(src_path))
 from device_utils import get_optimal_device, print_device_info
 from preprocessing.wesad import load_processed_wesad_temporal
 
-# Fix random seeds
+
 SEED = int(os.environ.get('TRAIN_SEED', 42))
 random.seed(SEED)
 np.random.seed(SEED)
@@ -187,6 +188,17 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     examples = [num_examples for num_examples, _ in metrics]
     return {"accuracy": sum(accuracies) / sum(examples)}
 
+# --- Custom strategy with simple logging ---
+class LoggingFedAvg(fl.server.strategy.FedAvg):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_round = 0
+    
+    def aggregate_fit(self, rnd, results, failures):
+        self.current_round = rnd
+        print(f"Round {rnd} completed")
+        return super().aggregate_fit(rnd, results, failures)
+
 def main():
     print("="*70)
     print(f"FEDERATED LEARNING - WESAD (SEED={SEED})")
@@ -250,8 +262,8 @@ def main():
         
         return WESADClient(model, train_loader, val_loader, device)
     
-    # FL Strategy
-    strategy = fl.server.strategy.FedAvg(
+    # FL Strategy with simple logging
+    strategy = LoggingFedAvg(
         fraction_fit=1.0,  # All clients participate
         fraction_evaluate=1.0,
         min_fit_clients=num_clients,
@@ -263,17 +275,16 @@ def main():
     # Start FL simulation
     print(f"\nStarting Federated Learning with {num_clients} clients for {num_rounds} rounds...")
     start_time = time.time()
-    
+
     history = fl.simulation.start_simulation(
         client_fn=client_fn,
         num_clients=num_clients,
         config=fl.server.ServerConfig(num_rounds=num_rounds),
         strategy=strategy,
     )
-    
+
     training_time = time.time() - start_time
     
-    # Get final global model
     print("\nFL training complete. Evaluating final model...")
     final_model = SimpleLSTMWESAD(input_channels, num_classes).to(device)
     
@@ -329,6 +340,14 @@ def main():
     model_file = os.path.join(models_output_dir, 'model_wesad_fl.pth')
     torch.save(final_model.state_dict(), model_file)
     print(f"Model saved to: {model_file}")
+    
+    # Print results for visibility
+    print("\n" + "="*50)
+    print("FINAL RESULTS SUMMARY")
+    print("="*50)
+    for key, value in results.items():
+        if key != 'confusion_matrix':  # Skip large arrays
+            print(f"{key}: {value}")
     
     return results
 

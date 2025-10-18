@@ -10,8 +10,7 @@ __author__ = "Vasco"
 
 # Make submodules easily accessible
 from . import preprocessing
-from . import models
 from . import device_utils
 
-__all__ = ["preprocessing", "models", "device_utils"]
+__all__ = ["preprocessing", "device_utils"]
 

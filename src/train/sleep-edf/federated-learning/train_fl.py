@@ -32,8 +32,9 @@ import flwr as fl
 from flwr.common import Metrics
 
 # Add src to path
-repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent  # /content/mhealth-data-privacy
-sys.path.insert(0, str(repo_root))
+repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent 
+src_path = repo_root / "src"
+sys.path.insert(0, str(src_path))
 from device_utils import get_optimal_device, print_device_info
 from preprocessing.sleep_edf import load_processed_sleep_edf
 
@@ -44,6 +45,39 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
+
+# --- Progress Bar with ETA ---
+class ProgressBar:
+    def __init__(self, total: int, description: str = ""):
+        self.total = total
+        self.current = 0
+        self.description = description
+        self.start_time = time.time()
+
+    def update(self, n=1):
+        self.current += n
+        elapsed = time.time() - self.start_time
+        rate = self.current / elapsed if elapsed > 0 else 0
+        remaining = (self.total - self.current) / rate if rate > 0 else 0
+
+        # Progress bar
+        bar_length = 30
+        progress = self.current / self.total
+        filled_length = int(bar_length * progress)
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+
+        # ETA format
+        if remaining < 60:
+            eta_str = f"{remaining:.0f}s"
+        elif remaining < 3600:
+            eta_str = f"{remaining/60:.0f}m"
+        else:
+            eta_str = f"{remaining/3600:.0f}h"
+
+        print(f"\r{self.description}: [{bar}] {self.current}/{self.total} | ETA: {eta_str}", end="", flush=True)
+
+    def finish(self):
+        print()  # New line after progress bar
 
 # --- SAME Model as Baseline ---
 class SimpleLSTM(nn.Module):
@@ -116,7 +150,7 @@ class SleepEDFClient(fl.client.NumPyClient):
         self.model.train()
         
         # Train for 1 epoch per round
-        for X_batch, y_batch in self.train_loader:
+        for batch_idx, (X_batch, y_batch) in enumerate(self.train_loader):
             X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
             
             self.optimizer.zero_grad()
@@ -124,6 +158,9 @@ class SleepEDFClient(fl.client.NumPyClient):
             loss = self.criterion(outputs, y_batch)
             loss.backward()
             self.optimizer.step()
+            
+            if batch_idx % 10 == 0:  # Print every 10 batches
+                print(f"  Training batch {batch_idx}/{len(self.train_loader)}", flush=True)
         
         return self.get_parameters(config={}), len(self.train_loader.dataset), {}
     
@@ -152,27 +189,51 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     examples = [num_examples for num_examples, _ in metrics]
     return {"accuracy": sum(accuracies) / sum(examples)}
 
+# --- Custom strategy with simple logging ---
+class LoggingFedAvg(fl.server.strategy.FedAvg):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_round = 0
+    
+    def aggregate_fit(self, rnd, results, failures):
+        self.current_round = rnd
+        print(f"Round {rnd} completed", flush=True)
+        return super().aggregate_fit(rnd, results, failures)
+
 def main():
     print("="*70)
     print(f"FEDERATED LEARNING - SLEEP-EDF (SEED={SEED})")
     print("="*70)
     
     # Configuration
+    print("DEBUG: Getting configuration...")
     num_clients = int(os.environ.get('NUM_CLIENTS', 5))
     num_rounds = int(os.environ.get('NUM_ROUNDS', 10))
+    print(f"DEBUG: num_clients={num_clients}, num_rounds={num_rounds}")
     
     # Paths
+    print("DEBUG: Setting up paths...")
     base_dir = Path(__file__).parent.parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/sleep-edf")
     models_output_dir = os.environ.get('MODEL_DIR', str(base_dir / f"models/sleep-edf/fl/fl_clients{num_clients}"))
     results_output_dir = os.environ.get('RESULTS_DIR', str(base_dir / f"results/sleep-edf/fl/fl_clients{num_clients}"))
+    print(f"DEBUG: data_dir={data_dir}")
+    print(f"DEBUG: models_output_dir={models_output_dir}")
     
+    print("DEBUG: Creating directories...")
     os.makedirs(models_output_dir, exist_ok=True)
     os.makedirs(results_output_dir, exist_ok=True)
+    print("DEBUG: Directories created")
     
     # Load data
     print("\nLoading processed Sleep-EDF data...")
-    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_dir)
+    print("DEBUG: About to call load_processed_sleep_edf...")
+    try:
+        X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_dir)
+        print("DEBUG: Data loaded successfully!")
+    except Exception as e:
+        print(f"DEBUG: Error loading data: {e}")
+        raise
     
     print(f"\nFL Configuration:")
     print(f"  Number of clients: {num_clients}")
@@ -186,13 +247,18 @@ def main():
     X_val_win, y_val_win = create_windows(X_val, y_val, window_size)
     X_test_win, y_test_win = create_windows(X_test, y_test, window_size)
     
+    print(f"DEBUG: Window shapes - Train: {X_train_win.shape}, Val: {X_val_win.shape}, Test: {X_test_win.shape}")
+    
     # Partition training data across clients
     print(f"Partitioning data across {num_clients} clients...")
     client_datasets = partition_data(X_train_win, y_train_win, num_clients)
     
     # Device
+    print("DEBUG: Getting device...")
     device = get_optimal_device()
+    print("DEBUG: Device obtained, calling print_device_info...")
     print_device_info()
+    print("DEBUG: Device info printed")
     
     # Model configuration (SAME as baseline)
     input_size = X_train.shape[1]
@@ -223,8 +289,8 @@ def main():
         
         return SleepEDFClient(model, train_loader, val_loader, device)
     
-    # FL Strategy
-    strategy = fl.server.strategy.FedAvg(
+    # FL Strategy with simple logging
+    strategy = LoggingFedAvg(
         fraction_fit=1.0,  # All clients participate
         fraction_evaluate=1.0,
         min_fit_clients=num_clients,
@@ -235,15 +301,22 @@ def main():
     
     # Start FL simulation
     print(f"\nStarting Federated Learning with {num_clients} clients for {num_rounds} rounds...")
+    print("DEBUG: About to start FL simulation...", flush=True)
     start_time = time.time()
-    
-    history = fl.simulation.start_simulation(
-        client_fn=client_fn,
-        num_clients=num_clients,
-        config=fl.server.ServerConfig(num_rounds=num_rounds),
-        strategy=strategy,
-    )
-    
+
+    print("DEBUG: About to call fl.simulation.start_simulation...", flush=True)
+    try:
+        history = fl.simulation.start_simulation(
+            client_fn=client_fn,
+            num_clients=num_clients,
+            config=fl.server.ServerConfig(num_rounds=num_rounds),
+            strategy=strategy,
+        )
+        print("DEBUG: FL simulation completed!", flush=True)
+    except Exception as e:
+        print(f"DEBUG: Error in FL simulation: {e}", flush=True)
+        raise
+
     training_time = time.time() - start_time
     
     # Get final global model
@@ -302,6 +375,14 @@ def main():
     model_file = os.path.join(models_output_dir, 'model_sleep_edf_fl.pth')
     torch.save(final_model.state_dict(), model_file)
     print(f"Model saved to: {model_file}")
+    
+    # Print results for visibility
+    print("\n" + "="*50)
+    print("FINAL RESULTS SUMMARY")
+    print("="*50)
+    for key, value in results.items():
+        if key != 'confusion_matrix':  # Skip large arrays
+            print(f"{key}: {value}")
     
     return results
 

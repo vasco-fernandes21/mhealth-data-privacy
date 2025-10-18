@@ -46,7 +46,6 @@ Durante o desenvolvimento dos pipelines de Differential Privacy, observámos **i
 - ✅ **Melhoria de 10.13%** em accuracy (72.57% → 82.70%)
 - ✅ **Performance superior** do LSTM-only
 - ✅ **Convergência mais estável** (13 vs 10 epochs)
-- ✅ **Logs padronizados** para comparação justa
 
 ## 3. Justificações Técnicas
 
@@ -54,7 +53,7 @@ Durante o desenvolvimento dos pipelines de Differential Privacy, observámos **i
 
 **Problema CNN+LSTM + DP:**
 ```python
-# Ruído se acumula através das camadas
+# Ruído acumula-se através das camadas
 CNN_gradients → LSTM_gradients → Dense_gradients
      ↓              ↓              ↓
   Ruído × 1.5    Ruído × 2.0    Ruído × 3.0
@@ -81,17 +80,6 @@ CNN_gradients → LSTM_gradients → Dense_gradients
 **WESAD:**
 - **Performance melhorada** (72.57% → 82.70%)
 - **Convergência mais estável** (13 vs 10 epochs)
-
-### 3.4 Padronização de Logs
-
-**Problema identificado:**
-- Baseline LSTM-only tinha logs detalhados diferentes do CNN+LSTM
-- Dificultava comparação visual dos resultados
-
-**Solução implementada:**
-- **Logs padronizados** entre ambas as arquiteturas
-- **Formato consistente**: `Epoch 001: loss=X.XXXX acc=X.XXXX | val_loss=X.XXXX val_acc=X.XXXX`
-- **Facilita comparação** direta entre arquiteturas
 
 ## 4. Análise de Matrizes de Confusão
 

@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from device_utils import get_optimal_device, print_device_info
 from preprocessing.wesad import load_processed_wesad_temporal
 
-# Fix random seeds for reproducible results
+# Random seeds for reproducible results
 SEED = int(os.environ.get('TRAIN_SEED', 42))
 random.seed(SEED)
 np.random.seed(SEED)
