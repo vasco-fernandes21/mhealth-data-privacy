@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """
-Federated Learning training for Sleep-EDF dataset using Flower framework.
-
-Uses the SAME architecture as baseline (SimpleLSTM) to ensure fair comparison.
-The only difference is the federated training strategy.
-
-Environment Variables (for multiple runs):
-- TRAIN_SEED: Random seed (default: 42)
-- NUM_CLIENTS: Number of FL clients (default: 5)
-- NUM_ROUNDS: Number of FL rounds (default: 10)
-- MODEL_DIR: Directory to save model (default: models/sleep-edf/fl)
-- RESULTS_DIR: Directory to save results (default: results/sleep-edf/fl)
+Federated Learning MELHORADO para Sleep-EDF com:
+- Particionamento non-IID configurável
+- Modelo mais robusto (similar ao WESAD)
+- Metrics detalhadas por cliente
+- Suporte para múltiplos experimentos
 """
 
 import os
@@ -19,26 +13,25 @@ import json
 import time
 import random
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.utils.data import TensorDataset, DataLoader
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 
 import flwr as fl
 from flwr.common import Metrics
 
-# Add src to path
-repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent 
+# --- Paths and imports ---
+repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent
 src_path = repo_root / "src"
 sys.path.insert(0, str(src_path))
 from device_utils import get_optimal_device, print_device_info
-from preprocessing.sleep_edf import load_processed_sleep_edf
+from preprocessing.sleep_edf import load_windowed_sleep_edf
 
-# Fix random seeds
+# --- Seed ---
 SEED = int(os.environ.get('TRAIN_SEED', 42))
 random.seed(SEED)
 np.random.seed(SEED)
@@ -46,73 +39,91 @@ torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-# --- Progress Bar with ETA ---
-class ProgressBar:
-    def __init__(self, total: int, description: str = ""):
-        self.total = total
-        self.current = 0
-        self.description = description
-        self.start_time = time.time()
-
-    def update(self, n=1):
-        self.current += n
-        elapsed = time.time() - self.start_time
-        rate = self.current / elapsed if elapsed > 0 else 0
-        remaining = (self.total - self.current) / rate if rate > 0 else 0
-
-        # Progress bar
-        bar_length = 30
-        progress = self.current / self.total
-        filled_length = int(bar_length * progress)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
-
-        # ETA format
-        if remaining < 60:
-            eta_str = f"{remaining:.0f}s"
-        elif remaining < 3600:
-            eta_str = f"{remaining/60:.0f}m"
-        else:
-            eta_str = f"{remaining/3600:.0f}h"
-
-        print(f"\r{self.description}: [{bar}] {self.current}/{self.total} | ETA: {eta_str}", end="", flush=True)
-
-    def finish(self):
-        print()  # New line after progress bar
-
-# --- SAME Model as Baseline ---
-class SimpleLSTM(nn.Module):
-    """EXACT same architecture as baseline for fair comparison"""
-    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+# --- MODELO MELHORADO (similar ao WESAD) ---
+class ImprovedLSTMSleepEDF(nn.Module):
+    """Arquitetura mais robusta com normalização e dropout"""
+    def __init__(self, input_size: int, num_classes: int):
         super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, num_classes)
-
+        self.input_proj = nn.Linear(input_size, 128)
+        self.input_norm = nn.GroupNorm(8, 128)
+        self.input_drop = nn.Dropout(0.2)
+        
+        self.lstm = nn.LSTM(128, 64, 2, batch_first=True, bidirectional=True, dropout=0.2)
+        self.lstm_norm = nn.GroupNorm(8, 128)
+        self.lstm_drop = nn.Dropout(0.3)
+    
+        self.fc1 = nn.Linear(128, 64)
+        self.fc1_norm = nn.GroupNorm(8, 64)
+        self.fc1_drop = nn.Dropout(0.3)
+        
+        self.fc2 = nn.Linear(64, 32)
+        self.fc2_drop = nn.Dropout(0.2)
+        
+        self.fc3 = nn.Linear(32, num_classes)
+    
     def forward(self, x):
+        # x: (batch, seq_len, features)
+        x = self.input_proj(x)
+        x = self.input_norm(x.transpose(1, 2)).transpose(1, 2)
+        x = torch.relu(x)
+        x = self.input_drop(x)
+        
         lstm_out, (hn, cn) = self.lstm(x)
-        out = self.fc(hn[-1])
+        # Concatenar últimos estados das direções forward e backward
+        x = torch.cat([hn[-2], hn[-1]], dim=1)
+        x = self.lstm_norm(x.unsqueeze(2)).squeeze(2)
+        x = self.lstm_drop(x)
+        
+        x = self.fc1(x)
+        x = self.fc1_norm(x.unsqueeze(2)).squeeze(2)
+        x = torch.relu(x)
+        x = self.fc1_drop(x)
+        
+        x = self.fc2(x)
+        x = torch.relu(x)
+        x = self.fc2_drop(x)
+        
+        out = self.fc3(x)
         return out
 
-# --- Data preparation ---
-def create_windows(X, y, window_size=10):
-    """Create sliding windows (same as baseline)"""
-    n_samples, n_features = X.shape
-    n_windows = n_samples - window_size + 1
-    
-    X_windows = np.zeros((n_windows, window_size, n_features), dtype=X.dtype)
-    y_windows = np.zeros(n_windows, dtype=y.dtype)
-    
-    for i in range(n_windows):
-        X_windows[i] = X[i:i+window_size]
-        y_windows[i] = y[i+window_size-1]
-    
-    return X_windows, y_windows
 
-def partition_data(X_train, y_train, num_clients):
-    """Partition data across clients (IID split)"""
+# --- PARTICIONAMENTO NON-IID ---
+def partition_data_non_iid_dirichlet(X_train, y_train, num_clients, alpha=0.5, seed=42):
+    """Dirichlet distribution para non-IID realistic"""
+    np.random.seed(seed)
+    from collections import defaultdict
+    
+    num_classes = len(np.unique(y_train))
+    class_indices = defaultdict(list)
+    for idx, label in enumerate(y_train):
+        class_indices[label].append(idx)
+    
+    client_indices = [[] for _ in range(num_clients)]
+    
+    for class_id in range(num_classes):
+        indices = class_indices[class_id]
+        np.random.shuffle(indices)
+        proportions = np.random.dirichlet(alpha * np.ones(num_clients))
+        
+        start = 0
+        for client_id, prop in enumerate(proportions):
+            end = start + int(prop * len(indices))
+            client_indices[client_id].extend(indices[start:end])
+            start = end
+    
+    client_datasets = []
+    for indices in client_indices:
+        np.random.shuffle(indices)
+        client_datasets.append((X_train[indices], y_train[indices]))
+    
+    return client_datasets
+
+
+def partition_data_iid(X_train, y_train, num_clients, seed=42):
+    """IID baseline"""
+    np.random.seed(seed)
     dataset_size = len(X_train)
     client_size = dataset_size // num_clients
-    
-    # Shuffle indices
     indices = np.random.permutation(dataset_size)
     
     client_datasets = []
@@ -120,20 +131,19 @@ def partition_data(X_train, y_train, num_clients):
         start_idx = i * client_size
         end_idx = start_idx + client_size if i < num_clients - 1 else dataset_size
         client_indices = indices[start_idx:end_idx]
-        
-        X_client = X_train[client_indices]
-        y_client = y_train[client_indices]
-        client_datasets.append((X_client, y_client))
+        client_datasets.append((X_train[client_indices], y_train[client_indices]))
     
     return client_datasets
 
+
 # --- Flower Client ---
 class SleepEDFClient(fl.client.NumPyClient):
-    def __init__(self, model, train_loader, val_loader, device):
+    def __init__(self, model, train_loader, val_loader, device, client_id):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
+        self.client_id = client_id
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     
@@ -141,157 +151,163 @@ class SleepEDFClient(fl.client.NumPyClient):
         return [val.cpu().numpy() for val in self.model.state_dict().values()]
     
     def set_parameters(self, parameters):
-        params_dict = zip(self.model.state_dict().keys(), parameters)
-        state_dict = {k: torch.tensor(v) for k, v in params_dict}
+        state_dict = {k: torch.tensor(v) for k, v in zip(self.model.state_dict().keys(), parameters)}
         self.model.load_state_dict(state_dict, strict=True)
     
     def fit(self, parameters, config):
         self.set_parameters(parameters)
         self.model.train()
         
-        # Train for 1 epoch per round
-        for batch_idx, (X_batch, y_batch) in enumerate(self.train_loader):
-            X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        
+        for X_batch, y_batch in self.train_loader:
+            X_batch = X_batch.to(self.device, non_blocking=True)
+            y_batch = y_batch.to(self.device, non_blocking=True)
             
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             outputs = self.model(X_batch)
             loss = self.criterion(outputs, y_batch)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
             
-            if batch_idx % 10 == 0:  # Print every 10 batches
-                print(f"  Training batch {batch_idx}/{len(self.train_loader)}", flush=True)
+            total_loss += loss.item() * X_batch.size(0)
+            correct += (outputs.argmax(1) == y_batch).sum().item()
+            total += y_batch.size(0)
         
-        return self.get_parameters(config={}), len(self.train_loader.dataset), {}
+        avg_loss = total_loss / total
+        accuracy = correct / total
+        
+        return self.get_parameters(config={}), len(self.train_loader.dataset), {
+            "loss": float(avg_loss),
+            "accuracy": float(accuracy),
+            "client_id": self.client_id
+        }
     
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
         self.model.eval()
         
-        loss = 0.0
-        correct = 0
-        total = 0
+        correct, total, loss = 0, 0, 0.0
         
         with torch.no_grad():
             for X_batch, y_batch in self.val_loader:
-                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                X_batch = X_batch.to(self.device, non_blocking=True)
+                y_batch = y_batch.to(self.device, non_blocking=True)
+                
                 outputs = self.model(X_batch)
                 loss += self.criterion(outputs, y_batch).item() * X_batch.size(0)
                 correct += (outputs.argmax(1) == y_batch).sum().item()
                 total += y_batch.size(0)
         
-        return float(loss / total), total, {"accuracy": float(correct / total)}
+        return float(loss / total), total, {
+            "accuracy": float(correct / total),
+            "client_id": self.client_id
+        }
 
-# --- Flower strategy with metrics aggregation ---
-def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    """Aggregate metrics from clients"""
+
+# --- Aggregation ---
+def weighted_average(metrics):
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
     return {"accuracy": sum(accuracies) / sum(examples)}
 
-# --- Custom strategy with simple logging ---
+
 class LoggingFedAvg(fl.server.strategy.FedAvg):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.current_round = 0
+        self.final_server_params = None
+        self.round_metrics = []
     
     def aggregate_fit(self, rnd, results, failures):
-        self.current_round = rnd
-        print(f"Round {rnd} completed", flush=True)
-        return super().aggregate_fit(rnd, results, failures)
+        aggregated_parameters, aggregated_metrics = super().aggregate_fit(rnd, results, failures)
+        
+        if aggregated_parameters is not None:
+            self.final_server_params = aggregated_parameters
+        
+        # Log per-client metrics
+        client_metrics = {}
+        for _, fit_res in results:
+            if hasattr(fit_res, 'metrics') and fit_res.metrics:
+                cid = fit_res.metrics.get('client_id', 'unknown')
+                client_metrics[f"client_{cid}"] = {
+                    "loss": fit_res.metrics.get('loss'),
+                    "accuracy": fit_res.metrics.get('accuracy')
+                }
+        
+        self.round_metrics.append({
+            "round": rnd,
+            "clients": client_metrics,
+            "aggregated": aggregated_metrics
+        })
+        
+        return aggregated_parameters, aggregated_metrics
 
+
+# --- Main ---
 def main():
-    print("="*70)
-    print(f"FEDERATED LEARNING - SLEEP-EDF (SEED={SEED})")
-    print("="*70)
-    
-    # Configuration
-    print("DEBUG: Getting configuration...")
     num_clients = int(os.environ.get('NUM_CLIENTS', 5))
-    num_rounds = int(os.environ.get('NUM_ROUNDS', 10))
-    print(f"DEBUG: num_clients={num_clients}, num_rounds={num_rounds}")
+    num_rounds = int(os.environ.get('NUM_ROUNDS', 15))
+    partition_type = os.environ.get('PARTITION_TYPE', 'non_iid_dir_0.5')
     
-    # Paths
-    print("DEBUG: Setting up paths...")
     base_dir = Path(__file__).parent.parent.parent.parent.parent
     data_dir = str(base_dir / "data/processed/sleep-edf")
-    models_output_dir = os.environ.get('MODEL_DIR', str(base_dir / f"models/sleep-edf/fl/fl_clients{num_clients}"))
-    results_output_dir = os.environ.get('RESULTS_DIR', str(base_dir / f"results/sleep-edf/fl/fl_clients{num_clients}"))
-    print(f"DEBUG: data_dir={data_dir}")
-    print(f"DEBUG: models_output_dir={models_output_dir}")
+    models_output_dir = os.environ.get('MODEL_DIR', 
+                                       str(base_dir / f"models/sleep-edf/fl/fl_clients{num_clients}"))
+    results_output_dir = os.environ.get('RESULTS_DIR', 
+                                        str(base_dir / f"results/sleep-edf/fl/fl_clients{num_clients}"))
     
-    print("DEBUG: Creating directories...")
     os.makedirs(models_output_dir, exist_ok=True)
     os.makedirs(results_output_dir, exist_ok=True)
-    print("DEBUG: Directories created")
     
     # Load data
-    print("\nLoading processed Sleep-EDF data...")
-    print("DEBUG: About to call load_processed_sleep_edf...")
-    try:
-        X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_dir)
-        print("DEBUG: Data loaded successfully!")
-    except Exception as e:
-        print(f"DEBUG: Error loading data: {e}")
-        raise
+    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_windowed_sleep_edf(data_dir)
     
-    print(f"\nFL Configuration:")
-    print(f"  Number of clients: {num_clients}")
-    print(f"  Number of rounds: {num_rounds}")
-    print(f"  Dataset: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
+    # Partition data
+    if partition_type.startswith('non_iid_dir'):
+        alpha = float(partition_type.split('_')[-1])
+        client_datasets = partition_data_non_iid_dirichlet(X_train, y_train, num_clients, alpha=alpha, seed=SEED)
+        print(f"Usando particionamento Non-IID Dirichlet (α={alpha})")
+    else:
+        client_datasets = partition_data_iid(X_train, y_train, num_clients, seed=SEED)
+        print("Usando particionamento IID")
     
-    # Create windows
-    print("\nCreating windows...")
-    window_size = 10
-    X_train_win, y_train_win = create_windows(X_train, y_train, window_size)
-    X_val_win, y_val_win = create_windows(X_val, y_val, window_size)
-    X_test_win, y_test_win = create_windows(X_test, y_test, window_size)
-    
-    print(f"DEBUG: Window shapes - Train: {X_train_win.shape}, Val: {X_val_win.shape}, Test: {X_test_win.shape}")
-    
-    # Partition training data across clients
-    print(f"Partitioning data across {num_clients} clients...")
-    client_datasets = partition_data(X_train_win, y_train_win, num_clients)
-    
-    # Device
-    print("DEBUG: Getting device...")
     device = get_optimal_device()
-    print("DEBUG: Device obtained, calling print_device_info...")
     print_device_info()
-    print("DEBUG: Device info printed")
     
-    # Model configuration (SAME as baseline)
-    input_size = X_train.shape[1]
-    hidden_size = 128
-    num_layers = 2
+    input_size = X_train.shape[2]
     num_classes = len(info['class_names'])
     
-    # Create client functions
     def client_fn(cid: str):
-        """Create a Flower client"""
-        # Get client data
         X_client, y_client = client_datasets[int(cid)]
         
-        # Create dataloaders
-        X_tensor = torch.tensor(X_client, dtype=torch.float32)
-        y_tensor = torch.tensor(y_client, dtype=torch.long)
-        train_dataset = TensorDataset(X_tensor, y_tensor)
-        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+        train_loader = DataLoader(
+            TensorDataset(torch.tensor(X_client, dtype=torch.float32),
+                         torch.tensor(y_client, dtype=torch.long)),
+            batch_size=64,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True,
+            persistent_workers=True
+        )
         
-        # Use centralized val set for all clients
-        X_val_tensor = torch.tensor(X_val_win, dtype=torch.float32)
-        y_val_tensor = torch.tensor(y_val_win, dtype=torch.long)
-        val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
-        val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+        val_loader = DataLoader(
+            TensorDataset(torch.tensor(X_val, dtype=torch.float32),
+                         torch.tensor(y_val, dtype=torch.long)),
+            batch_size=64,
+            shuffle=False,
+            num_workers=2,
+            pin_memory=True,
+            persistent_workers=True
+        )
         
-        # Create model
-        model = SimpleLSTM(input_size, hidden_size, num_layers, num_classes).to(device)
-        
-        return SleepEDFClient(model, train_loader, val_loader, device)
+        model = ImprovedLSTMSleepEDF(input_size, num_classes).to(device)
+        return SleepEDFClient(model, train_loader, val_loader, device, int(cid))
     
-    # FL Strategy with simple logging
     strategy = LoggingFedAvg(
-        fraction_fit=1.0,  # All clients participate
+        fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_fit_clients=num_clients,
         min_evaluate_clients=num_clients,
@@ -299,58 +315,40 @@ def main():
         evaluate_metrics_aggregation_fn=weighted_average,
     )
     
-    # Start FL simulation
-    print(f"\nStarting Federated Learning with {num_clients} clients for {num_rounds} rounds...")
-    print("DEBUG: About to start FL simulation...", flush=True)
     start_time = time.time()
-
-    print("DEBUG: About to call fl.simulation.start_simulation...", flush=True)
-    try:
-        history = fl.simulation.start_simulation(
-            client_fn=client_fn,
-            num_clients=num_clients,
-            config=fl.server.ServerConfig(num_rounds=num_rounds),
-            strategy=strategy,
-        )
-        print("DEBUG: FL simulation completed!", flush=True)
-    except Exception as e:
-        print(f"DEBUG: Error in FL simulation: {e}", flush=True)
-        raise
-
+    history = fl.simulation.start_simulation(
+        client_fn=client_fn,
+        num_clients=num_clients,
+        client_resources={"num_cpus": 1, "num_gpus": 0.0},
+        config=fl.server.ServerConfig(num_rounds=num_rounds),
+        strategy=strategy,
+    )
     training_time = time.time() - start_time
     
-    # Get final global model
-    print("\nFL training complete. Evaluating final model...")
-    final_model = SimpleLSTM(input_size, hidden_size, num_layers, num_classes).to(device)
+    # Final evaluation
+    final_model = ImprovedLSTMSleepEDF(input_size, num_classes).to(device)
+    if strategy.final_server_params is not None:
+        param_names = list(final_model.state_dict().keys())
+        server_state_dict = {}
+        server_tensors = strategy.final_server_params.tensors
+        for name, param_bytes in zip(param_names, server_tensors):
+            param_numpy = np.frombuffer(param_bytes, dtype=np.float32)
+            param_shape = final_model.state_dict()[name].shape
+            server_state_dict[name] = torch.tensor(param_numpy.reshape(param_shape))
+        final_model.load_state_dict(server_state_dict)
     
-    # Evaluate on test set
-    X_test_tensor = torch.tensor(X_test_win, dtype=torch.float32).to(device)
-    y_test_tensor = torch.tensor(y_test_win, dtype=torch.long).to(device)
-    
+    X_test_tensor = torch.tensor(X_test, dtype=torch.float32).to(device)
     final_model.eval()
     with torch.no_grad():
-        outputs = final_model(X_test_tensor)
-        y_pred = outputs.argmax(dim=1).cpu().numpy()
+        y_pred = final_model(X_test_tensor).argmax(dim=1).cpu().numpy()
+    y_true = y_test
     
-    y_true = y_test_win
-    
-    # Calculate metrics
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
     f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
     cm = confusion_matrix(y_true, y_pred)
     
-    print("\n" + "="*70)
-    print("FEDERATED LEARNING COMPLETE!")
-    print("="*70)
-    print(f"Training time: {training_time:.2f}s")
-    print(f"Final Test Accuracy: {accuracy:.4f}")
-    print(f"Final Test F1-Score: {f1:.4f}")
-    print(f"Final Test Precision: {precision:.4f}")
-    print(f"Final Test Recall: {recall:.4f}")
-    
-    # Save results
     results = {
         'accuracy': float(accuracy),
         'precision': float(precision),
@@ -360,32 +358,28 @@ def main():
         'class_names': info['class_names'],
         'num_clients': num_clients,
         'rounds': num_rounds,
+        'partition_type': partition_type,
         'training_time': float(training_time),
         'seed': SEED,
+        'round_metrics': strategy.round_metrics,
         'timestamp': datetime.now().isoformat()
     }
     
-    results_file = os.path.join(models_output_dir, 'results_sleep_edf_fl.json')
-    with open(results_file, 'w') as f:
+    with open(os.path.join(models_output_dir, 'results_sleep_edf_fl.json'), 'w') as f:
         json.dump(results, f, indent=2)
     
-    print(f"\nResults saved to: {results_file}")
+    torch.save(final_model.state_dict(), os.path.join(models_output_dir, 'model_sleep_edf_fl.pth'))
     
-    # Save model
-    model_file = os.path.join(models_output_dir, 'model_sleep_edf_fl.pth')
-    torch.save(final_model.state_dict(), model_file)
-    print(f"Model saved to: {model_file}")
-    
-    # Print results for visibility
-    print("\n" + "="*50)
-    print("FINAL RESULTS SUMMARY")
-    print("="*50)
+    print("\n" + "="*60)
+    print("RESULTADOS FINAIS:")
+    print("="*60)
     for key, value in results.items():
-        if key != 'confusion_matrix':  # Skip large arrays
+        if key not in ['confusion_matrix', 'round_metrics']:
             print(f"{key}: {value}")
+    print("="*60 + "\n")
     
     return results
 
+
 if __name__ == "__main__":
     sys.exit(0 if main() else 1)
-

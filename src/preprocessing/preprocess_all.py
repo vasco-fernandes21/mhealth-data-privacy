@@ -9,11 +9,11 @@ import sys
 import argparse
 from pathlib import Path
 
-# Adicionar src ao path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Adicionar src ao path para imports corretos
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from preprocessing.sleep_edf import preprocess_sleep_edf
-from preprocessing.wesad import preprocess_wesad
+from preprocessing.wesad import preprocess_wesad_temporal
 
 def main():
     parser = argparse.ArgumentParser(description='Preprocess all datasets')
@@ -46,7 +46,8 @@ def main():
                 output_dir=str(sleep_edf_processed),
                 test_size=0.15,
                 val_size=0.15,
-                random_state=42
+                random_state=42,
+                n_workers=4  # Use 4 workers for parallel processing
             )
             print("Sleep-EDF preprocessing completed!")
         else:
@@ -54,17 +55,22 @@ def main():
     
     # WESAD
     if not args.skip_wesad:
-        print("\nProcessing WESAD dataset...")
+        print("\n💊 Processing WESAD dataset...")
         wesad_raw = raw_dir / 'wesad'
         wesad_processed = processed_dir / 'wesad'
         
         if wesad_raw.exists():
-            preprocess_wesad(
+            preprocess_wesad_temporal(
                 data_dir=str(wesad_raw),
                 output_dir=str(wesad_processed),
+                target_freq=32,
+                window_size=1920,
+                overlap=0.5,
+                binary=True,
                 test_size=0.15,
                 val_size=0.15,
-                random_state=42
+                random_state=42,
+                n_workers=4  # Use 4 workers for parallel processing
             )
             print("WESAD preprocessing completed!")
         else:

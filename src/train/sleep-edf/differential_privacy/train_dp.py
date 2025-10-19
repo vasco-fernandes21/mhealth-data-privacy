@@ -237,20 +237,59 @@ def main():
     os.makedirs(models_output_dir, exist_ok=True)
     os.makedirs(results_output_dir, exist_ok=True)
 
-    # Load processed data
-    print("Loading processed Sleep-EDF data...")
-    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_processed_sleep_edf(data_dir)
+    # Load windowed data (dados já otimizados no pré-processamento!)
+    print("Loading windowed Sleep-EDF data...")
+    from preprocessing.sleep_edf import load_windowed_sleep_edf
+    X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = load_windowed_sleep_edf(data_dir)
 
     print(f"\nDataset info:")
     print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
     print(f"  Classes: {info['n_classes']} ({info['class_names']})")
 
-    # Create data loaders
-    data_loader = SleepEDFDataLoader(data_dir, batch_size=64)
-    train_loader, val_loader, test_loader = data_loader.get_dataloaders(window_size=10)
+    # Convert to tensors
+    X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+    y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+    X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+    y_val_tensor = torch.tensor(y_val, dtype=torch.long)
+    X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+
+    # Create datasets and optimized data loaders
+    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+    val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+    test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+
+    # Optimized DataLoaders with parallel workers
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=64,
+        shuffle=True,
+        num_workers=4,           # Parallel loading
+        pin_memory=True,         # Fast GPU transfer
+        persistent_workers=True, # Reuse workers
+        prefetch_factor=2,       # Prefetch batches
+        drop_last=True           # DP requires fixed batch size
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=64,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+        persistent_workers=True
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=64,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+        persistent_workers=True
+    )
+
+    input_size = X_train.shape[2]  # (samples, window, features)
 
     # Model configuration
-    input_size = X_train.shape[1]
     hidden_size = 128
     num_layers = 2
     num_classes = len(info['class_names'])
@@ -313,6 +352,9 @@ def main():
     best_val_loss = float('inf')
     patience_counter = 0
 
+    # Import tqdm for better progress visualization
+    from tqdm import tqdm
+
     for epoch in range(num_epochs):
         # Training
         model.train()
@@ -320,13 +362,16 @@ def main():
         train_correct = 0
         train_total = 0
 
-        # Progress bar for training
-        train_progress = ProgressBar(len(train_loader.dataset), f"Epoch {epoch+1:3d} - Training")
+        # Optimized progress bar with tqdm
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1:3d}/{num_epochs}", leave=False)
 
-        for X_batch, y_batch in train_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+        for X_batch, y_batch in pbar:
+            # Optimized: non_blocking transfer
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
 
-            optimizer.zero_grad()
+            # Optimized: set_to_none=True is faster than zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             outputs = model(X_batch)
             loss = criterion(outputs, y_batch)
             loss.backward()
@@ -336,9 +381,12 @@ def main():
             train_correct += (outputs.argmax(dim=1) == y_batch).sum().item()
             train_total += y_batch.size(0)
 
-            train_progress.update(X_batch.size(0))
+            # Update progress bar with current metrics
+            pbar.set_postfix({
+                'loss': f"{loss.item():.4f}",
+                'acc': f"{train_correct/train_total:.4f}"
+            })
 
-        train_progress.finish()
         train_loss /= train_total
         train_acc = train_correct / train_total
 
