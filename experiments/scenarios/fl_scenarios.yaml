@@ -1,0 +1,214 @@
+
+# Federated Learning Experiments
+# NOTE: O que varia é o NÚMERO DE CLIENTS (5, 10, 15)
+# Também podemos variar local_epochs e global_rounds
+
+experiments:
+  # ===== Sleep-EDF with varying clients =====
+  
+  fl_sleep_edf_clients5_run1:
+    name: "FL - Sleep-EDF 5 clients (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      # FL SPECIFIC
+      federated_learning:
+        enabled: true
+        n_clients: 5               # VARIA AQUI ← Número de clients
+        samples_per_client: null   # Auto-calculated
+        global_rounds: 100
+        local_epochs: 5            # Treino local por cliente
+        local_batch_size: 32
+        aggregation_method: "fedavg"
+    description: "FL with 5 clients (default)"
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+
+  fl_sleep_edf_clients5_run2:
+    name: "FL - Sleep-EDF 5 clients (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 5
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 32
+        aggregation_method: "fedavg"
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+
+  fl_sleep_edf_clients5_run3:
+    name: "FL - Sleep-EDF 5 clients (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 44
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 5
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 32
+        aggregation_method: "fedavg"
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+
+  fl_sleep_edf_clients10_run1:
+    name: "FL - Sleep-EDF 10 clients (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 10              # VARIA AQUI ← Mais clients = mais distribuído
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 32
+        aggregation_method: "fedavg"
+    description: "FL with 10 clients (more distributed)"
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier3"]
+
+  fl_sleep_edf_clients10_run2:
+    name: "FL - Sleep-EDF 10 clients (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 10
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 32
+        aggregation_method: "fedavg"
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier3"]
+
+  # ===== WESAD with varying clients =====
+
+  fl_wesad_clients5_run1:
+    name: "FL - WESAD 5 clients (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 5
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 64
+        aggregation_method: "fedavg"
+    description: "FL on WESAD with 5 clients"
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+
+  fl_wesad_clients5_run2:
+    name: "FL - WESAD 5 clients (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 5
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 64
+        aggregation_method: "fedavg"
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+
+  fl_wesad_clients5_run3:
+    name: "FL - WESAD 5 clients (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 44
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 5
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 64
+        aggregation_method: "fedavg"
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+
+  fl_wesad_clients10_run1:
+    name: "FL - WESAD 10 clients (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 10
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 64
+        aggregation_method: "fedavg"
+    description: "FL on WESAD with 10 clients (more distributed)"
+    tags: ["fl", "wesad", "clients_sweep", "tier3"]
+
+  fl_wesad_clients10_run2:
+    name: "FL - WESAD 10 clients (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      early_stopping_patience: 8
+      federated_learning:
+        enabled: true
+        n_clients: 10
+        samples_per_client: null
+        global_rounds: 100
+        local_epochs: 5
+        local_batch_size: 64
+        aggregation_method: "fedavg"
+    tags: ["fl", "wesad", "clients_sweep", "tier3"]

@@ -1,0 +1,113 @@
+# ============================================================================
+# WESAD DATASET CONFIGURATION
+# ============================================================================
+# Specific configuration for WESAD stress detection
+
+dataset:
+  name: "wesad"
+  path: "data/processed/wesad"
+  
+  # Data shapes
+  n_channels: 14
+  n_classes: 2
+  sequence_length: 1920  # 60 seconds @ 32 Hz
+  
+  # Class names
+  class_names:
+    - "non-stress"
+    - "stress"
+  
+  # Data paths (relative to dataset.path)
+  files:
+    X_train: "X_train.npy"
+    X_val: "X_val.npy"
+    X_test: "X_test.npy"
+    y_train: "y_train.npy"
+    y_val: "y_val.npy"
+    y_test: "y_test.npy"
+    
+    # Augmented data
+    X_train_augmented: "X_train_augmented.npy"
+    y_train_augmented: "y_train_augmented.npy"
+    
+    # Subject IDs
+    subjects_train: "subjects_train.npy"
+    subjects_val: "subjects_val.npy"
+    subjects_test: "subjects_test.npy"
+    
+    # Metadata
+    preprocessing_info: "preprocessing_info.pkl"
+    label_encoder: "label_encoder.pkl"
+    augmentation_info: "augmentation_info.pkl"
+
+model:
+  architecture: "lstm"
+  
+  # Input projection (channel reduction)
+  input_projection: 128
+  
+  # LSTM configuration
+  lstm_units: 64
+  lstm_layers: 2
+  lstm_bidirectional: true
+  
+  # Dropout
+  dropout: 0.3
+  
+  # Dense layers
+  dense_layers: [64, 32]
+  
+  # Activation
+  activation: "relu"
+  
+  # Normalization (DP-optimized)
+  use_batch_norm: false
+  use_group_norm: true   # For DP compatibility
+  group_norm_groups: 8
+
+training:
+  # From training_defaults.yaml
+  epochs: 100
+  batch_size: 64  # Larger batch (more augmented data)
+  learning_rate: 0.001
+  
+  # Loss
+  loss: "cross_entropy"
+  use_class_weights: true
+  
+  # Early stopping
+  early_stopping: true
+  early_stopping_patience: 8
+  
+  # Dataset specific
+  num_workers: 4
+  prefetch_factor: 2
+  drop_last: true  # Important for DP (fixed batch size)
+
+# Data augmentation (WESAD has pre-computed augmentation)
+augmentation:
+  enabled: true
+  use_precomputed: true  # Load X_train_augmented
+  
+  # This is used if augmentation needs to be applied on-the-fly
+  augmentations:
+    - type: "noise"
+      params:
+        std: 0.01
+    - type: "time_shift"
+      params:
+        max_shift: 8
+
+# Model-specific hyperparameters
+hyperparameters:
+  # Gradient clipping
+  gradient_clip_norm: 1.0
+  
+  # Learning rate scheduling
+  lr_scheduler: "reduce_on_plateau"
+  
+  # Initialization
+  weight_init: "xavier"
+  
+  # DP-specific
+  dp_compatible: true

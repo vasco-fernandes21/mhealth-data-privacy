@@ -1,0 +1,67 @@
+# ============================================================================
+# PRIVACY DEFAULT CONFIGURATION
+# ============================================================================
+# Configuration for Differential Privacy and Federated Learning
+
+differential_privacy:
+  enabled: false
+  
+  # Privacy budget
+  target_epsilon: 8.0
+  target_delta: 1e-5
+  
+  # Gradient clipping (REQUIRED for DP)
+  max_grad_norm: 1.0
+  
+  # Noise
+  noise_multiplier: 0.9
+  poisson_sampling: true
+  
+  # Accounting
+  accounting_method: "rdp"  # "rdp" or "gdp"
+  
+  # Opacus settings
+  secure_rng: true
+  grad_sample_mode: "hooks"  # "hooks" or "ew" (expanding weights)
+
+federated_learning:
+  enabled: false
+  
+  # Client configuration
+  n_clients: 10
+  samples_per_client: 100
+  
+  # Communication
+  global_rounds: 100
+  local_epochs: 5
+  local_batch_size: 32
+  
+  # Aggregation
+  aggregation_method: "fedavg"  # "fedavg", "median", "trimmed_mean"
+  trimming_fraction: 0.1  # For trimmed_mean
+  
+  # Client-side DP (optional)
+  client_dp: false
+  client_noise_multiplier: 0.5
+  
+  # Validation
+  eval_every_n_rounds: 5
+
+federated_learning_dp:
+  enabled: false
+  
+  # Combination of FL + DP
+  target_epsilon: 5.0
+  target_delta: 1e-5
+  
+  # DP applied at server side
+  server_noise: true
+  server_noise_multiplier: 0.5
+  
+  # DP applied at client side
+  client_noise: true
+  client_noise_multiplier: 0.3
+  
+  # Communication
+  global_rounds: 100
+  local_epochs: 3

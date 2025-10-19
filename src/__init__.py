@@ -1,16 +1,49 @@
+#!/usr/bin/env python3
 """
-mhealth_privacy - Privacy-Preserving Health Data Analysis
+mHealth Privacy - Main Package
 
-This package provides tools for analyzing health data with privacy-preserving techniques
-including Differential Privacy (DP) and Federated Learning (FL).
+Privacy-Preserving Techniques Evaluation for Mobile Health Applications
+
+This package provides:
+- Data preprocessing (Sleep-EDF, WESAD)
+- Model architectures (LSTM-based)
+- Training loops (Baseline, DP, FL, FL+DP)
+- Privacy utilities (Differential Privacy, Federated Learning)
+- Evaluation metrics and analysis tools
+
+Usage:
+    from src.utils import set_all_seeds, setup_logging
+    from src.models import SleepEDFModel, WESADModel
+    from src.training import BaseTrainer, ProgressBar
+    
+    # Setup
+    set_all_seeds(42)
+    logger = setup_logging('./logs', level='INFO')
+    
+    # Create model
+    config = {...}
+    model = SleepEDFModel(config, device='cuda')
+    
+    # Train (see src.training for trainer implementations)
+    trainer = BaselineTrainer(model, config, device='cuda')
+    results = trainer.fit(train_loader, val_loader)
 """
 
 __version__ = "0.1.0"
-__author__ = "Vasco"
+__author__ = "Eduardo Barbosa, Filipe Correia, Vasco Fernandes"
+__description__ = "Privacy-Preserving Techniques in Mobile Health Applications"
 
-# Make submodules easily accessible
-from . import preprocessing
-from . import device_utils
+# Lazy imports - avoid circular dependencies
+# Users should import directly from submodules:
+#   from src.utils.seed_utils import set_all_seeds
+#   from src.models.sleep_edf_model import SleepEDFModel
 
-__all__ = ["preprocessing", "device_utils"]
-
+__all__ = [
+    'preprocessing',
+    'models',
+    'training',
+    'privacy',
+    'evaluation',
+    'utils',
+    'configs',
+]

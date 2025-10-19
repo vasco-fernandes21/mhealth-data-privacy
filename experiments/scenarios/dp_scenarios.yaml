@@ -1,0 +1,224 @@
+# Differential Privacy Experiments
+# NOTE: Epsilon é o ALVO de privacidade
+# Noise multiplier é ajustado automaticamente para atingir epsilon
+# Variamos: epsilon values (0.5, 1.0, 5.0, ...)
+
+experiments:
+  # ===== Sleep-EDF Experiments =====
+  
+  dp_sleep_edf_eps0_5_run1:
+    name: "DP - Sleep-EDF ε=0.5 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      # DP SPECIFIC
+      differential_privacy:
+        enabled: true
+        target_epsilon: 0.5          # VARIA AQUI ← Privacidade ultra-forte
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+        # noise_multiplier é calculado automaticamente
+    description: "Ultra-strong privacy (ε=0.5)"
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "strong_privacy"]
+
+  dp_sleep_edf_eps1_run1:
+    name: "DP - Sleep-EDF ε=1.0 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0          # VARIA AQUI ← Privacidade forte
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    description: "Strong privacy (ε=1.0)"
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+
+  dp_sleep_edf_eps1_run2:
+    name: "DP - Sleep-EDF ε=1.0 (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+
+  dp_sleep_edf_eps1_run3:
+    name: "DP - Sleep-EDF ε=1.0 (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 44
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+
+  dp_sleep_edf_eps5_run1:
+    name: "DP - Sleep-EDF ε=5.0 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 5.0          # VARIA AQUI ← Privacidade moderada
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    description: "Moderate privacy (ε=5.0)"
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier2"]
+
+  dp_sleep_edf_eps5_run2:
+    name: "DP - Sleep-EDF ε=5.0 (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 5.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier2"]
+
+  # ===== WESAD Experiments =====
+
+  dp_wesad_eps1_run1:
+    name: "DP - WESAD ε=1.0 (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 64
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    description: "Strong privacy on WESAD"
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+
+  dp_wesad_eps1_run2:
+    name: "DP - WESAD ε=1.0 (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 64
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+
+  dp_wesad_eps1_run3:
+    name: "DP - WESAD ε=1.0 (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 44
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 64
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 1.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+
+  dp_wesad_eps5_run1:
+    name: "DP - WESAD ε=5.0 (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 42
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 64
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 5.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "wesad", "epsilon_sweep", "tier2"]
+
+  dp_wesad_eps5_run2:
+    name: "DP - WESAD ε=5.0 (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 43
+    device: "cuda"
+    hyperparameters:
+      epochs: 100
+      batch_size: 64
+      learning_rate: 0.001
+      early_stopping_patience: 8
+      differential_privacy:
+        enabled: true
+        target_epsilon: 5.0
+        target_delta: 1e-5
+        max_grad_norm: 1.0
+    tags: ["dp", "wesad", "epsilon_sweep", "tier2"]

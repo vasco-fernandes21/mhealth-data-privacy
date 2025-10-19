@@ -1,0 +1,13 @@
+2025-10-19 19:14:00 - INFO - Experiment 'baseline_wesad' started
+2025-10-19 19:14:00 - INFO - Log file: results/baseline_wesad/experiment_20251019_191400.log
+2025-10-19 19:14:00 - INFO - Training wesad baseline
+2025-10-19 19:14:00 - INFO - Seed: 42
+2025-10-19 19:14:00 - INFO - Device: mps
+2025-10-19 19:14:00 - INFO - Configuration loaded
+2025-10-19 19:14:00 - INFO - Loading wesad data...
+2025-10-19 19:14:01 - INFO - Data loaded: Train=(2145, 14, 1920), Val=(237, 14, 1920), Test=(237, 14, 1920)
+2025-10-19 19:14:01 - INFO - Data loaders created: batch_size=64
+2025-10-19 19:14:01 - INFO - Model created: WESADModel
+2025-10-19 19:14:01 - INFO - Trainer created
+2025-10-19 19:14:01 - INFO - Starting training...
+2025-10-19 19:14:05 - ERROR - Experiment failed with RuntimeError: linear(): input and weight.T shapes cannot be multiplied (1920x14 and 16x128)

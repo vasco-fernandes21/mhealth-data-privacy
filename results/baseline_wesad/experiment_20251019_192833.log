@@ -1,0 +1,13 @@
+2025-10-19 19:28:33 - INFO - Experiment 'baseline_wesad' started
+2025-10-19 19:28:33 - INFO - Log file: results/baseline_wesad/experiment_20251019_192833.log
+2025-10-19 19:28:33 - INFO - Training wesad baseline
+2025-10-19 19:28:33 - INFO - Seed: 42
+2025-10-19 19:28:33 - INFO - Device: cpu
+2025-10-19 19:28:33 - INFO - Configuration loaded
+2025-10-19 19:28:33 - INFO - Loading wesad data...
+2025-10-19 19:28:33 - INFO - Data loaded: Train=(2145, 14, 1920), Val=(237, 14, 1920), Test=(237, 14, 1920)
+2025-10-19 19:28:33 - INFO - Data loaders created: batch_size=64
+2025-10-19 19:28:33 - INFO - Model created: WESADModel
+2025-10-19 19:28:33 - INFO - Trainer created
+2025-10-19 19:28:33 - INFO - Starting training...
+2025-10-19 19:29:31 - ERROR - Experiment failed with KeyboardInterrupt: 

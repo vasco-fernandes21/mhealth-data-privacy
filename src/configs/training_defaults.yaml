@@ -1,0 +1,67 @@
+# ============================================================================
+# TRAINING DEFAULT CONFIGURATION
+# ============================================================================
+# Common defaults for all training scenarios
+# Override specific values in dataset-specific configs
+
+training:
+  # Optimization
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  optimizer: "adam"
+  optimizer_params:
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
+  
+  # Loss function
+  loss: "cross_entropy"
+  label_smoothing: 0.05
+  
+  # Learning rate scheduling
+  scheduler: "none"  # Options: "none", "exponential", "cosine", "linear"
+  scheduler_params:
+    decay_rate: 0.5
+    decay_steps: 10
+  
+  # Early stopping
+  early_stopping: true
+  early_stopping_patience: 8
+  
+  # Checkpointing
+  save_best_only: true
+  save_checkpoint_every: 0  # 0 = only save best
+  
+  # Data loading
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
+  
+  # Gradient clipping
+  gradient_clipping: true
+  gradient_clip_norm: 1.0
+  
+  # Precision
+  mixed_precision: false  # Automatic Mixed Precision
+  
+  # Logging
+  log_every_n_batches: 10
+  verbose: true
+
+# Device configuration
+device:
+  type: "auto"  # "cuda", "cpu", "mps", or "auto"
+  deterministic: false  # Set to true for reproducibility (slower)
+  benchmark: true  # CUDA optimization
+  num_gpu: 1
+
+# Reproducibility
+reproducibility:
+  seed: 42
+  set_deterministic: false
+
+# Validation
+validation:
+  validate_every_n_epochs: 1
+  keep_val_in_memory: true
