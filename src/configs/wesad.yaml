@@ -1,16 +1,14 @@
 # ============================================================================
 # WESAD DATASET CONFIGURATION
 # ============================================================================
+# Optimized for baseline (no privacy) - standard ML practices
 
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
-  
-  # Data shapes 
-  n_channels: 14              
+  n_channels: 14
   n_classes: 2
-  sequence_length: 1920       # 60 seconds @ 32 Hz
-  
+  sequence_length: 1920  # 60 seconds @ 32 Hz
   class_names:
     - "non-stress"
     - "stress"
@@ -28,27 +26,17 @@ model:
   group_norm_groups: 8
 
 training:
-  # ✅ ADICIONE ESTES CAMPOS QUE FALTAM:
-  optimizer: "adam"                    # ← ADICIONE
-  label_smoothing: 0.05                # ← ADICIONE
-  lr_scheduler: "reduce_on_plateau"    # ← Já tem, OK
-  
-  # Existentes
-  epochs: 100
+  # Dataset-specific overrides
   batch_size: 64
-  learning_rate: 0.001
-  weight_decay: 1e-4
-  
-  loss: "cross_entropy"
-  use_class_weights: true
-  
-  # Gradient clipping (para DP compatibility)
-  gradient_clipping: true              # ← ADICIONE
-  gradient_clip_norm: 1.0              # ← ADICIONE
-  
-  early_stopping: true
-  early_stopping_patience: 8
-  
-  num_workers: 4
-  prefetch_factor: 2
-  drop_last: true
+  learning_rate: 0.0005
+  # Other settings inherited from training_defaults.yaml
+  # - epochs: 100
+  # - optimizer: "adam"
+  # - weight_decay: 1e-4
+  # - loss: "cross_entropy"
+  # - label_smoothing: 0.05
+  # - use_class_weights: false
+  # - lr_scheduler: "none"
+  # - gradient_clipping: true
+  # - gradient_clip_norm: 1.0
+  # - early_stopping_patience: 10

@@ -1,7 +1,7 @@
 # ============================================================================
 # SLEEP-EDF DATASET CONFIGURATION
 # ============================================================================
-# Specific configuration for Sleep-EDF dataset
+# Optimized for baseline (no privacy) - standard ML practices
 
 dataset:
   name: "sleep-edf"
@@ -20,92 +20,31 @@ dataset:
     - "N2"     # Stage 2
     - "N3"     # Stage 3/4
     - "R"      # REM
-  
-  # Data paths (relative to dataset.path)
-  files:
-    X_train: "X_train.npy"
-    X_val: "X_val.npy"
-    X_test: "X_test.npy"
-    y_train: "y_train.npy"
-    y_val: "y_val.npy"
-    y_test: "y_test.npy"
-    
-    # Windowed data
-    X_train_windows: "X_train_windows.npy"
-    y_train_windows: "y_train_windows.npy"
-    X_val_windows: "X_val_windows.npy"
-    y_val_windows: "y_val_windows.npy"
-    X_test_windows: "X_test_windows.npy"
-    y_test_windows: "y_test_windows.npy"
-    
-    # Subject IDs
-    subjects_train: "subjects_train.npy"
-    subjects_val: "subjects_val.npy"
-    subjects_test: "subjects_test.npy"
-    
-    # Metadata
-    preprocessing_info: "preprocessing_info.pkl"
-    label_encoder: "label_encoder.pkl"
 
 model:
   architecture: "lstm"
-  
-  # LSTM configuration
   lstm_units: 128
   lstm_layers: 2
   lstm_bidirectional: true
-  
-  # Dropout
   dropout: 0.3
-  
-  # Dense layers
   dense_layers: [64, 32]
-  
-  # Activation
   activation: "relu"
-  
-  # Normalization
-  use_batch_norm: false  # Set to false for DP compatibility
+  use_batch_norm: false  # For DP compatibility
   use_layer_norm: false
-  use_group_norm: false  # Only for DP models
+  use_group_norm: false
 
 training:
-  # From training_defaults.yaml
-  epochs: 100
-  batch_size: 32  # Smaller batch for Sleep-EDF (less data)
-  learning_rate: 0.001
-  
-  # Loss
-  loss: "cross_entropy"
-  use_class_weights: true  # Handle class imbalance
-  
-  # Early stopping
-  early_stopping: true
-  early_stopping_patience: 8
-  
-  # Dataset specific
-  num_workers: 4
-  prefetch_factor: 2
-
-# Data augmentation (not used in Sleep-EDF, but framework ready)
-augmentation:
-  enabled: false
-  
-  augmentations:
-    - type: "noise"
-      params:
-        std: 0.01
-    - type: "time_shift"
-      params:
-        max_shift: 2
-
-# Model-specific hyperparameters
-hyperparameters:
-  # Gradient clipping
-  gradient_clip_norm: 1.0
-  
-  # Learning rate scheduling
-  lr_scheduler: "none"
-  
-  # Initialization
-  weight_init: "xavier"
+  # Dataset-specific overrides
+  batch_size: 32  # Smaller batch (less data)
+  learning_rate: 0.0005
+  # Other settings inherited from training_defaults.yaml
+  # - epochs: 100
+  # - optimizer: "adam"
+  # - weight_decay: 1e-4
+  # - loss: "cross_entropy"
+  # - label_smoothing: 0.05
+  # - use_class_weights: false
+  # - lr_scheduler: "none"
+  # - gradient_clipping: true
+  # - gradient_clip_norm: 1.0
+  # - early_stopping_patience: 10

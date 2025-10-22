@@ -4,14 +4,23 @@ Baseline trainer without privacy.
 
 Trains models without any privacy protection.
 Provides upper bound on accuracy for privacy-utility tradeoff analysis.
+
+Design principles for paper:
+- Simple and reproducible
+- No class weights (hurt WESAD performance)
+- No LR scheduler (fixed LR for fair DP comparison)
+- Gradient clipping for DP compatibility
 """
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, Tuple, Optional, Any
+from typing import Dict, Tuple, Any
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, 
+    f1_score, confusion_matrix
+)
 
 from src.training.base_trainer import BaseTrainer
 from src.training.utils import ProgressBar, GradientMonitor
@@ -19,7 +28,14 @@ from src.utils.logging_utils import get_logger
 
 
 class BaselineTrainer(BaseTrainer):
-    """Trainer without privacy (baseline)."""
+    """Trainer without privacy (baseline).
+    
+    Optimized for scientific paper:
+    - Standard hyperparameters from literature
+    - Fixed learning rate (no scheduling)
+    - No class weighting (simple setup)
+    - Gradient clipping for DP compatibility
+    """
     
     def __init__(self,
                  model: nn.Module,
@@ -40,57 +56,70 @@ class BaselineTrainer(BaseTrainer):
     def setup_optimizer_and_loss(self) -> None:
         """Setup optimizer and loss function."""
         training_cfg = self.config['training']
-        dataset_cfg = self.config['dataset']
         
-        # Learning rate
+        # ============================================================
+        # 1. OPTIMIZER
+        # ============================================================
         lr = training_cfg['learning_rate']
+        weight_decay = training_cfg.get('weight_decay', 1e-4)
         
-        # Optimizer
+        # Fix type conversion issues for numeric values
+        if isinstance(weight_decay, str):
+            weight_decay = float(weight_decay)
+        if isinstance(lr, str):
+            lr = float(lr)
+            
         optimizer_name = training_cfg.get('optimizer', 'adam').lower()
         
         if optimizer_name == 'adam':
             self.optimizer = torch.optim.Adam(
                 self.model.parameters(),
                 lr=lr,
-                weight_decay=training_cfg.get('weight_decay', 1e-4)
+                weight_decay=weight_decay
+            )
+            self.logger.info(
+                f"Optimizer: Adam (lr={lr}, weight_decay={weight_decay})"
             )
         elif optimizer_name == 'sgd':
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
                 lr=lr,
-                weight_decay=training_cfg.get('weight_decay', 1e-4),
+                weight_decay=weight_decay,
                 momentum=0.9
+            )
+            self.logger.info(
+                f"Optimizer: SGD (lr={lr}, weight_decay={weight_decay})"
             )
         else:
             raise ValueError(f"Unknown optimizer: {optimizer_name}")
         
-        # Loss function
+        # ============================================================
+        # 2. LOSS FUNCTION
+        # ============================================================
         loss_name = training_cfg.get('loss', 'cross_entropy').lower()
+        label_smoothing = training_cfg.get('label_smoothing', 0.0)
         
         if loss_name == 'cross_entropy':
-            # Compute class weights if needed
-            weights = None
-            if training_cfg.get('use_class_weights', False):
-                # Need to compute from data - will be handled in fit()
-                weights = None
-            
             self.criterion = nn.CrossEntropyLoss(
-                weight=weights,
-                label_smoothing=training_cfg.get('label_smoothing', 0.0)
+                label_smoothing=label_smoothing
             )
-        
+            self.logger.info(
+                f"Loss: CrossEntropyLoss (label_smoothing={label_smoothing})"
+            )
         elif loss_name == 'binary_cross_entropy':
             self.criterion = nn.BCEWithLogitsLoss()
-        
+            self.logger.info("Loss: BCEWithLogitsLoss")
         else:
             raise ValueError(f"Unknown loss: {loss_name}")
         
         # Move criterion to device
-        if hasattr(self.criterion, 'to'):
-            self.criterion = self.criterion.to(self.device)
+        self.criterion = self.criterion.to(self.device)
         
-        # Gradient monitor
+        # ============================================================
+        # 3. GRADIENT MONITOR
+        # ============================================================
         self.gradient_monitor = GradientMonitor(self.model)
+        self.logger.info("Gradient monitor initialized")
     
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
         """
@@ -121,10 +150,14 @@ class BaselineTrainer(BaseTrainer):
             # Backward pass
             loss.backward()
             
-            # Gradient clipping
+            # Gradient clipping (important for DP compatibility)
             if self.config['training'].get('gradient_clipping', True):
-                clip_norm = self.config['training'].get('gradient_clip_norm', 1.0)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_norm)
+                clip_norm = self.config['training'].get(
+                    'gradient_clip_norm', 1.0
+                )
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), clip_norm
+                )
             
             # Log gradients
             if self.gradient_monitor:
@@ -178,9 +211,21 @@ class BaselineTrainer(BaseTrainer):
         
         metrics = {
             'accuracy': float(accuracy_score(y_true, y_pred)),
-            'precision': float(precision_score(y_true, y_pred, average='weighted', zero_division=0)),
-            'recall': float(recall_score(y_true, y_pred, average='weighted', zero_division=0)),
-            'f1_score': float(f1_score(y_true, y_pred, average='weighted', zero_division=0)),
+            'precision': float(
+                precision_score(
+                    y_true, y_pred, average='weighted', zero_division=0
+                )
+            ),
+            'recall': float(
+                recall_score(
+                    y_true, y_pred, average='weighted', zero_division=0
+                )
+            ),
+            'f1_score': float(
+                f1_score(
+                    y_true, y_pred, average='weighted', zero_division=0
+                )
+            ),
             'confusion_matrix': confusion_matrix(y_true, y_pred).tolist(),
             'class_names': self.config['dataset'].get('class_names', [])
         }
@@ -190,11 +235,17 @@ class BaselineTrainer(BaseTrainer):
     def _log_epoch(self, epoch: int, train_loss: float, train_acc: float,
                    val_loss: float, val_acc: float) -> None:
         """Log epoch results."""
-        grad_summary = self.gradient_monitor.get_summary() if self.gradient_monitor else None
+        grad_summary = (
+            self.gradient_monitor.get_summary()
+            if self.gradient_monitor
+            else None
+        )
         
-        msg = (f"Epoch {epoch:03d}: "
-               f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
-               f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+        msg = (
+            f"Epoch {epoch:03d}: "
+            f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
+            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
+        )
         
         if grad_summary:
             msg += f" | grad_norm={grad_summary['norm_mean']:.6f}"
