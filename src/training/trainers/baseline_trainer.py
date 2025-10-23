@@ -229,6 +229,7 @@ class BaselineTrainer(BaseTrainer):
         start_time = time.time()
         
         for epoch in range(1, epochs + 1):
+            print(f"\n Starting Epoch {epoch}/{epochs}")
             # Train
             train_loss, train_acc = self.train_epoch(train_loader)
             
@@ -348,4 +349,8 @@ class BaselineTrainer(BaseTrainer):
         if grad_summary:
             msg += f" | grad_norm={grad_summary['norm_mean']:.6f}"
         
+        # Print to console for real-time visibility
+        print(f"\n {msg}")
+        
+        # Also log to file
         self.logger.info(msg)

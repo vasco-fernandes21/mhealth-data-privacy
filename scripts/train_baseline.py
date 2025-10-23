@@ -78,7 +78,7 @@ def load_data(dataset: str, data_dir: str):
     
     if dataset == 'sleep-edf':
         (X_train, X_val, X_test, y_train, y_val, y_test,
-         scaler, info) = load_windowed_sleep_edf(str(data_path))
+         scaler, info, subjects_train) = load_windowed_sleep_edf(str(data_path))
     elif dataset == 'wesad':
         (X_train, X_val, X_test, y_train, y_val, y_test,
          label_encoder, info) = load_augmented_wesad_temporal(str(data_path))
@@ -142,7 +142,14 @@ def train_dataset_with_seed(dataset: str, seed: int, data_dir: str,
     
     # Load configs with deep merge
     default_cfg = load_config(Path(config_dir) / 'training_defaults.yaml')
-    dataset_cfg = load_config(Path(config_dir) / f'{dataset}.yaml')
+    
+    # Map dataset names to config file names
+    config_mapping = {
+        'sleep-edf': 'sleep_edf.yaml',
+        'wesad': 'wesad.yaml'
+    }
+    config_filename = config_mapping.get(dataset, f'{dataset}.yaml')
+    dataset_cfg = load_config(Path(config_dir) / config_filename)
     config = merge_configs(default_cfg, dataset_cfg)
     
     # Load data
