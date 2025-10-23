@@ -2,43 +2,61 @@
 # TRAINING DEFAULT CONFIGURATION
 # ============================================================================
 # Common defaults for all training scenarios
-# Optimized for baseline (no privacy) with standard ML practices
+# Optimized for baseline with improved convergence
+# 
+# Key improvements:
+# - AdamW: Better weight decay decoupling
+# - FocalLoss: Handles class imbalance
+# - CosineAnnealingWarmRestarts: Smoother convergence
+# - Increased epochs & patience: More training time
+# 
+# All changes are DP/FL compatible!
 
 training:
-  # Optimization
-  epochs: 100
+  # ====== OPTIMIZATION ======
+  epochs: 200  # ← Increased (was 100) - more training time
+  batch_size: 32  # ← Reduced (was 64) - more frequent updates
   learning_rate: 0.0005
-  optimizer: "adam"
-  weight_decay: 1e-4
+  optimizer: "adamw"  # ← Changed (was "adam") - better weight decay
+  weight_decay: 0.0001
   
-  # Loss function
-  loss: "cross_entropy"
+  # ====== LOSS FUNCTION ======
+  loss: "focal_loss"  # ← Changed (was "cross_entropy") - class imbalance
+  focal_alpha: 0.25  # ← NEW: FocalLoss parameter (weight positive class)
+  focal_gamma: 2.0   # ← NEW: FocalLoss parameter (focus on hard examples)
   label_smoothing: 0.05
   use_class_weights: false  # Disabled (hurt WESAD performance)
   
-  # Learning rate scheduling
-  lr_scheduler: "none"  # Fixed LR for fair comparison with DP
+  # ====== LEARNING RATE SCHEDULING ======
+  lr_scheduler: "cosine_annealing_warm_restarts"  # ← Changed (was "none")
+  scheduler_T0: 10  # ← NEW: Initial restart period
+  scheduler_Tmult: 2  # ← NEW: Restart period multiplier
   
-  # Early stopping
+  # ====== EARLY STOPPING ======
   early_stopping: true
-  early_stopping_patience: 10
+  early_stopping_patience: 30  # ← Increased (was 10) - more patience
   
-  # Gradient clipping (IMPORTANT: compatible with DP later)
+  # ====== GRADIENT CLIPPING ======
+  # IMPORTANT: Keep these for DP/FL compatibility
   gradient_clipping: true
   gradient_clip_norm: 1.0
   
-  # Data loading
+  # ====== DATA LOADING ======
   num_workers: 4
   pin_memory: true
   persistent_workers: true
   prefetch_factor: 2
   drop_last: false
   
-  # Logging
+  # ====== LOGGING ======
   log_every_n_batches: 10
   verbose: true
 
-# Device configuration
+# ====== DEVICE CONFIGURATION ======
 device:
   type: "auto"  # "cuda", "cpu", or "auto"
   benchmark: true  # CUDA optimization
+
+# ====== OPTIONAL: WARMUP PARAMETERS ======
+# For alternative scheduler (uncomment if using warmup_cosine)
+# warmup_epochs: 5  # Linear warmup for first 5 epochs

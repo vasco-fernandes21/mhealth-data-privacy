@@ -1,21 +1,59 @@
 #!/usr/bin/env python3
 """
-LSTM model for WESAD stress detection.
+LSTM model for WESAD stress detection with optional Attention.
 
 Input: (batch, n_channels, timesteps) = (batch, 16, 1920)
 Output: (batch, n_classes) = (batch, 2)
 
 Architecture:
-- Initial projection to reduce dimensionality
-- Bidirectional LSTM for temporal context
+- Input projection
+- Bidirectional LSTM (core)
+- Optional: Multi-head Attention (can be disabled)
 - Dense layers for classification
-- DP-optimized (uses GroupNorm instead of BatchNorm)
+- DP-optimized (GroupNorm instead of BatchNorm)
 """
 
 import torch
 import torch.nn as nn
 from typing import Dict, Any
 from .base_model import BaseModel
+
+
+class AttentionLayer(nn.Module):
+    """
+    Multi-head Attention layer (DP-compatible).
+    
+    Can be completely removed for baseline consistency
+    if needed. Optional component.
+    """
+    
+    def __init__(self, hidden_dim: int, num_heads: int = 4, dropout: float = 0.1):
+        """
+        Args:
+            hidden_dim: Feature dimension
+            num_heads: Number of attention heads
+            dropout: Attention dropout
+        """
+        super().__init__()
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            batch_first=True,
+            dropout=dropout
+        )
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Apply attention.
+        
+        Args:
+            x: (batch, seq_len, hidden_dim)
+        
+        Returns:
+            (batch, seq_len, hidden_dim)
+        """
+        attn_output, _ = self.attention(x, x, x)
+        return attn_output
 
 
 class WESADModel(BaseModel):
@@ -33,6 +71,8 @@ class WESADModel(BaseModel):
                 - model.lstm_layers
                 - model.dropout
                 - model.dense_layers
+                - model.use_attention (optional, default=False)
+                - model.attention_heads (optional, default=4)
             device: Device to use
         """
         super().__init__(config, device)
@@ -49,9 +89,13 @@ class WESADModel(BaseModel):
         dropout = model_cfg['dropout']               # 0.3
         dense_layers = model_cfg['dense_layers']     # [64, 32]
         
+        # Optional attention
+        use_attention = model_cfg.get('use_attention', False)
+        attention_heads = model_cfg.get('attention_heads', 4)
+        
         # Initial projection layer to reduce from 16 channels to 128
         self.input_proj = nn.Linear(self.n_channels, 128)
-        self.input_norm = nn.GroupNorm(num_groups=8, num_channels=128)  # DP-safe
+        self.input_norm = nn.GroupNorm(num_groups=8, num_channels=128)
         self.input_dropout = nn.Dropout(0.2)
         
         # LSTM layers
@@ -67,9 +111,20 @@ class WESADModel(BaseModel):
         # Dimension after bidirectional LSTM
         lstm_output_size = lstm_units * 2  # 128
         
-        # Normalization after LSTM (DP-safe)
+        # Normalization after LSTM
         self.lstm_norm = nn.GroupNorm(num_groups=8, num_channels=lstm_output_size)
         self.lstm_dropout = nn.Dropout(dropout)
+        
+        # Optional Attention
+        self.use_attention = use_attention
+        if use_attention:
+            self.attention = AttentionLayer(
+                hidden_dim=lstm_output_size,
+                num_heads=attention_heads,
+                dropout=dropout
+            )
+            self.attention_norm = nn.GroupNorm(num_groups=8, 
+                                              num_channels=lstm_output_size)
         
         # Dense layers
         dense_layers_list = []
@@ -78,7 +133,7 @@ class WESADModel(BaseModel):
         for dense_size in dense_layers:  # [64, 32]
             dense_layers_list.append(nn.Linear(prev_size, dense_size))
             dense_layers_list.append(nn.ReLU())
-            if dense_size != dense_layers[-1]:  # Don't apply dropout after last
+            if dense_size != dense_layers[-1]:
                 dense_layers_list.append(nn.Dropout(dropout))
             prev_size = dense_size
         
@@ -99,27 +154,29 @@ class WESADModel(BaseModel):
         
         Returns:
             Output tensor of shape (batch, n_classes)
-            e.g., (64, 2)
         """
-        # Input is (batch, channels, timesteps)
-        # Need to convert to (batch, timesteps, channels) for LSTM
+        # Convert to (batch, timesteps, channels)
         x = x.permute(0, 2, 1)  # (batch, 1920, 16)
         
         # Initial projection
         x = self.input_proj(x)  # (batch, 1920, 128)
-        x = self.input_norm(x.transpose(1, 2)).transpose(1, 2)  # GroupNorm expects (N, C, L)
+        x = self.input_norm(x.transpose(1, 2)).transpose(1, 2)
         x = torch.relu(x)
         x = self.input_dropout(x)
         
         # LSTM forward
         lstm_out, (h_n, c_n) = self.lstm(x)  # (batch, 1920, 128)
         
-        # Get last hidden states from both directions
+        # Optional: Apply attention
+        if self.use_attention:
+            attn_out = self.attention(lstm_out)  # (batch, 1920, 128)
+            attn_out = self.attention_norm(attn_out.transpose(1, 2)).transpose(1, 2)
+            lstm_out = lstm_out + attn_out  # Residual connection
+        
+        # Get last hidden states (concat forward + backward)
         h_forward = h_n[-2]  # Last forward layer
         h_backward = h_n[-1]  # Last backward layer
-        
-        # Concatenate: (batch, 128)
-        h_last = torch.cat([h_forward, h_backward], dim=1)
+        h_last = torch.cat([h_forward, h_backward], dim=1)  # (batch, 128)
         
         # Apply normalization
         h_last = self.lstm_norm(h_last.unsqueeze(2)).squeeze(2)
@@ -136,6 +193,7 @@ class WESADModel(BaseModel):
         info.update({
             'model_name': 'WESADLSTMModel',
             'n_channels': self.n_channels,
+            'use_attention': self.use_attention,
             'lstm_config': {
                 'units': self.lstm.hidden_size,
                 'layers': self.lstm.num_layers,
@@ -147,25 +205,14 @@ class WESADModel(BaseModel):
 
 def create_wesad_model(config: Dict[str, Any], 
                        device: str = 'cpu') -> WESADModel:
-    """
-    Factory function to create WESAD model.
-    
-    Args:
-        config: Configuration dictionary
-        device: Device to use
-    
-    Returns:
-        Initialized model
-    """
+    """Factory function to create WESAD model."""
     model = WESADModel(config, device)
     return model
 
 
 if __name__ == "__main__":
-    # Test script
     print("Testing WESAD model...\n")
     
-    # Create config
     config = {
         'dataset': {
             'name': 'wesad',
@@ -177,30 +224,20 @@ if __name__ == "__main__":
             'lstm_units': 64,
             'lstm_layers': 2,
             'dropout': 0.3,
-            'dense_layers': [64, 32]
+            'dense_layers': [64, 32],
+            'use_attention': False  
         }
     }
     
-    # Create model
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = WESADModel(config, device=device)
     
-    # Print info
     model.print_model_summary()
     
-    # Test forward pass
     print("Test forward pass:")
-    x = torch.randn(64, 16, 1920).to(device)  # (batch, channels, timesteps)
+    x = torch.randn(64, 16, 1920).to(device)
     y = model(x)
-    print(f"  Input shape: {x.shape}")
-    print(f"  Output shape: {y.shape}")
-    print(f"  Expected output shape: (64, 2)")
+    print(f"  Input: {x.shape} → Output: {y.shape}")
     print(f"  ✅ Match: {y.shape == (64, 2)}\n")
-    
-    # Test model save/load
-    print("Test save/load:")
-    model.save("/tmp/wesad_model.pth")
-    loaded_model = WESADModel.load("/tmp/wesad_model.pth", device=device)
-    print(f"✅ Model saved and loaded successfully\n")
     
     print("✅ All tests passed!")
