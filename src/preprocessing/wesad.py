@@ -354,19 +354,36 @@ def _augment_temporal(X: np.ndarray, noise_std: float = 0.01,
 
 
 def _create_augmented_data_internal(X_train: np.ndarray, y_train: np.ndarray,
-                                    output_dir: str, n_augmentations: int = 2) -> None:
+                                    output_dir: str, n_augmentations: int = 2,
+                                    aug_noise_std: float = 0.05,
+                                    aug_max_time_shift: int = 32) -> None:
     """
     Internal function called by preprocess_wesad_temporal.
     Creates augmented training data and saves it.
+    
+    Args:
+        X_train: Training data
+        y_train: Training labels
+        output_dir: Output directory
+        n_augmentations: Number of augmentations per sample
+        aug_noise_std: Noise standard deviation
+        aug_max_time_shift: Max time shift in samples
     """
     print(f"  Creating augmented data ({n_augmentations} augmentations per sample)...")
+    print(f"    Augmentation params: noise_std={aug_noise_std}, time_shift={aug_max_time_shift}")
     
     X_aug_list = [X_train]
     y_aug_list = [y_train]
 
     for i in range(n_augmentations):
         seed = 42 + i
-        X_aug = _augment_temporal(X_train, noise_std=0.01, max_time_shift=8, seed=seed)
+        # ✅ USE PARAMETERS
+        X_aug = _augment_temporal(
+            X_train, 
+            noise_std=aug_noise_std, 
+            max_time_shift=aug_max_time_shift, 
+            seed=seed
+        )
         X_aug_list.append(X_aug)
         y_aug_list.append(y_train)
 
@@ -386,7 +403,9 @@ def _create_augmented_data_internal(X_train: np.ndarray, y_train: np.ndarray,
         'original_samples': X_train.shape[0],
         'augmented_samples': X_all.shape[0],
         'augmentation_factor': len(X_aug_list),
-        'augmentation_method': 'temporal (noise + time shift)'
+        'augmentation_method': 'temporal (noise + time shift)',
+        'noise_std': aug_noise_std,
+        'max_time_shift': aug_max_time_shift
     }
     joblib.dump(aug_info, os.path.join(output_dir, 'augmentation_info.pkl'))
 
@@ -483,8 +502,10 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
                               export_eda: bool = True,
                               n_workers: int = None,
                               force_reprocess: bool = False,
-                              create_augmentations: bool = True,  # ✅ NOVO
-                              n_augmentations: int = 2) -> Dict:  # ✅ NOVO
+                              create_augmentations: bool = True,
+                              n_augmentations: int = 2,           
+                              aug_noise_std: float = 0.05,
+                              aug_max_time_shift: int = 32) -> Dict:
     """
     Complete preprocessing pipeline for WESAD (temporal windows for LSTM/CNN).
     
@@ -507,6 +528,8 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         force_reprocess: Force reprocessing
         create_augmentations: Automatically create augmented data (default=True)
         n_augmentations: Number of augmentations per sample (default=2)
+        aug_noise_std: Noise standard deviation for augmentation
+        aug_max_time_shift: Max time shift for augmentation
     
     Returns:
         Dictionary with preprocessing info
@@ -711,7 +734,9 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         'files_processed': len(pkl_files),
         'parallel_processing': True,
         'n_workers': n_workers,
-        'has_subject_ids': True  # ✅ Flag
+        'has_subject_ids': True,
+        'aug_noise_std': aug_noise_std,
+        'aug_max_time_shift': aug_max_time_shift
     }
     
     joblib.dump(preprocessing_info, os.path.join(output_dir, "preprocessing_info.pkl"))
@@ -719,11 +744,14 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     print(f"\n✅ Basic preprocessing complete!")
     print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
     
-    # ✅ AUTO-CREATE AUGMENTED DATA
     if create_augmentations:
         print(f"\n📊 Creating augmented training data (factor={n_augmentations+1}×)...")
         try:
-            _create_augmented_data_internal(X_train, y_train, output_dir, n_augmentations)
+            _create_augmented_data_internal(
+                X_train, y_train, output_dir, n_augmentations,
+                aug_noise_std=aug_noise_std,
+                aug_max_time_shift=aug_max_time_shift
+            )
             print("✅ Augmented data created!")
             preprocessing_info['has_augmented_data'] = True
             preprocessing_info['n_augmentations'] = n_augmentations
@@ -731,7 +759,7 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         except Exception as e:
             print(f"⚠️  Augmented data creation failed: {e}")
             preprocessing_info['has_augmented_data'] = False
-    
+
     elapsed = time.time() - start_time
     print(f"\n{'='*70}")
     print(f"✓ Preprocessing complete in {elapsed:.1f}s")
@@ -840,6 +868,10 @@ if __name__ == "__main__":
                        help='Skip automatic augmentation')
     parser.add_argument('--n_augmentations', type=int, default=2, 
                        help='Number of augmentations per sample')
+    parser.add_argument('--aug_noise_std', type=float, default=0.05,
+                       help='Augmentation noise standard deviation')
+    parser.add_argument('--aug_max_time_shift', type=int, default=32,
+                       help='Augmentation max time shift in samples')
     parser.set_defaults(binary=True)
     
     args = parser.parse_args()
@@ -861,6 +893,8 @@ if __name__ == "__main__":
     print(f"Create augmentations: {not args.no_augmentations}")
     if not args.no_augmentations:
         print(f"Augmentations per sample: {args.n_augmentations}")
+        print(f"Augmentation noise std: {args.aug_noise_std}")
+        print(f"Augmentation max time shift: {args.aug_max_time_shift}")
     
     # Run preprocessing
     info = preprocess_wesad_temporal(
@@ -874,7 +908,9 @@ if __name__ == "__main__":
         binary=args.binary,
         random_state=args.random_state,
         create_augmentations=not args.no_augmentations,
-        n_augmentations=args.n_augmentations
+        n_augmentations=args.n_augmentations,
+        aug_noise_std=args.aug_noise_std,
+        aug_max_time_shift=args.aug_max_time_shift
     )
     
     print(f"✅ WESAD preprocessing completed!")

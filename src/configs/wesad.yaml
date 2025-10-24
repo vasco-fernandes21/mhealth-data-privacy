@@ -1,5 +1,5 @@
 # ============================================================================
-# WESAD DATASET CONFIGURATION (BASELINE OPTIMIZED)
+# WESAD DATASET CONFIGURATION (OVERFITTING REDUCTION)
 # ============================================================================
 
 dataset:
@@ -15,17 +15,22 @@ dataset:
 model:
   architecture: "lstm"
   input_projection: 128
-  lstm_units: 64
-  lstm_layers: 2
+  lstm_units: 16
+  lstm_layers: 1
   lstm_bidirectional: true
-  dropout: 0.3
-  dense_layers: [64, 32]
+  dropout: 0.7  
+  dense_layers: [8]
   activation: "relu"
 
 training:
   # Dataset-specific overrides
-  batch_size: 32  # ← Explicitly set (inherited from defaults)
+  batch_size: 32
   learning_rate: 0.0005
+  
+  # ADICIONE ESTAS OVERRIDES:
+  label_smoothing: 0.2  # ← AUMENTADO de 0.05 (mais regularização)
+  weight_decay: 0.001  # ← AUMENTADO de 0.0001 (mais regularização)
+  early_stopping_patience: 5  # ← REDUZIDO de 30 (para mais cedo)
   
   # All other settings inherited from training_defaults.yaml:
   # - epochs: 200
@@ -36,6 +41,5 @@ training:
   # - lr_scheduler: "cosine_annealing_warm_restarts"
   # - scheduler_T0: 10
   # - scheduler_Tmult: 2
-  # - early_stopping_patience: 30
   # - gradient_clipping: true
   # - gradient_clip_norm: 1.0

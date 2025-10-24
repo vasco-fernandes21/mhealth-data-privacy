@@ -91,6 +91,11 @@ def load_data(dataset: str, data_dir: str):
 def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
                        batch_size: int, num_workers: int = 4):
     """Create data loaders."""
+    
+    # ✅ Calculate flags correctly
+    persistent_workers = num_workers > 0
+    pin_memory = num_workers > 0
+
     train_dataset = TensorDataset(
         torch.tensor(X_train, dtype=torch.float32),
         torch.tensor(y_train, dtype=torch.long)
@@ -109,8 +114,8 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
         drop_last=False
     )
     val_loader = DataLoader(
@@ -118,16 +123,16 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers
     )
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers
     )
     
     return train_loader, val_loader, test_loader
@@ -158,7 +163,7 @@ def train_dataset_with_seed(dataset: str, seed: int, data_dir: str,
     
     # Create dataloaders
     batch_size = config['training']['batch_size']
-    num_workers = config['training'].get('num_workers', 4)
+    num_workers = config['training'].get('num_workers', 0)
     train_loader, val_loader, test_loader = create_dataloaders(
         X_train, y_train, X_val, y_val, X_test, y_test,
         batch_size, num_workers

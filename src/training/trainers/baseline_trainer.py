@@ -16,7 +16,7 @@ from sklearn.metrics import (
 )
 
 from src.training.base_trainer import BaseTrainer
-from src.training.utils import ProgressBar, GradientMonitor
+from src.training.utils import GradientMonitor
 from src.training.schedulers import CosineAnnealingWarmRestarts, WarmupCosineAnnealingScheduler
 try:
     from src.losses.focal_loss import FocalLoss
@@ -167,8 +167,6 @@ class BaselineTrainer(BaseTrainer):
         correct = 0
         total = 0
         
-        pbar = ProgressBar(len(train_loader), "Training")
-        
         for batch_idx, (batch_x, batch_y) in enumerate(train_loader):
             batch_x = batch_x.to(self.device, non_blocking=True)
             batch_y = batch_y.to(self.device, non_blocking=True)
@@ -198,10 +196,6 @@ class BaselineTrainer(BaseTrainer):
             _, predicted = torch.max(outputs, 1)
             correct += (predicted == batch_y).sum().item()
             total += batch_y.size(0)
-            
-            pbar.update(1)
-        
-        pbar.finish()
         
         epoch_loss = total_loss / total
         epoch_acc = correct / total
