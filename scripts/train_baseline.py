@@ -27,7 +27,7 @@ from src.models.sleep_edf_model import SleepEDFModel
 from src.models.wesad_model import WESADModel
 from src.training.trainers.baseline_trainer import BaselineTrainer
 from src.preprocessing.sleep_edf import load_windowed_sleep_edf
-from src.preprocessing.wesad import load_augmented_wesad_temporal
+from src.preprocessing.wesad import load_processed_wesad_temporal
 from torch.utils.data import TensorDataset, DataLoader
 
 
@@ -81,7 +81,7 @@ def load_data(dataset: str, data_dir: str):
          scaler, info, subjects_train) = load_windowed_sleep_edf(str(data_path))
     elif dataset == 'wesad':
         (X_train, X_val, X_test, y_train, y_val, y_test,
-         label_encoder, info) = load_augmented_wesad_temporal(str(data_path))
+         label_encoder, info) = load_processed_wesad_temporal(str(data_path))
     else:
         raise ValueError(f"Unknown dataset: {dataset}")
     

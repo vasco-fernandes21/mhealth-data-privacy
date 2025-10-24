@@ -1,7 +1,3 @@
-# ============================================================================
-# WESAD DATASET CONFIGURATION (OVERFITTING REDUCTION)
-# ============================================================================
-
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
@@ -15,31 +11,31 @@ dataset:
 model:
   architecture: "lstm"
   input_projection: 128
-  lstm_units: 16
+  lstm_units: 56
   lstm_layers: 1
   lstm_bidirectional: true
-  dropout: 0.7  
-  dense_layers: [8]
+  dropout: 0.48
+  dense_layers: [112, 56]
   activation: "relu"
 
 training:
-  # Dataset-specific overrides
-  batch_size: 32
-  learning_rate: 0.0005
+  batch_size: 12
+  learning_rate: 0.0008
+  optimizer: "adamw"
+  weight_decay: 0.0003
+  loss: "focal_loss"
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  label_smoothing: 0.13
   
-  # ADICIONE ESTAS OVERRIDES:
-  label_smoothing: 0.2  # ← AUMENTADO de 0.05 (mais regularização)
-  weight_decay: 0.001  # ← AUMENTADO de 0.0001 (mais regularização)
-  early_stopping_patience: 5  # ← REDUZIDO de 30 (para mais cedo)
+  lr_scheduler: "warmup_cosine"
+  warmup_epochs: 3
   
-  # All other settings inherited from training_defaults.yaml:
-  # - epochs: 200
-  # - optimizer: "adamw"
-  # - loss: "focal_loss"
-  # - focal_alpha: 0.25
-  # - focal_gamma: 2.0
-  # - lr_scheduler: "cosine_annealing_warm_restarts"
-  # - scheduler_T0: 10
-  # - scheduler_Tmult: 2
-  # - gradient_clipping: true
-  # - gradient_clip_norm: 1.0
+  early_stopping: true
+  early_stopping_patience: 18
+  
+  gradient_clipping: true
+  gradient_clip_norm: 1.0
+  
+  num_workers: 0
+  verbose: true
