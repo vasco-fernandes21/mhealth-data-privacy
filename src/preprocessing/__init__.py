@@ -20,7 +20,7 @@ Features:
 
 Usage:
     from src.preprocessing.sleep_edf import preprocess_sleep_edf, load_windowed_sleep_edf
-    from src.preprocessing.wesad import preprocess_wesad_temporal, load_augmented_wesad_temporal
+    from src.preprocessing.wesad import preprocess_wesad_temporal, load_processed_wesad_temporal
     
     # Preprocess
     info = preprocess_sleep_edf(

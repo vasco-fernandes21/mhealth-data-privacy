@@ -22,7 +22,7 @@ from src.models.sleep_edf_model import SleepEDFModel
 from src.models.wesad_model import WESADModel
 from src.training.trainers.dp_trainer import DPTrainer
 from src.preprocessing.sleep_edf import load_windowed_sleep_edf
-from src.preprocessing.wesad import load_augmented_wesad_temporal
+from src.preprocessing.wesad import load_processed_wesad_temporal
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 
@@ -46,12 +46,12 @@ def merge_configs(*configs) -> dict:
     return merged
 
 
-def get_model(dataset: str, config: dict, device: str):
+def get_model(dataset: str, config: dict, device: str, use_dp: bool = False):
     """Create model based on dataset."""
     if dataset == 'sleep-edf':
         return SleepEDFModel(config, device=device)
     elif dataset == 'wesad':
-        return WESADModel(config, device=device)
+        return WESADModel(config, device=device, use_dp=use_dp) 
     else:
         raise ValueError(f"Unknown dataset: {dataset}")
 
@@ -65,7 +65,7 @@ def load_data(dataset: str, data_dir: str):
             load_windowed_sleep_edf(str(data_path))
     elif dataset == 'wesad':
         X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info = \
-            load_augmented_wesad_temporal(str(data_path))
+            load_processed_wesad_temporal(str(data_path))
     else:
         raise ValueError(f"Unknown dataset: {dataset}")
     
@@ -73,7 +73,7 @@ def load_data(dataset: str, data_dir: str):
 
 
 def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                       batch_size: int, num_workers: int = 4,
+                       batch_size: int, num_workers: int = 0,
                        drop_last: bool = True):
     """Create data loaders (with drop_last for DP fixed batch size)."""
     train_dataset = TensorDataset(
@@ -89,30 +89,33 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         torch.tensor(y_test, dtype=torch.long)
     )
     
+    # ✅ Só usa persistent_workers se num_workers > 0
+    use_persistent = num_workers > 0
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
-        drop_last=drop_last  # IMPORTANT for DP
+        pin_memory=num_workers > 0,
+        persistent_workers=use_persistent,
+        drop_last=drop_last
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True
+        pin_memory=num_workers > 0,
+        persistent_workers=use_persistent
     )
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True
+        pin_memory=num_workers > 0,
+        persistent_workers=use_persistent
     )
     
     return train_loader, val_loader, test_loader
@@ -157,7 +160,7 @@ def train_with_dp(dataset: str, epsilon: float, data_dir: str,
         logger.info(f"Data loaders created (batch_size={batch_size}, drop_last=True for DP)")
         
         # Create model
-        model = get_model(dataset, config, device)
+        model = get_model(dataset, config, device, use_dp=True)
         logger.info(f"Model: {model.__class__.__name__}")
         
         # Create trainer

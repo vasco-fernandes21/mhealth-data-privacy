@@ -802,7 +802,7 @@ def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray
     return X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info
 
 
-def load_augmented_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
+def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
                                                            np.ndarray, np.ndarray, np.ndarray,
                                                            LabelEncoder, Dict]:
     """
