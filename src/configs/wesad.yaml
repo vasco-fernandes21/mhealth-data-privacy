@@ -1,3 +1,8 @@
+# ============================================================================
+# WESAD SPECIFIC CONFIGURATION
+# ============================================================================
+# Otimizado para WESAD - sobrepõe training_defaults
+
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
@@ -19,6 +24,7 @@ model:
   activation: "relu"
 
 training:
+  epochs: 100
   batch_size: 12
   learning_rate: 0.0008
   optimizer: "adamw"
@@ -28,11 +34,12 @@ training:
   focal_gamma: 2.0
   label_smoothing: 0.13
   
+  # LR Scheduler - OTIMIZADO PARA WESAD
   lr_scheduler: "warmup_cosine"
   warmup_epochs: 3
   
   early_stopping: true
-  early_stopping_patience: 18
+  early_stopping_patience: 18  # WESAD-específico
   
   gradient_clipping: true
   gradient_clip_norm: 1.0

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 """
-WESAD Dataset Preprocessing Module (FINAL VERSION - INTEGRATED)
+WESAD Dataset Preprocessing Module (CLEAN VERSION - NO AUGMENTATION)
 
 Features:
 - Load pickle files with physiological signals from RespiBAN and Empatica E4
@@ -7,7 +8,6 @@ Features:
 - Temporal windowing (60s windows, 50% overlap)
 - Subject-wise splitting (LOSO-style to avoid leakage)
 - Per-channel z-score normalization (train-only)
-- ✅ AUTO-CREATE AUGMENTED DATA (integrated like Sleep-EDF)
 - Binary (stress vs non-stress) or 3-class (baseline/stress/amusement)
 
 WESAD contains:
@@ -32,7 +32,9 @@ import glob
 from typing import Tuple, Dict, List
 import warnings
 from multiprocessing import Pool, cpu_count
+
 warnings.filterwarnings('ignore')
+
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -127,7 +129,6 @@ def apply_filters(resampled: Dict, target_freq: int = 32) -> Dict:
     filtered = resampled.copy()
 
     try:
-        # Pre-compute filter coefficients
         sos_ecg = signal.butter(4, [0.5, min(15, target_freq/2.1)], btype='band', 
                                fs=target_freq, output='sos')
         sos_bvp = signal.butter(4, [0.5, min(12, target_freq/2.1)], btype='band', 
@@ -210,10 +211,7 @@ def reduce_outliers(signals: Dict, method: str = 'clip',
 
 def create_temporal_windows(data: Dict, window_size: int = 1920, 
                            overlap: float = 0.5) -> Tuple[np.ndarray, np.ndarray, List[str]]:
-    """
-    Create temporal sliding windows for LSTM/CNN.
-    Only includes complete windows to avoid zero-padding artifacts.
-    """
+    """Create temporal sliding windows for LSTM/CNN."""
     step_size = int(window_size * (1 - overlap))
     ref_length = len(data['ecg'])
     
@@ -236,7 +234,6 @@ def create_temporal_windows(data: Dict, window_size: int = 1920,
     windows_list = []
     labels_list = []
     
-    # Slide windows - only process complete windows
     for start_idx in range(0, ref_length - window_size + 1, step_size):
         end_idx = start_idx + window_size
         
@@ -269,7 +266,6 @@ def create_temporal_windows(data: Dict, window_size: int = 1920,
                 window_data[ch_idx] = series[start_idx:end_idx]
                 ch_idx += 1
         
-        # Get label (majority vote, excluding undefined=0)
         window_labels = data['labels'][start_idx:end_idx]
         valid_labels = window_labels[window_labels != 0]
         if len(valid_labels) > 0:
@@ -288,7 +284,7 @@ def create_temporal_windows(data: Dict, window_size: int = 1920,
 # ============================================================================
 
 def process_single_wesad_file(args: Tuple) -> Tuple[Dict, str]:
-    """Processa um único arquivo WESAD para paralelização."""
+    """Process a single WESAD file in parallel."""
     pkl_file, target_freq, window_size, overlap, outlier_method, clip_lower_p, clip_upper_p = args
 
     try:
@@ -313,109 +309,11 @@ def process_single_wesad_file(args: Tuple) -> Tuple[Dict, str]:
 
 
 # ============================================================================
-# AUGMENTATION
-# ============================================================================
-
-def _augment_temporal(X: np.ndarray, noise_std: float = 0.01, 
-                     max_time_shift: int = 8, seed: int = 42) -> np.ndarray:
-    """
-    Apply deterministic temporal augmentation with fixed seed.
-    
-    Args:
-        X: Input data (samples, channels, timesteps)
-        noise_std: Standard deviation for Gaussian noise
-        max_time_shift: Maximum time shift in samples
-        seed: Random seed for reproducibility
-        
-    Returns:
-        Augmented data with same shape as input
-    """
-    rng = np.random.default_rng(seed)
-    X_aug = X.copy()
-
-    n_samples = X_aug.shape[0]
-    noise = rng.normal(0, noise_std, size=X_aug.shape)
-    shifts = rng.integers(-max_time_shift, max_time_shift + 1, size=n_samples)
-
-    X_aug += noise
-
-    if max_time_shift > 0:
-        for i in range(n_samples):
-            shift = shifts[i]
-            if shift != 0:
-                if shift > 0:
-                    X_aug[i] = np.pad(X_aug[i], ((0, 0), (shift, 0)), 
-                                     mode='edge')[:, :-shift]
-                else:
-                    X_aug[i] = np.pad(X_aug[i], ((0, 0), (0, -shift)), 
-                                     mode='edge')[:, -shift:]
-
-    return X_aug
-
-
-def _create_augmented_data_internal(X_train: np.ndarray, y_train: np.ndarray,
-                                    output_dir: str, n_augmentations: int = 2,
-                                    aug_noise_std: float = 0.05,
-                                    aug_max_time_shift: int = 32) -> None:
-    """
-    Internal function called by preprocess_wesad_temporal.
-    Creates augmented training data and saves it.
-    
-    Args:
-        X_train: Training data
-        y_train: Training labels
-        output_dir: Output directory
-        n_augmentations: Number of augmentations per sample
-        aug_noise_std: Noise standard deviation
-        aug_max_time_shift: Max time shift in samples
-    """
-    print(f"  Creating augmented data ({n_augmentations} augmentations per sample)...")
-    print(f"    Augmentation params: noise_std={aug_noise_std}, time_shift={aug_max_time_shift}")
-    
-    X_aug_list = [X_train]
-    y_aug_list = [y_train]
-
-    for i in range(n_augmentations):
-        seed = 42 + i
-        # ✅ USE PARAMETERS
-        X_aug = _augment_temporal(
-            X_train, 
-            noise_std=aug_noise_std, 
-            max_time_shift=aug_max_time_shift, 
-            seed=seed
-        )
-        X_aug_list.append(X_aug)
-        y_aug_list.append(y_train)
-
-    # Concatenate all augmented data
-    X_all = np.concatenate(X_aug_list, axis=0)
-    y_all = np.concatenate(y_aug_list, axis=0)
-
-    print(f"    Augmented: {X_all.shape[0]} samples (was {X_train.shape[0]})")
-
-    # Save augmented data
-    np.save(os.path.join(output_dir, 'X_train_augmented.npy'), X_all)
-    np.save(os.path.join(output_dir, 'y_train_augmented.npy'), y_all)
-
-    # Save augmentation info
-    aug_info = {
-        'n_augmentations': n_augmentations,
-        'original_samples': X_train.shape[0],
-        'augmented_samples': X_all.shape[0],
-        'augmentation_factor': len(X_aug_list),
-        'augmentation_method': 'temporal (noise + time shift)',
-        'noise_std': aug_noise_std,
-        'max_time_shift': aug_max_time_shift
-    }
-    joblib.dump(aug_info, os.path.join(output_dir, 'augmentation_info.pkl'))
-
-
-# ============================================================================
 # CACHE & EDA
 # ============================================================================
 
 def check_wesad_cache_status(data_dir: str, output_dir: str) -> Tuple[bool, Dict]:
-    """Verifica se os dados WESAD já foram processados."""
+    """Check if WESAD data has already been processed."""
     import hashlib
 
     required_files = [
@@ -465,7 +363,7 @@ def check_wesad_cache_status(data_dir: str, output_dir: str) -> Tuple[bool, Dict
 
 def export_basic_eda(eda_dir: str, class_counts: np.ndarray, 
                     class_names: List[str]) -> None:
-    """Save a simple class distribution bar chart."""
+    """Save class distribution bar chart."""
     if plt is None:
         return
     try:
@@ -501,71 +399,36 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
                               clip_upper_p: float = 99.0,
                               export_eda: bool = True,
                               n_workers: int = None,
-                              force_reprocess: bool = False,
-                              create_augmentations: bool = True,
-                              n_augmentations: int = 2,           
-                              aug_noise_std: float = 0.05,
-                              aug_max_time_shift: int = 32) -> Dict:
-    """
-    Complete preprocessing pipeline for WESAD (temporal windows for LSTM/CNN).
-    
-    Args:
-        data_dir: Directory containing WESAD pickle files (S2/, S3/, ...)
-        output_dir: Directory to save processed data
-        target_freq: Target sampling frequency (Hz) - default 32 Hz
-        window_size: Window size in samples (default: 1920 = 60s at 32 Hz)
-        overlap: Overlap ratio (0.0-0.9)
-        test_size: Test set size ratio (subject-wise split)
-        val_size: Validation set size ratio (subject-wise split)
-        binary: If True, binary classification (stress vs non-stress).
-                If False, 3-class (baseline/stress/amusement)
-        random_state: Random seed
-        outlier_method: Method for outlier handling ('clip' or 'none')
-        clip_lower_p: Lower percentile for clipping (default: 1.0%)
-        clip_upper_p: Upper percentile for clipping (default: 99.0%)
-        export_eda: Whether to export EDA plots
-        n_workers: Number of parallel workers
-        force_reprocess: Force reprocessing
-        create_augmentations: Automatically create augmented data (default=True)
-        n_augmentations: Number of augmentations per sample (default=2)
-        aug_noise_std: Noise standard deviation for augmentation
-        aug_max_time_shift: Max time shift for augmentation
-    
-    Returns:
-        Dictionary with preprocessing info
-    """
+                              force_reprocess: bool = False) -> Dict:
+    """Complete preprocessing pipeline for WESAD."""
     print("="*70)
-    print("WESAD TEMPORAL PREPROCESSING (FINAL VERSION)")
+    print("WESAD TEMPORAL PREPROCESSING")
     print("="*70)
     print(f"Target frequency: {target_freq} Hz")
     print(f"Window size: {window_size} samples ({window_size/target_freq:.1f} seconds)")
     print(f"Overlap: {overlap*100:.0f}%")
-    print(f"Classification: {'Binary (stress vs non-stress)' if binary else '3-class (baseline/stress/amusement)'}")
-    print(f"Create augmentations: {create_augmentations} (factor: {n_augmentations+1}×)\n")
+    print(f"Classification: {'Binary (stress vs non-stress)' if binary else '3-class'}\n")
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Check cache status
     if not force_reprocess:
         is_cached, cache_info = check_wesad_cache_status(data_dir, output_dir)
         if is_cached:
             print("✓ Cache hit! Loading preprocessed WESAD data...")
             return load_processed_wesad_temporal(output_dir)[7]
 
-        print("○ Cache miss or outdated - reprocessing WESAD data...")
+        print("○ Cache miss - reprocessing WESAD data...")
 
     if n_workers is None:
         n_workers = min(cpu_count(), 8)
     print(f"Using {n_workers} parallel workers\n")
 
-    # Find all pickle files
     pkl_files = glob.glob(os.path.join(data_dir, "**/*.pkl"), recursive=True)
     print(f"Found {len(pkl_files)} pickle files\n")
 
     if not pkl_files:
         raise ValueError(f"No pickle files found in {data_dir}")
 
-    # Prepare arguments
     process_args = [
         (pkl_file, target_freq, window_size, overlap, outlier_method, 
          clip_lower_p, clip_upper_p)
@@ -578,7 +441,6 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     with Pool(processes=n_workers) as pool:
         results = pool.map(process_single_wesad_file, process_args)
 
-    # Combine results
     all_windows = []
     all_labels = []
     all_subjects = []
@@ -598,17 +460,15 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     if not all_windows:
         raise ValueError("No valid data processed")
     
-    # Combine all data
     print(f"\nCombining data from {len(pkl_files)} files...")
     X = np.concatenate(all_windows, axis=0)
     y = np.concatenate(all_labels, axis=0)
     subjects_arr = np.array(all_subjects)
     
     print(f"Total windows: {len(X)}")
-    print(f"Window shape: {X.shape} (n_windows, n_channels, window_size)")
+    print(f"Window shape: {X.shape}")
     print(f"Label distribution (raw): {np.bincount(y.astype(int))}")
     
-    # Filter and relabel
     if binary:
         valid_mask = (y >= 1) & (y <= 3)
         X = X[valid_mask]
@@ -618,7 +478,7 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         y_relabeled = (y == 2).astype(int)
         class_names = ['non-stress', 'stress']
         
-        print(f"\nAfter filtering and relabeling (binary):")
+        print(f"\nAfter filtering (binary):")
         print(f"  Total windows: {len(X)}")
         print(f"  Non-stress (0): {np.sum(y_relabeled == 0)} ({np.sum(y_relabeled == 0)/len(y_relabeled)*100:.1f}%)")
         print(f"  Stress (1): {np.sum(y_relabeled == 1)} ({np.sum(y_relabeled == 1)/len(y_relabeled)*100:.1f}%)")
@@ -626,25 +486,7 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
             export_basic_eda(os.path.join(output_dir, 'eda'), np.array([
                 np.sum(y_relabeled == 0), np.sum(y_relabeled == 1)
             ]), class_names)
-    else:
-        valid_mask = (y >= 1) & (y <= 3)
-        X = X[valid_mask]
-        y = y[valid_mask]
-        subjects_arr = subjects_arr[valid_mask]
-        
-        y_relabeled = y - 1
-        class_names = ['baseline', 'stress', 'amusement']
-        
-        print(f"\nAfter filtering and relabeling (3-class):")
-        print(f"  Total windows: {len(X)}")
-        for i, name in enumerate(class_names):
-            count = np.sum(y_relabeled == i)
-            print(f"  {name} ({i}): {count} ({count/len(y_relabeled)*100:.1f}%)")
-        if export_eda:
-            counts = np.array([np.sum(y_relabeled == i) for i in range(len(class_names))])
-            export_basic_eda(os.path.join(output_dir, 'eda'), counts, class_names)
     
-    # Subject-wise split (LOSO-style)
     print(f"\nSplitting by subject (test={test_size}, val={val_size})...")
     unique_subjects = np.array(sorted(list(set(subjects_arr))))
     print(f"Total subjects: {len(unique_subjects)}")
@@ -657,7 +499,6 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         subj_trainval, test_size=val_size_adjusted, random_state=random_state
     )
     
-    # Create masks
     train_mask = np.isin(subjects_arr, subj_train)
     val_mask = np.isin(subjects_arr, subj_val)
     test_mask = np.isin(subjects_arr, subj_test)
@@ -666,17 +507,11 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     X_val, y_val = X[val_mask], y_relabeled[val_mask]
     X_test, y_test = X[test_mask], y_relabeled[test_mask]
     
-    # ✅ EXTRACT SUBJECT IDs per split
-    subjects_train = subjects_arr[train_mask]
-    subjects_val = subjects_arr[val_mask]
-    subjects_test = subjects_arr[test_mask]
-    
     print(f"Subject splits:")
     print(f"  Train: {len(subj_train)} subjects → {len(X_train)} windows")
     print(f"  Val: {len(subj_val)} subjects → {len(X_val)} windows")
     print(f"  Test: {len(subj_test)} subjects → {len(X_test)} windows")
     
-    # Per-channel z-score normalization (using train statistics only)
     print("\nApplying per-channel z-score normalization (train-only stats)...")
     train_mean = X_train.mean(axis=(0, 2), keepdims=True)
     train_std = X_train.std(axis=(0, 2), keepdims=True) + 1e-8
@@ -690,7 +525,6 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     print(f"  Val: {X_val.shape}")
     print(f"  Test: {X_test.shape}")
     
-    # ✅ SAVE BASIC DATA + SUBJECT IDs
     print(f"\nSaving to {output_dir}...")
     np.save(os.path.join(output_dir, "X_train.npy"), X_train)
     np.save(os.path.join(output_dir, "X_val.npy"), X_val)
@@ -699,17 +533,10 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
     np.save(os.path.join(output_dir, "y_val.npy"), y_val)
     np.save(os.path.join(output_dir, "y_test.npy"), y_test)
     
-    # ✅ SAVE SUBJECT IDs
-    np.save(os.path.join(output_dir, 'subjects_train.npy'), subjects_train)
-    np.save(os.path.join(output_dir, 'subjects_val.npy'), subjects_val)
-    np.save(os.path.join(output_dir, 'subjects_test.npy'), subjects_test)
-    
-    # Save label encoder
     label_encoder = LabelEncoder()
     label_encoder.fit(class_names)
     joblib.dump(label_encoder, os.path.join(output_dir, "label_encoder.pkl"))
     
-    # Save preprocessing info
     preprocessing_info = {
         'n_windows': len(X),
         'n_channels': X.shape[1],
@@ -733,33 +560,11 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
         'normalization': 'per-channel z-score (train-only)',
         'files_processed': len(pkl_files),
         'parallel_processing': True,
-        'n_workers': n_workers,
-        'has_subject_ids': True,
-        'aug_noise_std': aug_noise_std,
-        'aug_max_time_shift': aug_max_time_shift
+        'n_workers': n_workers
     }
     
     joblib.dump(preprocessing_info, os.path.join(output_dir, "preprocessing_info.pkl"))
     
-    print(f"\n✅ Basic preprocessing complete!")
-    print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-    
-    if create_augmentations:
-        print(f"\n📊 Creating augmented training data (factor={n_augmentations+1}×)...")
-        try:
-            _create_augmented_data_internal(
-                X_train, y_train, output_dir, n_augmentations,
-                aug_noise_std=aug_noise_std,
-                aug_max_time_shift=aug_max_time_shift
-            )
-            print("✅ Augmented data created!")
-            preprocessing_info['has_augmented_data'] = True
-            preprocessing_info['n_augmentations'] = n_augmentations
-            joblib.dump(preprocessing_info, os.path.join(output_dir, "preprocessing_info.pkl"))
-        except Exception as e:
-            print(f"⚠️  Augmented data creation failed: {e}")
-            preprocessing_info['has_augmented_data'] = False
-
     elapsed = time.time() - start_time
     print(f"\n{'='*70}")
     print(f"✓ Preprocessing complete in {elapsed:.1f}s")
@@ -779,7 +584,7 @@ def preprocess_wesad_temporal(data_dir: str, output_dir: str,
 def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
                                                           np.ndarray, np.ndarray, np.ndarray,
                                                           LabelEncoder, Dict]:
-    """Load preprocessed WESAD temporal data (basic format)."""
+    """Load preprocessed WESAD temporal data (normal - NO augmentation)."""
     print(f"Loading processed WESAD data from {data_dir}...")
     
     X_train = np.load(os.path.join(data_dir, 'X_train.npy'))
@@ -799,40 +604,6 @@ def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray
     print(f"  Classes: {info['class_names']}")
     print(f"  Channels: {info['n_channels']}")
     
-    return X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info
-
-
-def load_processed_wesad_temporal(data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
-                                                           np.ndarray, np.ndarray, np.ndarray,
-                                                           LabelEncoder, Dict]:
-    """
-    Load preprocessed WESAD data with pre-calculated augmentation (training only).
-    
-    Returns:
-        Tuple of (X_train_aug, X_val, X_test, y_train_aug, y_val, y_test, label_encoder, info)
-    """
-    print(f"Loading augmented WESAD data from {data_dir}...")
-
-    # Load augmented training data
-    X_train = np.load(os.path.join(data_dir, 'X_train_augmented.npy'))
-    y_train = np.load(os.path.join(data_dir, 'y_train_augmented.npy'))
-
-    # Load non-augmented validation and test data
-    X_val = np.load(os.path.join(data_dir, 'X_val.npy'))
-    y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
-    X_test = np.load(os.path.join(data_dir, 'X_test.npy'))
-    y_test = np.load(os.path.join(data_dir, 'y_test.npy'))
-
-    label_encoder = joblib.load(os.path.join(data_dir, 'label_encoder.pkl'))
-    info = joblib.load(os.path.join(data_dir, 'preprocessing_info.pkl'))
-
-    print(f"Loaded augmented data shapes:")
-    print(f"  Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
-    print(f"  Classes: {info['class_names']}")
-    
-    if 'n_augmentations' in info:
-        print(f"  Augmentation factor: {info['n_augmentations'] + 1}×")
-
     return X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info
 
 
@@ -858,21 +629,8 @@ if __name__ == "__main__":
                        help='Test set size')
     parser.add_argument('--val_size', type=float, default=0.2, 
                        help='Validation set size')
-    parser.add_argument('--binary', action='store_true', 
+    parser.add_argument('--binary', action='store_true', default=True,
                        help='Binary classification (stress vs non-stress)')
-    parser.add_argument('--multiclass', dest='binary', action='store_false', 
-                       help='3-class (baseline/stress/amusement)')
-    parser.add_argument('--random_state', type=int, default=42, 
-                       help='Random seed')
-    parser.add_argument('--no_augmentations', action='store_true', 
-                       help='Skip automatic augmentation')
-    parser.add_argument('--n_augmentations', type=int, default=2, 
-                       help='Number of augmentations per sample')
-    parser.add_argument('--aug_noise_std', type=float, default=0.05,
-                       help='Augmentation noise standard deviation')
-    parser.add_argument('--aug_max_time_shift', type=int, default=32,
-                       help='Augmentation max time shift in samples')
-    parser.set_defaults(binary=True)
     
     args = parser.parse_args()
     
@@ -890,13 +648,7 @@ if __name__ == "__main__":
     print(f"Output: {args.output_dir}")
     print(f"Target frequency: {args.target_freq} Hz")
     print(f"Window size: {args.window_size} samples")
-    print(f"Create augmentations: {not args.no_augmentations}")
-    if not args.no_augmentations:
-        print(f"Augmentations per sample: {args.n_augmentations}")
-        print(f"Augmentation noise std: {args.aug_noise_std}")
-        print(f"Augmentation max time shift: {args.aug_max_time_shift}")
     
-    # Run preprocessing
     info = preprocess_wesad_temporal(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
@@ -905,13 +657,7 @@ if __name__ == "__main__":
         overlap=args.overlap,
         test_size=args.test_size,
         val_size=args.val_size,
-        binary=args.binary,
-        random_state=args.random_state,
-        create_augmentations=not args.no_augmentations,
-        n_augmentations=args.n_augmentations,
-        aug_noise_std=args.aug_noise_std,
-        aug_max_time_shift=args.aug_max_time_shift
+        binary=args.binary
     )
     
     print(f"✅ WESAD preprocessing completed!")
-    print(f"Preprocessing info:\n{info}")

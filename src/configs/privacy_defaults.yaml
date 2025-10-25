@@ -2,66 +2,72 @@
 # PRIVACY DEFAULT CONFIGURATION
 # ============================================================================
 # Configuration for Differential Privacy and Federated Learning
+# 
+# Estratégia: Apenas override FL/DP params, herda tudo do baseline
 
 differential_privacy:
   enabled: false
   
-  # Privacy budget
+  # Privacy budget - REALISTA
   target_epsilon: 8.0
   target_delta: 1e-5
   
-  # Gradient clipping (REQUIRED for DP)
+  # Gradient clipping
   max_grad_norm: 1.0
   
   # Noise
-  noise_multiplier: 0.9
+  noise_multiplier: 0.5    # Reduzido (era 0.9)
   poisson_sampling: true
   
-  # Accounting
-  accounting_method: "rdp"  # "rdp" or "gdp"
-  
-  # Opacus settings
+  accounting_method: "rdp"
   secure_rng: true
-  grad_sample_mode: "hooks"  # "hooks" or "ew" (expanding weights)
+  grad_sample_mode: "hooks"
+
+# ============= FL-SPECIFIC OVERRIDES =============
+# Apenas parâmetros que divergem do baseline
+training:
+  # Para FL: batch size pode ser diferente
+  batch_size: 12           # Match baseline
+  learning_rate: 0.0008    # Match baseline
+  
+  # Para DP: seria diferente
+  # batch_size: 64         # DP: aumenta
+  # learning_rate: 0.001   # DP: aumenta
+  
+  # Scheduler - Keep baseline
+  lr_scheduler: "warmup_cosine"
+  warmup_epochs: 3
 
 federated_learning:
   enabled: false
   
-  # Client configuration
   n_clients: 10
   samples_per_client: 100
   
-  # Communication
+  # Communication - FL-ESPECÍFICO
   global_rounds: 100
   local_epochs: 5
-  local_batch_size: 32
+  local_batch_size: 12
   
-  # Aggregation
-  aggregation_method: "fedavg"  # "fedavg", "median", "trimmed_mean"
-  trimming_fraction: 0.1  # For trimmed_mean
+  aggregation_method: "fedavg"
+  trimming_fraction: 0.1
   
-  # Client-side DP (optional)
   client_dp: false
   client_noise_multiplier: 0.5
   
-  # Validation
-  eval_every_n_rounds: 5
+  eval_every_n_rounds: 1
 
 federated_learning_dp:
   enabled: false
   
-  # Combination of FL + DP
   target_epsilon: 5.0
   target_delta: 1e-5
   
-  # DP applied at server side
   server_noise: true
   server_noise_multiplier: 0.5
   
-  # DP applied at client side
   client_noise: true
   client_noise_multiplier: 0.3
   
-  # Communication
   global_rounds: 100
-  local_epochs: 3
+  local_epochs: 1

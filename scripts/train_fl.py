@@ -3,7 +3,7 @@
 Train Federated Learning model.
 
 Usage:
-    python scripts/train_fl.py --dataset sleep-edf --n_clients 5
+    python scripts/train_fl.py --dataset wesad --n_clients 1 --seed 42
 """
 
 import sys
@@ -50,7 +50,7 @@ def load_data(dataset: str, data_dir: str):
     data_path = Path(data_dir) / dataset
     
     if dataset == 'sleep-edf':
-        X_train, X_val, X_test, y_train, y_val, y_test, scaler, info = \
+        X_train, X_val, X_test, y_train, y_val, y_test, scaler, info, subjects_train = \
             load_windowed_sleep_edf(str(data_path))
     elif dataset == 'wesad':
         X_train, X_val, X_test, y_train, y_val, y_test, label_encoder, info = \
@@ -89,7 +89,11 @@ def create_client_dataloaders(X_train: np.ndarray,
     for client_id in range(n_clients):
         # Split training data
         start_idx = client_id * samples_per_client
-        end_idx = start_idx + samples_per_client if client_id < n_clients - 1 else n_samples
+        end_idx = (
+            start_idx + samples_per_client
+            if client_id < n_clients - 1
+            else n_samples
+        )
         
         X_client_train = X_train[start_idx:end_idx]
         y_client_train = y_train[start_idx:end_idx]
@@ -116,14 +120,14 @@ def create_client_dataloaders(X_train: np.ndarray,
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=2,
+            num_workers=0,
             pin_memory=True
         )
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=2,
+            num_workers=0,
             pin_memory=True
         )
         
@@ -134,18 +138,87 @@ def create_client_dataloaders(X_train: np.ndarray,
     return train_loaders, val_loaders, client_ids
 
 
+def print_config(config: dict, n_clients: int) -> None:
+    """Print configuration for verification."""
+    print("\n" + "="*70, flush=True)
+    print("CONFIGURATION VERIFICATION", flush=True)
+    print("="*70, flush=True)
+    
+    print("\nTRAINING (should match WESAD baseline):", flush=True)
+    print(f"  Batch size: {config['training']['batch_size']}", flush=True)
+    print(f"  Learning rate: {config['training']['learning_rate']}", flush=True)
+    print(f"  Optimizer: {config['training']['optimizer']}", flush=True)
+    print(f"  Weight decay: {config['training']['weight_decay']}", flush=True)
+    print(
+        f"  LR Scheduler: {config['training'].get('lr_scheduler', 'none')}",
+        flush=True
+    )
+    print(
+        f"  Warmup epochs: {config['training'].get('warmup_epochs', 0)}",
+        flush=True
+    )
+    print(
+        f"  Early stopping patience: "
+        f"{config['training']['early_stopping_patience']}",
+        flush=True
+    )
+    print(
+        f"  Gradient clipping: {config['training']['gradient_clipping']}",
+        flush=True
+    )
+    
+    print("\nFEDERATED LEARNING:", flush=True)
+    print(f"  Number of clients: {n_clients}", flush=True)
+    print(
+        f"  Global rounds: {config['federated_learning']['global_rounds']}",
+        flush=True
+    )
+    print(
+        f"  Local epochs: {config['federated_learning']['local_epochs']}",
+        flush=True
+    )
+    print(
+        f"  Local batch size: "
+        f"{config['federated_learning']['local_batch_size']}",
+        flush=True
+    )
+    print(
+        f"  Aggregation: {config['federated_learning']['aggregation_method']}",
+        flush=True
+    )
+    
+    print("\nMODEL:", flush=True)
+    print(
+        f"  Architecture: {config['model']['architecture']}", flush=True
+    )
+    print(f"  LSTM units: {config['model']['lstm_units']}", flush=True)
+    print(f"  Dropout: {config['model']['dropout']}", flush=True)
+    print(f"  Loss: {config['training']['loss']}", flush=True)
+    print("="*70 + "\n", flush=True)
+
+
 def main():
-    parser = argparse.ArgumentParser(description='Train with Federated Learning')
-    parser.add_argument('--dataset', choices=['sleep-edf', 'wesad'],
-                       default='sleep-edf')
-    parser.add_argument('--n_clients', type=int, default=5,
-                       help='Number of FL clients')
+    parser = argparse.ArgumentParser(
+        description='Train with Federated Learning'
+    )
+    parser.add_argument(
+        '--dataset', choices=['sleep-edf', 'wesad'],
+        default='wesad'
+    )
+    parser.add_argument(
+        '--n_clients', type=int, default=1,
+        help='Number of FL clients'
+    )
     parser.add_argument('--data_dir', default='./data/processed')
     parser.add_argument('--config_dir', default='./src/configs')
     parser.add_argument('--output_dir', default='./results')
     parser.add_argument('--device', default=None)
     parser.add_argument('--seed', type=int, default=42)
     
+    # Unbuffered output
+    sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
+    sys.stderr = open(sys.stderr.fileno(), mode='w', buffering=1)
+
     args = parser.parse_args()
     
     # Device
@@ -162,27 +235,54 @@ def main():
     
     experiment_name = f"fl_{args.dataset}_clients{args.n_clients}"
     with ExperimentLogger(experiment_name, args.output_dir) as exp_logger:
-        exp_logger.info(f"Training {args.dataset} with FL ({args.n_clients} clients)")
+        exp_logger.info(
+            f"Training {args.dataset} with FL ({args.n_clients} clients)"
+        )
         
-        # Load configs
-        default_cfg = load_config(Path(args.config_dir) / 'training_defaults.yaml')
-        dataset_cfg = load_config(Path(args.config_dir) / f'{args.dataset}.yaml')
-        config = merge_configs(default_cfg, dataset_cfg)
+        # Load all configs
+        default_cfg = load_config(
+            Path(args.config_dir) / 'training_defaults.yaml'
+        )
+        privacy_cfg = load_config(
+            Path(args.config_dir) / 'privacy_defaults.yaml'
+        )
         
-        exp_logger.info(f"Configuration loaded")
+        config_mapping = {
+            'sleep-edf': 'sleep_edf.yaml',
+            'wesad': 'wesad.yaml'
+        }
+        config_filename = config_mapping.get(
+            args.dataset, f'{args.dataset}.yaml'
+        )
+        dataset_cfg = load_config(
+            Path(args.config_dir) / config_filename
+        )
+        
+        # Merge: training defaults → privacy defaults → dataset-specific
+        config = merge_configs(default_cfg, privacy_cfg, dataset_cfg)
+        
+        exp_logger.info("Configuration loaded")
+        
+        # Print config for verification
+        print_config(config, args.n_clients)
         
         # Load data
         exp_logger.info(f"Loading {args.dataset} data...")
         X_train, X_val, X_test, y_train, y_val, y_test, info = \
             load_data(args.dataset, args.data_dir)
-        exp_logger.info(f"Data loaded: Train={X_train.shape}, Val={X_val.shape}, Test={X_test.shape}")
+        exp_logger.info(
+            f"Data loaded: Train={X_train.shape}, Val={X_val.shape}, "
+            f"Test={X_test.shape}"
+        )
         
         # Create client dataloaders
         exp_logger.info(f"Creating {args.n_clients} clients...")
-        train_loaders, val_loaders, client_ids = create_client_dataloaders(
-            X_train, y_train, X_val, y_val,
-            n_clients=args.n_clients,
-            batch_size=config['training']['batch_size']
+        train_loaders, val_loaders, client_ids = (
+            create_client_dataloaders(
+                X_train, y_train, X_val, y_val,
+                n_clients=args.n_clients,
+                batch_size=config['training']['batch_size']
+            )
         )
         exp_logger.info(f"Clients created with IDs: {client_ids}")
         
@@ -196,17 +296,26 @@ def main():
         
         # Train
         exp_logger.info("Starting FL training...")
+        
+        # Get patience from config (not hardcoded!)
+        patience = config['training'].get('early_stopping_patience', 30)
+        global_rounds = config['federated_learning']['global_rounds']
+        
         results = trainer.fit(
             train_loaders,
             val_loaders,
             client_ids=client_ids,
-            epochs=config['federated_learning']['global_rounds'],
-            patience=8,
+            epochs=global_rounds,
+            patience=patience,
             output_dir=str(Path(args.output_dir) / 'fl' / args.dataset)
         )
         
-        exp_logger.info(f"Training completed in {results['training_time_seconds']:.1f}s")
-        exp_logger.info(f"Best validation accuracy: {results['best_val_acc']:.4f}")
+        exp_logger.info(
+            f"Training completed in {results['training_time_seconds']:.1f}s"
+        )
+        exp_logger.info(
+            f"Best validation accuracy: {results['best_val_acc']:.4f}"
+        )
         
         # Save results
         output_path = Path(args.output_dir) / 'fl' / args.dataset
@@ -216,6 +325,8 @@ def main():
             json.dump(results, f, indent=2)
         
         exp_logger.info(f"Results saved to {output_path / 'results.json'}")
+        
+        return 0
 
 
 if __name__ == "__main__":

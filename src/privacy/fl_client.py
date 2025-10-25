@@ -9,6 +9,11 @@ Trains locally and sends updates to server.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    LinearLR
+)
 from typing import Dict, Tuple, Any, Optional
 import copy
 
@@ -46,19 +51,109 @@ class FLClient:
         # Training config
         fl_cfg = config.get('federated_learning', {})
         self.local_epochs = fl_cfg.get('local_epochs', 5)
-        self.learning_rate = config['training'].get('learning_rate', 0.001)
         
-        # Optimizer and loss
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.learning_rate,
-            weight_decay=config['training'].get('weight_decay', 1e-4)
-        )
-        self.criterion = nn.CrossEntropyLoss()
+        # Setup optimizer and scheduler
+        self.setup_optimizer()
+        self.setup_scheduler()
+        
+        # Criterion
+        self.setup_criterion()
         
         # Stats
         self.local_steps = 0
         self.update_count = 0
+    
+    def setup_optimizer(self) -> None:
+        """Setup optimizer based on config."""
+        optimizer_name = (
+            self.config['training'].get('optimizer', 'adamw').lower()
+        )
+        lr = self.config['training'].get('learning_rate', 0.001)
+        wd = self.config['training'].get('weight_decay', 1e-4)
+        
+        if optimizer_name == 'adam':
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=wd
+            )
+        elif optimizer_name == 'adamw':
+            self.optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=wd
+            )
+        elif optimizer_name == 'sgd':
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=wd,
+                momentum=0.9
+            )
+        else:
+            raise ValueError(f"Unknown optimizer: {optimizer_name}")
+    
+    def setup_scheduler(self) -> None:
+        """Setup learning rate scheduler."""
+        scheduler_name = (
+            self.config['training'].get('lr_scheduler', 'none').lower()
+        )
+        
+        if scheduler_name == 'none':
+            self.scheduler = None
+        elif scheduler_name == 'cosine_annealing':
+            # Simple cosine annealing
+            T_max = self.config['training'].get('scheduler_T_max', 100)
+            self.scheduler = CosineAnnealingLR(
+                self.optimizer,
+                T_max=T_max
+            )
+        elif scheduler_name == 'cosine_annealing_warm_restarts':
+            # Cosine with warm restarts
+            T0 = self.config['training'].get('scheduler_T0', 10)
+            Tmult = self.config['training'].get('scheduler_Tmult', 2)
+            self.scheduler = CosineAnnealingWarmRestarts(
+                self.optimizer,
+                T_0=T0,
+                T_mult=Tmult
+            )
+        elif scheduler_name == 'warmup_cosine':
+            # Para FL, warmup é difícil (já começamos treino)
+            # Usamos apenas cosine decay
+            T_max = self.config['training'].get('scheduler_T_max', 100)
+            self.scheduler = CosineAnnealingLR(
+                self.optimizer,
+                T_max=T_max
+            )
+        else:
+            self.scheduler = None
+    
+    def setup_criterion(self) -> None:
+        """Setup loss criterion based on config."""
+        training_cfg = self.config['training']
+        loss_name = training_cfg.get('loss', 'cross_entropy').lower()
+        label_smoothing = float(training_cfg.get('label_smoothing', 0.0))
+        
+        # Try to use FocalLoss if configured
+        if loss_name == 'focal_loss':
+            try:
+                from src.losses.focal_loss import FocalLoss
+                focal_alpha = float(training_cfg.get('focal_alpha', 0.25))
+                focal_gamma = float(training_cfg.get('focal_gamma', 2.0))
+                
+                self.criterion = FocalLoss(
+                    alpha=focal_alpha,
+                    gamma=focal_gamma,
+                    reduction='mean'
+                )
+                logger.info(
+                    f"[{self.client_id}] Loss: FocalLoss (alpha={focal_alpha}, gamma={focal_gamma})"
+                )
+            except ImportError:
+                logger.warning(f"[{self.client_id}] FocalLoss not available, using CrossEntropyLoss")
+                self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        else:
+            self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
     def train_local(self) -> Dict[str, float]:
         """
@@ -93,9 +188,15 @@ class FLClient:
                 loss.backward()
                 
                 # Gradient clipping
-                if self.config['training'].get('gradient_clipping', True):
-                    clip_norm = self.config['training'].get('gradient_clip_norm', 1.0)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_norm)
+                if self.config['training'].get(
+                    'gradient_clipping', True
+                ):
+                    clip_norm = self.config['training'].get(
+                        'gradient_clip_norm', 1.0
+                    )
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), clip_norm
+                    )
                 
                 # Update
                 self.optimizer.step()
@@ -114,6 +215,10 @@ class FLClient:
             metrics['local_loss'] = epoch_loss
             metrics['local_accuracy'] = epoch_acc
             metrics['local_samples'] = epoch_total
+            
+            # Step scheduler after each local epoch
+            if self.scheduler is not None:
+                self.scheduler.step()
         
         self.update_count += 1
         return metrics
@@ -125,7 +230,10 @@ class FLClient:
         Returns:
             Dictionary mapping parameter names to tensors
         """
-        return {name: param.data.clone() for name, param in self.model.named_parameters()}
+        return {
+            name: param.data.clone()
+            for name, param in self.model.named_parameters()
+        }
     
     def set_weights(self, weights: Dict[str, torch.Tensor]) -> None:
         """
@@ -138,7 +246,9 @@ class FLClient:
             if name in weights:
                 param.data = weights[name].clone().to(self.device)
     
-    def get_weight_updates(self, initial_weights: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def get_weight_updates(
+        self, initial_weights: Dict[str, torch.Tensor]
+    ) -> Dict[str, torch.Tensor]:
         """
         Get weight updates (current - initial).
         
@@ -158,4 +268,7 @@ class FLClient:
         return updates
     
     def __repr__(self) -> str:
-        return f"FLClient(id={self.client_id}, local_epochs={self.local_epochs})"
+        return (
+            f"FLClient(id={self.client_id}, "
+            f"local_epochs={self.local_epochs})"
+        )

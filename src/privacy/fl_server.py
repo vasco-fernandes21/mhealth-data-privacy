@@ -66,49 +66,73 @@ class FLServer:
         for client in self.clients:
             client.set_weights(global_weights)
     
-    def aggregate_updates(self) -> None:
-        """Aggregate client updates and update global model."""
-        # Get initial weights before aggregation
-        initial_weights = {
-            name: param.data.clone()
-            for name, param in self.model.named_parameters()
-        }
+    def aggregate_updates(self,
+                         initial_weights: Dict[str, torch.Tensor]) -> None:
+        """
+        Aggregate client updates using initial weights.
         
+        Args:
+            initial_weights: Global weights BEFORE local training
+        """
         # Collect updates from all clients
         client_updates = []
         client_sizes = []
         
         for client in self.clients:
+            # Calculate updates: trained_weights - initial_weights
             updates = client.get_weight_updates(initial_weights)
             client_updates.append(updates)
-            
-            # Use 1.0 as weight for now (equal weighting)
-            # Could use dataset size for weighted averaging
             client_sizes.append(1.0)
         
         # Aggregate updates
-        aggregated_updates = self.aggregator.aggregate(client_updates, client_sizes)
+        aggregated_updates = self.aggregator.aggregate(
+            client_updates,
+            client_sizes
+        )
         
         # Apply aggregated updates to global model
+        # w_global = w_initial + aggregated_updates
         for name, param in self.model.named_parameters():
             if name in aggregated_updates:
-                param.data = param.data + aggregated_updates[name]
+                param.data = (
+                    initial_weights[name] + aggregated_updates[name]
+                )
     
-    def evaluate_on_clients(self, val_loaders: List) -> Dict[str, float]:
+    def evaluate_on_clients(self,
+                            val_loaders: List) -> Dict[str, float]:
         """
-        Evaluate global model on all clients' validation data.
+        Evaluate global model on all clients.
         
         Args:
-            val_loaders: List of validation loaders for each client
+            val_loaders: List of validation loaders (one per client)
         
         Returns:
-            Average metrics
+            Average metrics across clients
         """
         accuracies = []
         losses = []
         
-        self.model.eval()
-        criterion = nn.CrossEntropyLoss()
+        # Setup loss function - use same as training!
+        training_cfg = self.config['training']
+        loss_name = training_cfg.get('loss', 'cross_entropy').lower()
+        label_smoothing = float(training_cfg.get('label_smoothing', 0.0))
+        
+        if loss_name == 'focal_loss':
+            try:
+                from src.losses.focal_loss import FocalLoss
+                focal_alpha = float(training_cfg.get('focal_alpha', 0.25))
+                focal_gamma = float(training_cfg.get('focal_gamma', 2.0))
+                
+                criterion = FocalLoss(
+                    alpha=focal_alpha,
+                    gamma=focal_gamma,
+                    reduction='mean'
+                )
+            except ImportError:
+                logger.warning("FocalLoss not available, using CrossEntropyLoss")
+                criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        else:
+            criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         
         with torch.no_grad():
             for client_id, val_loader in enumerate(val_loaders):
@@ -135,7 +159,9 @@ class FLServer:
                 losses.append(loss_val)
         
         return {
-            'avg_accuracy': sum(accuracies) / len(accuracies) if accuracies else 0,
+            'avg_accuracy': (
+                sum(accuracies) / len(accuracies) if accuracies else 0
+            ),
             'avg_loss': sum(losses) / len(losses) if losses else 0,
             'min_accuracy': min(accuracies) if accuracies else 0,
             'max_accuracy': max(accuracies) if accuracies else 0
@@ -148,21 +174,33 @@ class FLServer:
         Returns:
             Metrics for this round
         """
-        # Broadcast model
+        # STEP 1: Save global weights BEFORE training
+        initial_global_weights = {
+            name: param.data.clone()
+            for name, param in self.model.named_parameters()
+        }
+        
+        # STEP 2: Broadcast model
         self.broadcast_model()
         
-        # Train on clients
+        # STEP 3: Train on clients
         client_metrics = []
         for client in self.clients:
             metrics = client.train_local()
             client_metrics.append(metrics)
         
-        # Aggregate updates
-        self.aggregate_updates()
+        # STEP 4: Aggregate updates using initial weights
+        self.aggregate_updates(initial_global_weights)
         
         # Compute averages
-        avg_loss = sum(m['local_loss'] for m in client_metrics) / len(client_metrics)
-        avg_acc = sum(m['local_accuracy'] for m in client_metrics) / len(client_metrics)
+        avg_loss = (
+            sum(m['local_loss'] for m in client_metrics) /
+            len(client_metrics)
+        )
+        avg_acc = (
+            sum(m['local_accuracy'] for m in client_metrics) /
+            len(client_metrics)
+        )
         
         return {
             'avg_loss': avg_loss,
