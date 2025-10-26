@@ -12,7 +12,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 42
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -34,7 +34,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 42
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -54,7 +54,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 43
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -73,7 +73,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 44
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -92,7 +92,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 42
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -112,7 +112,7 @@ experiments:
     dataset: "sleep-edf"
     method: "dp"
     seed: 43
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 32
@@ -133,7 +133,7 @@ experiments:
     dataset: "wesad"
     method: "dp"
     seed: 42
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 64
@@ -153,7 +153,7 @@ experiments:
     dataset: "wesad"
     method: "dp"
     seed: 43
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 64
@@ -172,7 +172,7 @@ experiments:
     dataset: "wesad"
     method: "dp"
     seed: 44
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 64
@@ -191,7 +191,7 @@ experiments:
     dataset: "wesad"
     method: "dp"
     seed: 42
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 64
@@ -210,7 +210,7 @@ experiments:
     dataset: "wesad"
     method: "dp"
     seed: 43
-    device: "cuda"
+    device: "auto"
     hyperparameters:
       epochs: 100
       batch_size: 64

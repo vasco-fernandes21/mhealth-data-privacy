@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-10-26T17:03:17.943052",
+  "total_experiments": 1,
+  "successful": 0,
+  "failed": 1,
+  "total_time_hours": 0.0010984599590301513,
+  "results": [
+    {
+      "experiment_name": "baseline_wesad_run1",
+      "dataset": "wesad",
+      "method": "baseline",
+      "seed": 42,
+      "success": false,
+      "elapsed_time_seconds": 3.954455852508545,
+      "timestamp": "2025-10-26T17:03:17.942670"
+    }
+  ]
+}
