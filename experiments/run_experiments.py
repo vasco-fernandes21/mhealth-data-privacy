@@ -7,7 +7,7 @@ Usage:
     python experiments/run_experiments.py --scenario baseline
     python experiments/run_experiments.py --scenario dp --tags tier1
     python experiments/run_experiments.py --scenario fl --datasets wesad
-    python experiments/run_experiments.py --scenario all
+    python experiments/run_experiments.py --scenario all --auto
 """
 
 import sys
@@ -22,17 +22,14 @@ import time
 from copy import deepcopy
 import numpy as np
 
-# Add project to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.seed_utils import set_reproducible
-from src.utils.logging_utils import setup_logging, get_logger
+from src.utils.logging_utils import get_logger
+from src.models import UnifiedLSTMModel
 from src.training.trainers.baseline_trainer import BaselineTrainer
 from src.training.trainers.dp_trainer import DPTrainer
 from src.training.trainers.fl_trainer import FLTrainer
-from src.training.trainers.fl_dp_trainer import FLDPTrainer
-from src.models.sleep_edf_model import SleepEDFModel
-from src.models.wesad_model import WESADModel
 from src.preprocessing.sleep_edf import load_windowed_sleep_edf
 from src.preprocessing.wesad import (
     load_processed_wesad_temporal,
@@ -45,7 +42,8 @@ from torch.utils.data import TensorDataset, DataLoader
 class ExperimentRunner:
     """Run experiments with support for Baseline, DP, FL, DP+FL."""
     
-    def __init__(self, scenarios_dir: str = 'experiments/scenarios', 
+    def __init__(self, 
+                 scenarios_dir: str = 'experiments/scenarios',
                  data_dir: str = './data/processed',
                  config_dir: str = './src/configs',
                  results_dir: str = './results'):
@@ -55,18 +53,21 @@ class ExperimentRunner:
         self.results_dir = Path(results_dir)
         self.results = []
         self.logger = get_logger(__name__)
-        
+    
     def load_scenario(self, scenario_name: str) -> Dict[str, Any]:
         """Load experiment scenario from YAML."""
         scenario_file = self.scenarios_dir / f'{scenario_name}.yaml'
         
         if not scenario_file.exists():
-            raise FileNotFoundError(f"Scenario file not found: {scenario_file}")
+            raise FileNotFoundError(
+                f"Scenario file not found: {scenario_file}"
+            )
         
         with open(scenario_file, 'r') as f:
             return yaml.safe_load(f)
     
-    def filter_experiments(self, experiments: Dict, 
+    def filter_experiments(self,
+                          experiments: Dict,
                           tags: List[str] = None,
                           keywords: str = None,
                           epsilon: float = None,
@@ -110,9 +111,7 @@ class ExperimentRunner:
         
         return filtered
     
-    # =====================================================================
-    # DATA LOADING
-    # =====================================================================
+    # ========== DATA LOADING ==========
     
     def _load_data(self, dataset: str) -> Tuple:
         """Load dataset."""
@@ -121,22 +120,23 @@ class ExperimentRunner:
         if dataset == 'sleep-edf':
             (X_train, X_val, X_test, y_train, y_val, y_test,
              scaler, info, subjects_train) = load_windowed_sleep_edf(
-                 str(data_path))
+                str(data_path))
         elif dataset == 'wesad':
             (X_train, X_val, X_test, y_train, y_val, y_test,
              label_encoder, info) = load_processed_wesad_temporal(
-                 str(data_path))
+                str(data_path))
         else:
             raise ValueError(f"Unknown dataset: {dataset}")
         
         return X_train, X_val, X_test, y_train, y_val, y_test, info
     
-    # DATALOADER CREATION
-    # =====================================================================
-    # =====================================================================
+    # ========== DATALOADER CREATION ==========
     
-    def _create_standard_dataloaders(self, X_train, y_train, X_val, y_val,
-                                     X_test, y_test, batch_size: int) -> Tuple:
+    def _create_standard_dataloaders(self,
+                                     X_train, y_train,
+                                     X_val, y_val,
+                                     X_test, y_test,
+                                     batch_size: int) -> Tuple:
         """Create standard dataloaders (Baseline, DP)."""
         
         train_dataset = TensorDataset(
@@ -152,18 +152,27 @@ class ExperimentRunner:
             torch.tensor(y_test, dtype=torch.long)
         )
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                                 shuffle=True, num_workers=0)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                               shuffle=False, num_workers=0)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size,
-                                shuffle=False, num_workers=0)
+        train_loader = DataLoader(
+            train_dataset, batch_size=batch_size,
+            shuffle=True, num_workers=0
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=batch_size,
+            shuffle=False, num_workers=0
+        )
+        test_loader = DataLoader(
+            test_dataset, batch_size=batch_size,
+            shuffle=False, num_workers=0
+        )
         
         return train_loader, val_loader, test_loader
     
-    def _create_dp_dataloaders(self, X_train, y_train, X_val, y_val,
-                               X_test, y_test, batch_size: int) -> Tuple:
-        """Create DP-compatible dataloaders (fixed batch size)."""
+    def _create_dp_dataloaders(self,
+                               X_train, y_train,
+                               X_val, y_val,
+                               X_test, y_test,
+                               batch_size: int) -> Tuple:
+        """Create DP-compatible dataloaders (fixed batch size, drop_last)."""
         
         train_dataset = TensorDataset(
             torch.tensor(X_train, dtype=torch.float32),
@@ -178,7 +187,6 @@ class ExperimentRunner:
             torch.tensor(y_test, dtype=torch.long)
         )
         
-        # DP requires: fixed batch size, drop_last=True
         train_loader = DataLoader(
             train_dataset, batch_size=batch_size,
             shuffle=True, drop_last=True, num_workers=0
@@ -194,14 +202,14 @@ class ExperimentRunner:
         
         return train_loader, val_loader, test_loader
     
-    def _create_fl_dataloaders(self, X_train, y_train, X_val, y_val,
-                               n_clients: int, batch_size: int,
+    def _create_fl_dataloaders(self,
+                               X_train, y_train,
+                               X_val, y_val,
+                               n_clients: int,
+                               batch_size: int,
                                is_dp: bool = False) -> Tuple[List, List]:
-        """Create FL dataloaders (partitioned by client).
+        """Create FL dataloaders (partitioned by client)."""
         
-        Returns:
-            (train_loaders, val_loaders)
-        """
         n_samples = len(X_train)
         samples_per_client = n_samples // n_clients
         
@@ -237,7 +245,6 @@ class ExperimentRunner:
                 torch.tensor(y_client_val, dtype=torch.long)
             )
             
-            # DP requires drop_last=True
             drop_last = is_dp
             
             train_loader = DataLoader(
@@ -259,22 +266,7 @@ class ExperimentRunner:
         
         return train_loaders, val_loaders
     
-    # =====================================================================
-    # MODEL CREATION
-    # =====================================================================
-    
-    def _get_model(self, dataset: str, config: dict, device: str):
-        """Create model based on dataset."""
-        if dataset == 'sleep-edf':
-            return SleepEDFModel(config, device=device)
-        elif dataset == 'wesad':
-            return WESADModel(config, device=device)
-        else:
-            raise ValueError(f"Unknown dataset: {dataset}")
-    
-    # =====================================================================
-    # CONFIG MANAGEMENT
-    # =====================================================================
+    # ========== CONFIG MANAGEMENT ==========
     
     def _load_config(self, config_path: str) -> dict:
         """Load YAML configuration."""
@@ -294,7 +286,8 @@ class ExperimentRunner:
         
         return result
     
-    def _apply_experiment_hyperparameters(self, config: dict,
+    def _apply_experiment_hyperparameters(self,
+                                         config: dict,
                                          exp_config: dict) -> dict:
         """Apply experiment-specific hyperparameters."""
         if 'hyperparameters' not in exp_config:
@@ -303,36 +296,18 @@ class ExperimentRunner:
         hp = exp_config['hyperparameters']
         config = deepcopy(config)
         
-        # Model hyperparameters
-        if 'model' in hp:
-            config['model'] = self._deep_merge(
-                config.get('model', {}), hp['model']
-            )
-        
-        # Training hyperparameters
+        # Apply hyperparameter overrides
         if 'training' in hp:
             config['training'] = self._deep_merge(
                 config.get('training', {}), hp['training']
             )
         
-        # Top-level training parameters
-        training_params = ['epochs', 'batch_size', 'learning_rate',
-                          'early_stopping_patience', 'optimizer',
-                          'weight_decay']
-        for param in training_params:
-            if param in hp:
-                if 'training' not in config:
-                    config['training'] = {}
-                config['training'][param] = hp[param]
-        
-        # FL hyperparameters
         if 'federated_learning' in hp:
             config['federated_learning'] = self._deep_merge(
                 config.get('federated_learning', {}),
                 hp['federated_learning']
             )
         
-        # DP hyperparameters
         if 'differential_privacy' in hp:
             config['differential_privacy'] = self._deep_merge(
                 config.get('differential_privacy', {}),
@@ -341,13 +316,13 @@ class ExperimentRunner:
         
         return config
     
-    # =====================================================================
-    # EXPERIMENT EXECUTION
-    # =====================================================================
+    # ========== EXPERIMENT EXECUTION ==========
     
-    def run_experiment(self, exp_name: str, exp_config: Dict,
+    def run_experiment(self,
+                      exp_name: str,
+                      exp_config: Dict,
                       device: str) -> Dict:
-        """Execute single experiment (dispatches to correct trainer)."""
+        """Execute single experiment."""
         
         dataset = exp_config['dataset']
         method = exp_config['method']
@@ -363,41 +338,35 @@ class ExperimentRunner:
         final_results = None
         
         try:
+            # Set seed
             set_reproducible(seed=seed, device=device, verbose=False)
             
             # Load configs
-            default_cfg = self._load_config(
-                self.config_dir / 'training_defaults.yaml')
-            
-            config_mapping = {
-                'sleep-edf': 'sleep_edf.yaml',
-                'wesad': 'wesad.yaml'
-            }
-            config_filename = config_mapping.get(
-                dataset, f'{dataset}.yaml'
-            )
             dataset_cfg = self._load_config(
-                self.config_dir / config_filename
+                self.config_dir / 'datasets' / f'{dataset}.yaml'
+            )
+            method_cfg = self._load_config(
+                self.config_dir / 'methods' / f'{method}.yaml'
             )
             
-            # Merge configs
-            config = self._deep_merge(default_cfg, dataset_cfg)
+            # Merge: dataset base + method overrides + experiment overrides
+            config = self._deep_merge(dataset_cfg, method_cfg)
             config = self._apply_experiment_hyperparameters(
                 config, exp_config
             )
             
-            # Log configuration
+            # Log config
             print("Applied configuration:")
-            print(f"   Batch size: {config['training'].get('batch_size', 'N/A')}")
-            print(f"   Learning rate: {config['training'].get('learning_rate', 'N/A')}")
-            print(f"   Epochs: {config['training'].get('epochs', 'N/A')}\n")
+            print(f"   Batch size: {config['training'].get('batch_size')}")
+            print(f"   Learning rate: {config['training'].get('learning_rate')}")
+            print(f"   Epochs: {config['training'].get('epochs')}\n")
             
             # Load data
             print("Loading data...")
             X_train, X_val, X_test, y_train, y_val, y_test, info = \
                 self._load_data(dataset)
-            print(f"Data loaded: train={X_train.shape}, val={X_val.shape}, "
-                  f"test={X_test.shape}")
+            print(f"Data: train={X_train.shape}, val={X_val.shape}, "
+                  f"test={X_test.shape}\n")
             
             # Normalize
             norm_stats = compute_normalization_stats(X_train)
@@ -407,42 +376,37 @@ class ExperimentRunner:
             
             # Create model
             print("Creating model...")
-            model = self._get_model(dataset, config, device)
+            config['dataset']['input_dim'] = X_train.shape[1]
+            model = UnifiedLSTMModel(config, device=device)
+            print(f"Model: {sum(p.numel() for p in model.parameters()):,} "
+                  f"parameters\n")
             
-            # ===================================================================
-            # ROUTE BY METHOD
-            # ===================================================================
+            # ===== RUN EXPERIMENT =====
             
             if method == 'baseline':
                 result = self._run_baseline(
                     model, config, X_train, y_train, X_val, y_val,
                     X_test, y_test, device
                 )
-            
             elif method == 'dp':
                 result = self._run_dp(
                     model, config, X_train, y_train, X_val, y_val,
                     X_test, y_test, device
                 )
-            
             elif method == 'fl':
                 result = self._run_fl(
                     model, config, X_train, y_train, X_val, y_val,
                     X_test, y_test, device
                 )
-            
             elif method == 'dp_fl':
                 result = self._run_dp_fl(
                     model, config, X_train, y_train, X_val, y_val,
                     X_test, y_test, device
                 )
-            
             else:
                 raise ValueError(f"Unknown method: {method}")
             
-            # ===================================================================
-            # SAVE RESULTS
-            # ===================================================================
+            # ===== SAVE RESULTS =====
             
             training_results = result['training_results']
             test_metrics = result['test_metrics']
@@ -474,12 +438,6 @@ class ExperimentRunner:
                 'confusion_matrix': test_metrics.get(
                     'confusion_matrix', []),
                 'class_names': test_metrics.get('class_names', []),
-                'config_used': {
-                    'batch_size': config['training'].get('batch_size'),
-                    'learning_rate': config['training'].get(
-                        'learning_rate'),
-                    'epochs': config['training'].get('epochs'),
-                }
             }
             
             # Add method-specific results
@@ -502,9 +460,9 @@ class ExperimentRunner:
             with open(results_file, 'w') as f:
                 json.dump(detailed_results, f, indent=2)
             
-            print(f"\nResults saved to: {results_file}")
+            print(f"Results saved to: {results_file}")
             
-            # Summary result
+            # Summary
             final_results = {
                 'name': exp_name,
                 'dataset': dataset,
@@ -518,13 +476,13 @@ class ExperimentRunner:
                 'timestamp': datetime.now().isoformat()
             }
             
-            print(f"Completed in {elapsed:.1f}s")
+            print(f"\nCompleted in {elapsed:.1f}s")
             print(f"   Accuracy: {final_results['accuracy']:.4f}")
             print(f"   F1-Score: {final_results['f1_score']:.4f}")
         
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"Failed: {e}")
+            print(f"\n❌ Failed: {e}")
             import traceback
             traceback.print_exc()
             
@@ -542,6 +500,8 @@ class ExperimentRunner:
         self.results.append(final_results)
         return final_results
     
+    # ========== METHOD-SPECIFIC RUNNERS ==========
+    
     def _run_baseline(self, model, config, X_train, y_train, X_val, y_val,
                       X_test, y_test, device) -> Dict:
         """Run Baseline experiment."""
@@ -553,7 +513,6 @@ class ExperimentRunner:
                 batch_size
             )
         
-        # Train
         trainer = BaselineTrainer(model, config, device=device)
         training_results = trainer.fit(
             train_loader, val_loader,
@@ -563,7 +522,6 @@ class ExperimentRunner:
             output_dir=None
         )
         
-        # Evaluate
         test_metrics = trainer.evaluate_full(test_loader)
         
         return {
@@ -582,7 +540,6 @@ class ExperimentRunner:
                 batch_size
             )
         
-        # Train
         trainer = DPTrainer(model, config, device=device)
         training_results = trainer.fit(
             train_loader, val_loader,
@@ -592,7 +549,6 @@ class ExperimentRunner:
             output_dir=None
         )
         
-        # Evaluate
         test_metrics = trainer.evaluate_full(test_loader)
         
         return {
@@ -604,11 +560,9 @@ class ExperimentRunner:
                 X_test, y_test, device) -> Dict:
         """Run FL experiment."""
         
-        # FL config
         n_clients = config['federated_learning'].get('n_clients', 5)
         batch_size = config['training']['batch_size']
         
-        # Create FL dataloaders
         train_loaders, val_loaders = self._create_fl_dataloaders(
             X_train, y_train, X_val, y_val,
             n_clients=n_clients,
@@ -616,7 +570,6 @@ class ExperimentRunner:
             is_dp=False
         )
         
-        # Create test loader
         test_dataset = TensorDataset(
             torch.tensor(X_test, dtype=torch.float32),
             torch.tensor(y_test, dtype=torch.long)
@@ -624,10 +577,8 @@ class ExperimentRunner:
         test_loader = DataLoader(test_dataset, batch_size=batch_size,
                                 shuffle=False)
         
-        # Client IDs
         client_ids = [f"client_{i:02d}" for i in range(n_clients)]
         
-        # Train
         trainer = FLTrainer(model, config, device=device)
         training_results = trainer.fit(
             train_loaders, val_loaders,
@@ -638,7 +589,6 @@ class ExperimentRunner:
             output_dir=None
         )
         
-        # Evaluate
         test_metrics = trainer.evaluate_full(test_loader)
         
         return {
@@ -650,19 +600,16 @@ class ExperimentRunner:
                    X_test, y_test, device) -> Dict:
         """Run DP+FL experiment."""
         
-        # FL config
         n_clients = config['federated_learning'].get('n_clients', 5)
         batch_size = config['training']['batch_size']
         
-        # Create FL+DP dataloaders
         train_loaders, val_loaders = self._create_fl_dataloaders(
             X_train, y_train, X_val, y_val,
             n_clients=n_clients,
             batch_size=batch_size,
-            is_dp=True  # Use drop_last for DP
+            is_dp=True
         )
         
-        # Create test loader
         test_dataset = TensorDataset(
             torch.tensor(X_test, dtype=torch.float32),
             torch.tensor(y_test, dtype=torch.long)
@@ -670,10 +617,11 @@ class ExperimentRunner:
         test_loader = DataLoader(test_dataset, batch_size=batch_size,
                                 shuffle=False)
         
-        # Client IDs
         client_ids = [f"client_{i:02d}" for i in range(n_clients)]
         
-        # Train
+        # Import here to avoid circular imports
+        from src.training import FLDPTrainer
+        
         trainer = FLDPTrainer(model, config, device=device)
         training_results = trainer.fit(
             train_loaders, val_loaders,
@@ -684,7 +632,6 @@ class ExperimentRunner:
             output_dir=None
         )
         
-        # Evaluate
         test_metrics = trainer.evaluate_full(test_loader)
         
         return {
@@ -698,95 +645,13 @@ class ExperimentRunner:
         print(f"\nRunning {total} experiments...\n")
         
         for idx, (exp_name, exp_config) in enumerate(experiments.items(), 1):
-            print(f"[{idx}/{total}]")
+            print(f"\n[{idx}/{total}]")
             self.run_experiment(exp_name, exp_config, device)
-        
-        self._create_aggregated_results()
         
         return self.results
     
-    def _create_aggregated_results(self):
-        """Create aggregated results by (dataset, method)."""
-        from collections import defaultdict
-        
-        result_groups = defaultdict(list)
-        for result in self.results:
-            if result['success']:
-                key = (result['dataset'], result['method'])
-                result_groups[key].append(result)
-        
-        for (dataset, method), results in result_groups.items():
-            if not results:
-                continue
-            
-            # Load individual results
-            all_runs = []
-            for result in results:
-                results_file = result.get('results_file')
-                if results_file and Path(results_file).exists():
-                    with open(results_file, 'r') as f:
-                        run_data = json.load(f)
-                        all_runs.append(run_data)
-            
-            if not all_runs:
-                continue
-            
-            # Calculate metrics
-            seeds = [run['seed'] for run in all_runs]
-            accuracies = [run['accuracy'] for run in all_runs]
-            precisions = [run['precision'] for run in all_runs]
-            recalls = [run['recall'] for run in all_runs]
-            f1_scores = [run['f1_score'] for run in all_runs]
-            
-            aggregated = {
-                'dataset': dataset,
-                'method': method,
-                'num_seeds': len(seeds),
-                'seeds': seeds,
-                'accuracy': {
-                    'mean': float(np.mean(accuracies)),
-                    'std': float(np.std(accuracies)),
-                    'min': float(np.min(accuracies)),
-                    'max': float(np.max(accuracies)),
-                    'values': accuracies
-                },
-                'precision': {
-                    'mean': float(np.mean(precisions)),
-                    'std': float(np.std(precisions)),
-                    'min': float(np.min(precisions)),
-                    'max': float(np.max(precisions)),
-                    'values': precisions
-                },
-                'recall': {
-                    'mean': float(np.mean(recalls)),
-                    'std': float(np.std(recalls)),
-                    'min': float(np.min(recalls)),
-                    'max': float(np.max(recalls)),
-                    'values': recalls
-                },
-                'f1_score': {
-                    'mean': float(np.mean(f1_scores)),
-                    'std': float(np.std(f1_scores)),
-                    'min': float(np.min(f1_scores)),
-                    'max': float(np.max(f1_scores)),
-                    'values': f1_scores
-                },
-                'all_runs': all_runs
-            }
-            
-            # Save
-            output_file = (self.results_dir / method / dataset /
-                          'aggregated_results.json')
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(output_file, 'w') as f:
-                json.dump(aggregated, f, indent=2)
-            
-            print(f"\nAggregated ({method}/{dataset}): "
-                  f"acc={aggregated['accuracy']['mean']:.4f} ± "
-                  f"{aggregated['accuracy']['std']:.4f}")
-    
-    def save_results(self, output_file: str = 'experiments/results_log.json'):
+    def save_results(self,
+                     output_file: str = 'experiments/results_log.json'):
         """Save summary results."""
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -796,8 +661,6 @@ class ExperimentRunner:
             'total_experiments': len(self.results),
             'successful': sum(1 for r in self.results if r['success']),
             'failed': sum(1 for r in self.results if not r['success']),
-            'total_time_hours': sum(r['time_seconds']
-                                   for r in self.results) / 3600,
             'results': self.results
         }
         
@@ -809,7 +672,6 @@ class ExperimentRunner:
         print(f"   Total: {summary['total_experiments']}")
         print(f"   Successful: {summary['successful']}")
         print(f"   Failed: {summary['failed']}")
-        print(f"   Time: {summary['total_time_hours']:.1f} hours")
         print(f"{'='*70}\n")
         
         return summary
@@ -856,6 +718,7 @@ Examples:
                        help='Device (cuda, cpu, auto)')
     parser.add_argument('--auto', action='store_true',
                        help='Skip confirmation')
+    
     args = parser.parse_args()
     
     # Device
@@ -864,9 +727,7 @@ Examples:
     else:
         device = args.device
     
-    print(f"Device: {device}")
-    print(f"Data dir: {args.data_dir}")
-    print(f"Config dir: {args.config_dir}")
+    print(f"Device: {device}\n")
     
     # Runner
     runner = ExperimentRunner(
@@ -892,8 +753,8 @@ Examples:
             continue
     
     if not all_experiments:
-        print("No experiments found. Exiting.")
-        return
+        print("No experiments found")
+        return 1
     
     print(f"Loaded {len(all_experiments)} experiments\n")
     
@@ -913,21 +774,22 @@ Examples:
         clients=args.clients
     )
     
-    # Limit number of experiments
     if args.n_experiments:
-        filtered_experiments = dict(list(filtered_experiments.items())[:args.n_experiments])
+        filtered_experiments = dict(
+            list(filtered_experiments.items())[:args.n_experiments]
+        )
     
     if not filtered_experiments:
         print("No experiments matched")
         return 1
     
-    print(f"\n{'='*70}")
+    print(f"{'='*70}")
     print(f"Experiments to run: {len(filtered_experiments)}")
     print(f"{'='*70}")
     for exp_name in list(filtered_experiments.keys())[:10]:
         print(f"  - {exp_name}")
     if len(filtered_experiments) > 10:
-        print(f"  ... and {len(filtered_experiments) - 10} more")
+        print(f"  ... and {len(filtered_experiments) - 10} more\n")
     
     # Confirm
     if not args.auto:
@@ -943,7 +805,7 @@ Examples:
     runner.run_all(filtered_experiments, device)
     elapsed = time.time() - start_time
     
-    # Save results
+    # Save
     runner.save_results(args.output_file)
     
     # Summary

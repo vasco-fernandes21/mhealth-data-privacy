@@ -1,18 +1,38 @@
 {
-  "timestamp": "2025-10-26T17:03:17.943052",
-  "total_experiments": 1,
+  "timestamp": "2025-10-26T19:49:40.560991",
+  "total_experiments": 3,
   "successful": 0,
-  "failed": 1,
-  "total_time_hours": 0.0010984599590301513,
+  "failed": 3,
   "results": [
     {
-      "experiment_name": "baseline_wesad_run1",
+      "name": "baseline_wesad_run1",
       "dataset": "wesad",
       "method": "baseline",
       "seed": 42,
       "success": false,
-      "elapsed_time_seconds": 3.954455852508545,
-      "timestamp": "2025-10-26T17:03:17.942670"
+      "time_seconds": 0.10185384750366211,
+      "error": "argument of type 'NoneType' is not iterable",
+      "timestamp": "2025-10-26T19:49:40.559939"
+    },
+    {
+      "name": "baseline_wesad_run2",
+      "dataset": "wesad",
+      "method": "baseline",
+      "seed": 43,
+      "success": false,
+      "time_seconds": 0.00045800209045410156,
+      "error": "argument of type 'NoneType' is not iterable",
+      "timestamp": "2025-10-26T19:49:40.560525"
+    },
+    {
+      "name": "baseline_wesad_run3",
+      "dataset": "wesad",
+      "method": "baseline",
+      "seed": 44,
+      "success": false,
+      "time_seconds": 0.0003161430358886719,
+      "error": "argument of type 'NoneType' is not iterable",
+      "timestamp": "2025-10-26T19:49:40.560940"
     }
   ]
 }

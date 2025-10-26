@@ -1,0 +1,207 @@
+# Federated Learning Experiments
+# Config base vem de: configs/datasets/{dataset}.yaml
+# Method overrides: configs/methods/fl.yaml
+# Experiment overrides: n_clients (varying)
+
+experiments:
+  # ===== Sleep-EDF FL =====
+  
+  fl_sleep_edf_c5_run1:
+    name: "FL - Sleep-EDF 5 clients (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5  # ← ONLY VARIATION
+
+  fl_sleep_edf_c5_run2:
+    name: "FL - Sleep-EDF 5 clients (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+
+  fl_sleep_edf_c5_run3:
+    name: "FL - Sleep-EDF 5 clients (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+
+  fl_sleep_edf_c10_run1:
+    name: "FL - Sleep-EDF 10 clients (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10  # ← VARIATION
+
+  fl_sleep_edf_c10_run2:
+    name: "FL - Sleep-EDF 10 clients (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+
+  fl_sleep_edf_c10_run3:
+    name: "FL - Sleep-EDF 10 clients (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+
+  fl_sleep_edf_c15_run1:
+    name: "FL - Sleep-EDF 15 clients (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15
+
+  fl_sleep_edf_c15_run2:
+    name: "FL - Sleep-EDF 15 clients (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15
+
+  fl_sleep_edf_c15_run3:
+    name: "FL - Sleep-EDF 15 clients (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "sleep-edf", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15
+
+  # ===== WESAD FL =====
+  
+  fl_wesad_c5_run1:
+    name: "FL - WESAD 5 clients (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "wesad", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+
+  fl_wesad_c5_run2:
+    name: "FL - WESAD 5 clients (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "wesad", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+
+  fl_wesad_c5_run3:
+    name: "FL - WESAD 5 clients (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "wesad", "clients_sweep", "tier1"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+
+  fl_wesad_c10_run1:
+    name: "FL - WESAD 10 clients (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+
+  fl_wesad_c10_run2:
+    name: "FL - WESAD 10 clients (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+
+  fl_wesad_c10_run3:
+    name: "FL - WESAD 10 clients (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "wesad", "clients_sweep", "tier2"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+
+  fl_wesad_c15_run1:
+    name: "FL - WESAD 15 clients (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 42
+    tags: ["fl", "wesad", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15
+
+  fl_wesad_c15_run2:
+    name: "FL - WESAD 15 clients (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 43
+    tags: ["fl", "wesad", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15
+
+  fl_wesad_c15_run3:
+    name: "FL - WESAD 15 clients (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "fl"
+    seed: 44
+    tags: ["fl", "wesad", "clients_sweep", "tier3"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 15

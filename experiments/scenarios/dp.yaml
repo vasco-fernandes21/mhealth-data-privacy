@@ -1,0 +1,207 @@
+# Differential Privacy Experiments
+# Config base vem de: configs/datasets/{dataset}.yaml
+# Method overrides: configs/methods/dp.yaml
+# Experiment overrides: target_epsilon (varying)
+
+experiments:
+  # ===== Sleep-EDF DP =====
+  
+  dp_sleep_edf_eps1_run1:
+    name: "DP - Sleep-EDF ε=1.0 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0  # ← ONLY VARIATION
+
+  dp_sleep_edf_eps1_run2:
+    name: "DP - Sleep-EDF ε=1.0 (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0
+
+  dp_sleep_edf_eps1_run3:
+    name: "DP - Sleep-EDF ε=1.0 (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0
+
+  dp_sleep_edf_eps3_run1:
+    name: "DP - Sleep-EDF ε=3.0 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0  # ← VARIATION
+
+  dp_sleep_edf_eps3_run2:
+    name: "DP - Sleep-EDF ε=3.0 (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0
+
+  dp_sleep_edf_eps3_run3:
+    name: "DP - Sleep-EDF ε=3.0 (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0
+
+  dp_sleep_edf_eps8_run1:
+    name: "DP - Sleep-EDF ε=8.0 (Run 1)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0
+
+  dp_sleep_edf_eps8_run2:
+    name: "DP - Sleep-EDF ε=8.0 (Run 2)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0
+
+  dp_sleep_edf_eps8_run3:
+    name: "DP - Sleep-EDF ε=8.0 (Run 3)"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "sleep-edf", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0
+
+  # ===== WESAD DP =====
+  
+  dp_wesad_eps1_run1:
+    name: "DP - WESAD ε=1.0 (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0
+
+  dp_wesad_eps1_run2:
+    name: "DP - WESAD ε=1.0 (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0
+
+  dp_wesad_eps1_run3:
+    name: "DP - WESAD ε=1.0 (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "wesad", "epsilon_sweep", "tier1"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 1.0
+
+  dp_wesad_eps3_run1:
+    name: "DP - WESAD ε=3.0 (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "wesad", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0
+
+  dp_wesad_eps3_run2:
+    name: "DP - WESAD ε=3.0 (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "wesad", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0
+
+  dp_wesad_eps3_run3:
+    name: "DP - WESAD ε=3.0 (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "wesad", "epsilon_sweep", "tier2"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 3.0
+
+  dp_wesad_eps8_run1:
+    name: "DP - WESAD ε=8.0 (Run 1)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 42
+    tags: ["dp", "wesad", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0
+
+  dp_wesad_eps8_run2:
+    name: "DP - WESAD ε=8.0 (Run 2)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 43
+    tags: ["dp", "wesad", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0
+
+  dp_wesad_eps8_run3:
+    name: "DP - WESAD ε=8.0 (Run 3)"
+    enabled: true
+    dataset: "wesad"
+    method: "dp"
+    seed: 44
+    tags: ["dp", "wesad", "epsilon_sweep", "tier3"]
+    hyperparameters:
+      differential_privacy:
+        target_epsilon: 8.0

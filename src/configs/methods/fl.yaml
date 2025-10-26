@@ -1,0 +1,13 @@
+method: "fl"
+description: "Federated Learning without privacy"
+
+federated_learning:
+  enabled: true
+  n_clients: 10
+  global_rounds: 100
+  local_epochs: 5
+  local_batch_size: 32
+  aggregation_method: "fedavg"
+  trimming_fraction: 0.1
+
+# Sem overrides - usa config do dataset

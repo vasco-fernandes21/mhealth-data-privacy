@@ -1,89 +1,56 @@
 # Baseline Experiments (No Privacy)
+# Config base vem de: configs/datasets/{dataset}.yaml
+# Method: configs/methods/baseline.yaml
+
 experiments:
+  # ===== Sleep-EDF Baseline =====
+  
   baseline_sleep_edf_run1:
     name: "Baseline - Sleep-EDF (Run 1)"
     enabled: true
     dataset: "sleep-edf"
     method: "baseline"
     seed: 42
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 32
-      learning_rate: 0.001
-      early_stopping_patience: 8
-    description: "Upper bound accuracy - Sleep-EDF dataset"
     tags: ["baseline", "sleep-edf", "tier1"]
-    
+  
   baseline_sleep_edf_run2:
     name: "Baseline - Sleep-EDF (Run 2)"
     enabled: true
     dataset: "sleep-edf"
     method: "baseline"
     seed: 43
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 32
-      learning_rate: 0.001
-      early_stopping_patience: 8
-    description: "Upper bound accuracy - Sleep-EDF dataset (different seed)"
     tags: ["baseline", "sleep-edf", "tier1"]
-    
+  
   baseline_sleep_edf_run3:
     name: "Baseline - Sleep-EDF (Run 3)"
     enabled: true
     dataset: "sleep-edf"
     method: "baseline"
     seed: 44
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 32
-      learning_rate: 0.001
-      early_stopping_patience: 8
-    description: "Upper bound accuracy - Sleep-EDF dataset (different seed)"
     tags: ["baseline", "sleep-edf", "tier1"]
 
+  # ===== WESAD Baseline =====
+  
   baseline_wesad_run1:
     name: "Baseline - WESAD (Run 1)"
     enabled: true
     dataset: "wesad"
     method: "baseline"
     seed: 42
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 64
-      learning_rate: 0.001
-      early_stopping_patience: 8
-    description: "Upper bound accuracy - WESAD dataset"
     tags: ["baseline", "wesad", "tier1"]
-    
+  
   baseline_wesad_run2:
     name: "Baseline - WESAD (Run 2)"
     enabled: true
     dataset: "wesad"
     method: "baseline"
     seed: 43
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 64
-      learning_rate: 0.001
-      early_stopping_patience: 8
     tags: ["baseline", "wesad", "tier1"]
-
+  
   baseline_wesad_run3:
     name: "Baseline - WESAD (Run 3)"
     enabled: true
     dataset: "wesad"
     method: "baseline"
     seed: 44
-    device: "auto"
-    hyperparameters:
-      epochs: 100
-      batch_size: 64
-      learning_rate: 0.001
-      early_stopping_patience: 8
     tags: ["baseline", "wesad", "tier1"]

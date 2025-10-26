@@ -1,0 +1,4 @@
+method: "baseline"
+description: "Standard training without privacy"
+# Herda TUDO do dataset config
+# Nenhum override
