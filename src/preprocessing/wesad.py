@@ -539,11 +539,11 @@ def preprocess_wesad_temporal(
     overlap: float = 0.5,
     label_threshold: float = 0.7,
     binary: bool = True,
-    use_loso: bool = False,
+    use_loso: bool = True,
     outlier_method: str = 'clip',
     clip_lower_p: float = 1.0,
     clip_upper_p: float = 99.0,
-    export_eda: bool = True,
+    save_eda_plots: bool = True,
     n_workers: int = None,
     force_reprocess: bool = False,
     random_state: int = 42) -> Dict:
@@ -646,7 +646,7 @@ def preprocess_wesad_temporal(
     for c, w in weights.items():
         print(f"  {class_names[c]}: {w:.3f}")
     
-    if export_eda:
+    if save_eda_plots:  
         eda_dir = os.path.join(output_dir, 'eda')
         export_eda(eda_dir, class_counts, class_names, weights)
         print(f"\nEDA saved to {eda_dir}")

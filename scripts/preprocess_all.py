@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
 Script para executar todo o pré-processamento localmente.
-Configura windowing para Sleep-EDF e augmentation para WESAD automaticamente.
+Configura windowing para Sleep-EDF automaticamente.
 
 Uso:
     python scripts/preprocess_all.py
     python scripts/preprocess_all.py --dataset wesad
     python scripts/preprocess_all.py --dataset sleep-edf
     python scripts/preprocess_all.py --dataset all --force_reprocess
-    python scripts/preprocess_all.py --dataset wesad --wesad_n_augmentations 5
-    python scripts/preprocess_all.py --dataset wesad --wesad_n_augmentations 5 --wesad_aug_noise_std 0.1
 """
 
 import sys
@@ -43,11 +41,9 @@ def verify_processed_data(data_dir: Path) -> dict:
     """Verify preprocessed data exists."""
     required_files = {
         'sleep-edf': ['X_train.npy', 'X_val.npy', 'X_test.npy', 
-                     'y_train.npy', 'y_val.npy', 'y_test.npy',
-                     'X_train_windows.npy', 'X_val_windows.npy', 'X_test_windows.npy'],
+                     'y_train.npy', 'y_val.npy', 'y_test.npy'],
         'wesad': ['X_train.npy', 'X_val.npy', 'X_test.npy',
-                 'y_train.npy', 'y_val.npy', 'y_test.npy',
-                 'X_train_augmented.npy', 'y_train_augmented.npy']
+                 'y_train.npy', 'y_val.npy', 'y_test.npy']
     }
     
     status = {}
@@ -73,15 +69,12 @@ def print_summary(dataset_info: dict, dataset_name: str):
     print(f"      • Val: {dataset_info.get('val_size', 'N/A')} samples")
     print(f"      • Test: {dataset_info.get('test_size', 'N/A')} samples")
     
-    if dataset_name == 'sleep-edf' and dataset_info.get('has_windowed_data'):
-        print(f"      • Windows: {dataset_info.get('window_size', 'N/A')}-epoch created ✓")
+    if dataset_name == 'sleep-edf':
+        print(f"      • Window: {dataset_info.get('window_size', 'N/A')}-epoch ✓")
     
-    if dataset_name == 'wesad' and dataset_info.get('has_augmented_data'):
-        aug_factor = dataset_info.get('n_augmentations', 2) + 1
-        aug_samples = dataset_info.get('train_size', 0) * aug_factor
-        print(f"      • Augmentation: {aug_factor}× factor ({aug_samples} total samples) ✓")
-        if 'aug_noise_std' in dataset_info:
-            print(f"      • Aug config: noise={dataset_info['aug_noise_std']}, shift={dataset_info.get('aug_max_time_shift', 'N/A')}")
+    if dataset_name == 'wesad':
+        print(f"      • Channels: {dataset_info.get('n_channels', 'N/A')}")
+        print(f"      • Strategy: {dataset_info.get('strategy', 'N/A')}")
 
 
 def preprocess_sleep_edf_wrapper(data_dir: Path, args, logger) -> bool:
@@ -151,11 +144,9 @@ def preprocess_wesad_wrapper(data_dir: Path, args, logger) -> bool:
     try:
         print(f"\nConfiguration:")
         print(f"   • Target frequency: {args.wesad_target_freq} Hz")
-        print(f"   • Window size: {args.wesad_window_size} samples ({args.wesad_window_size/args.wesad_target_freq:.0f}s)")
+        print(f"   • Window size: {args.wesad_window_size} samples "
+              f"({args.wesad_window_size/args.wesad_target_freq:.0f}s)")
         print(f"   • Overlap: {args.wesad_overlap*100:.0f}%")
-        print(f"   • Augmentations: {args.wesad_n_augmentations} per sample ({args.wesad_n_augmentations+1}× factor)")
-        print(f"   • Aug noise std: {args.wesad_aug_noise_std}")
-        print(f"   • Aug time shift: {args.wesad_aug_max_time_shift} samples")
         print(f"   • Test/Val split: {args.test_size}/{args.val_size}")
         print(f"   • Parallel workers: {args.n_workers}")
         print(f"   • Force reprocess: {args.force_reprocess}")
@@ -166,24 +157,12 @@ def preprocess_wesad_wrapper(data_dir: Path, args, logger) -> bool:
         info = preprocess_wesad_temporal(
             data_dir=str(wesad_raw),
             output_dir=str(wesad_processed),
-            # Signal processing
             target_freq=args.wesad_target_freq,
             window_size=args.wesad_window_size,
             overlap=args.wesad_overlap,
-            # Classification
             binary=True,
-            # Splitting
-            test_size=args.test_size,
-            val_size=args.val_size,
-            random_state=args.random_state,
-            # Parallel processing
             n_workers=args.n_workers,
-            force_reprocess=args.force_reprocess,
-            # Augmentation ✅ COMPLETO
-            create_augmentations=True,
-            n_augmentations=args.wesad_n_augmentations,
-            aug_noise_std=args.wesad_aug_noise_std,
-            aug_max_time_shift=args.wesad_aug_max_time_shift
+            force_reprocess=args.force_reprocess
         )
         
         elapsed = time.time() - start
@@ -211,14 +190,8 @@ Examples:
   # Preprocess both datasets
   python scripts/preprocess_all.py
 
-  # Preprocess only WESAD with more augmentations
-  python scripts/preprocess_all.py --dataset wesad --wesad_n_augmentations 5
-
-  # WESAD with strong augmentation
-  python scripts/preprocess_all.py --dataset wesad \\
-    --wesad_n_augmentations 5 \\
-    --wesad_aug_noise_std 0.1 \\
-    --wesad_aug_max_time_shift 64
+  # Preprocess only WESAD
+  python scripts/preprocess_all.py --dataset wesad
 
   # Preprocess only Sleep-EDF with custom window size
   python scripts/preprocess_all.py --dataset sleep-edf --sleep_edf_window_size 15
@@ -230,7 +203,6 @@ Examples:
   python scripts/preprocess_all.py --check_only
         """)
     
-    # Dataset selection
     parser.add_argument(
         '--dataset',
         choices=['all', 'sleep-edf', 'wesad'],
@@ -238,16 +210,12 @@ Examples:
         help='Which dataset(s) to preprocess (default: all)'
     )
     
-    # Directories
     parser.add_argument(
         '--data_dir',
         default='./data',
         help='Base data directory (default: ./data)'
     )
     
-    # ============================================================
-    # Sleep-EDF parameters
-    # ============================================================
     parser.add_argument(
         '--sleep_edf_window_size',
         type=int,
@@ -255,67 +223,48 @@ Examples:
         help='Sleep-EDF window size for LSTM in epochs (default: 10)'
     )
     
-    # ============================================================
-    # WESAD parameters - ✅ COMPLETO
-    # ============================================================
     parser.add_argument(
         '--wesad_target_freq',
         type=int,
         default=32,
         help='WESAD target frequency in Hz (default: 32)'
     )
+    
     parser.add_argument(
         '--wesad_window_size',
         type=int,
         default=1920,
         help='WESAD window size in samples (default: 1920 = 60s @ 32Hz)'
     )
+    
     parser.add_argument(
         '--wesad_overlap',
         type=float,
         default=0.5,
         help='WESAD window overlap ratio (default: 0.5)'
     )
-    parser.add_argument(
-        '--wesad_n_augmentations',  # ✅ RENAMED (was --n_augmentations)
-        type=int,
-        default=2,
-        help='WESAD number of augmentations per sample (default: 2 → 3× training data)'
-    )
-    parser.add_argument(
-        '--wesad_aug_noise_std',  # ✅ NEW
-        type=float,
-        default=0.05,
-        help='WESAD augmentation noise standard deviation (default: 0.05)'
-    )
-    parser.add_argument(
-        '--wesad_aug_max_time_shift',  # ✅ NEW
-        type=int,
-        default=32,
-        help='WESAD augmentation maximum time shift in samples (default: 32)'
-    )
     
-    # ============================================================
-    # Common parameters
-    # ============================================================
     parser.add_argument(
         '--test_size',
         type=float,
         default=0.15,
         help='Test set size ratio (default: 0.15)'
     )
+    
     parser.add_argument(
         '--val_size',
         type=float,
         default=0.15,
         help='Validation set size ratio (default: 0.15)'
     )
+    
     parser.add_argument(
         '--random_state',
         type=int,
         default=42,
         help='Random seed for reproducibility (default: 42)'
     )
+    
     parser.add_argument(
         '--n_workers',
         type=int,
@@ -323,19 +272,18 @@ Examples:
         help='Number of parallel workers (default: 4)'
     )
     
-    # ============================================================
-    # Flags
-    # ============================================================
     parser.add_argument(
         '--force_reprocess',
         action='store_true',
         help='Force reprocessing even if data exists'
     )
+    
     parser.add_argument(
         '--check_only',
         action='store_true',
         help='Check data status without processing'
     )
+    
     parser.add_argument(
         '--verbose',
         action='store_true',
@@ -344,21 +292,17 @@ Examples:
     
     args = parser.parse_args()
     
-    # Setup logging
     setup_logging(output_dir='./results', level='INFO', verbose=args.verbose)
     logger = get_logger(__name__)
     
-    # Print header
     print("\n" + "="*80)
     print("🔄 DATASET PREPROCESSING PIPELINE")
     print("="*80)
     
     data_dir = Path(args.data_dir)
     
-    # Verify raw data
     raw_status = verify_raw_data(data_dir)
     
-    # Verify processed data (if not forcing reprocess)
     if not args.force_reprocess:
         processed_status = verify_processed_data(data_dir)
     else:
@@ -369,7 +313,6 @@ Examples:
         print("\n✅ Data status check complete")
         return 0
     
-    # Start preprocessing
     print("\n" + "="*80)
     print("Starting preprocessing...")
     print("="*80)
@@ -377,7 +320,6 @@ Examples:
     start_time = time.time()
     results = {'sleep-edf': None, 'wesad': None}
     
-    # Determine which datasets to process
     datasets_to_process = []
     if args.dataset in ['all', 'sleep-edf']:
         if args.force_reprocess or not processed_status.get('sleep-edf', False):
@@ -397,21 +339,18 @@ Examples:
         else:
             print(f"\n⏭️  Skipping WESAD: already preprocessed")
     
-    # Process datasets
     if 'sleep-edf' in datasets_to_process:
         results['sleep-edf'] = preprocess_sleep_edf_wrapper(data_dir, args, logger)
     
     if 'wesad' in datasets_to_process:
         results['wesad'] = preprocess_wesad_wrapper(data_dir, args, logger)
     
-    # Summary
     total_time = time.time() - start_time
     
     print("\n" + "="*80)
     print("✅ PREPROCESSING PIPELINE COMPLETE!")
     print("="*80)
     
-    # Results summary
     print("\n📊 Results:")
     if results['sleep-edf'] is not None:
         status = "✓ Success" if results['sleep-edf'] else "✗ Failed"
@@ -422,7 +361,6 @@ Examples:
     
     print(f"\n⏱️  Total time: {total_time:.1f}s ({total_time/60:.1f} minutes)")
     
-    # Next steps
     print(f"\n💡 Next steps:")
     processed_path = Path(args.data_dir) / 'processed'
     
@@ -438,7 +376,6 @@ Examples:
     
     print("\n" + "="*80 + "\n")
     
-    # Return exit code
     if any(r is False for r in results.values() if r is not None):
         return 1
     return 0

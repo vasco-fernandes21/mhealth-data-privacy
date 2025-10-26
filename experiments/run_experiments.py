@@ -131,8 +131,8 @@ class ExperimentRunner:
         
         return X_train, X_val, X_test, y_train, y_val, y_test, info
     
-    # =====================================================================
     # DATALOADER CREATION
+    # =====================================================================
     # =====================================================================
     
     def _create_standard_dataloaders(self, X_train, y_train, X_val, y_val,
@@ -891,9 +891,72 @@ Examples:
             print(f"Warning: {e}")
             continue
     
+    if not all_experiments:
+        print("No experiments found. Exiting.")
+        return
+    
     print(f"Loaded {len(all_experiments)} experiments\n")
     
     # Filter
     tags = args.tags.split(',') if args.tags else None
     keywords = args.keywords
-    datasets = args.datasets.split
+    datasets = args.datasets.split(',') if args.datasets else None
+    methods = args.methods.split(',') if args.methods else None
+    
+    filtered_experiments = runner.filter_experiments(
+        all_experiments,
+        tags=tags,
+        keywords=keywords,
+        datasets=datasets,
+        methods=methods,
+        epsilon=args.epsilon,
+        clients=args.clients
+    )
+    
+    # Limit number of experiments
+    if args.n_experiments:
+        filtered_experiments = dict(list(filtered_experiments.items())[:args.n_experiments])
+    
+    if not filtered_experiments:
+        print("No experiments matched")
+        return 1
+    
+    print(f"\n{'='*70}")
+    print(f"Experiments to run: {len(filtered_experiments)}")
+    print(f"{'='*70}")
+    for exp_name in list(filtered_experiments.keys())[:10]:
+        print(f"  - {exp_name}")
+    if len(filtered_experiments) > 10:
+        print(f"  ... and {len(filtered_experiments) - 10} more")
+    
+    # Confirm
+    if not args.auto:
+        confirm = input("\nProceed? (y/n): ").lower()
+        if confirm != 'y':
+            print("Cancelled")
+            return 0
+    else:
+        print("\nAuto mode: Starting execution...\n")
+    
+    # Run
+    start_time = time.time()
+    runner.run_all(filtered_experiments, device)
+    elapsed = time.time() - start_time
+    
+    # Save results
+    runner.save_results(args.output_file)
+    
+    # Summary
+    print(f"\n{'='*70}")
+    print("SUMMARY")
+    print(f"{'='*70}")
+    successful = sum(1 for r in runner.results if r['success'])
+    print(f"Successful: {successful}/{len(runner.results)}")
+    print(f"Total time: {elapsed/3600:.2f} hours")
+    print(f"{'='*70}\n")
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
