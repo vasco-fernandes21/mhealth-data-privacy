@@ -1,10 +1,12 @@
-# src/training/baseline_trainer.py
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from typing import Dict, Tuple, Any
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, 
+    f1_score, confusion_matrix
+)
 
 from src.training.base_trainer import BaseTrainer
 from src.utils.logging_utils import get_logger
@@ -121,3 +123,60 @@ class BaselineTrainer(BaseTrainer):
             self.scheduler.step()
         
         return total_loss / total, correct / total
+    
+    def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
+        """
+        Full evaluation with all metrics.
+        
+        Args:
+            test_loader: Test data loader
+        
+        Returns:
+            Dictionary with accuracy, precision, recall, f1, confusion matrix
+        """
+        self.model.eval()
+        y_true = []
+        y_pred = []
+        
+        with torch.no_grad():
+            for batch_x, batch_y in test_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                outputs = self.model(batch_x)
+                _, predicted = torch.max(outputs, 1)
+                
+                y_true.extend(batch_y.cpu().numpy())
+                y_pred.extend(predicted.cpu().numpy())
+        
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        unique_labels = np.unique(y_true)
+        
+        metrics = {
+            'accuracy': float(accuracy_score(y_true, y_pred)),
+            'precision': float(
+                precision_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'recall': float(
+                recall_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'f1_score': float(
+                f1_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'confusion_matrix': confusion_matrix(
+                y_true, y_pred, labels=unique_labels
+            ).tolist(),
+            'class_names': self.config['dataset'].get('class_names', [])
+        }
+        
+        return metrics

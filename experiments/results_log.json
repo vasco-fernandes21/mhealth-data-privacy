@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-10-26T19:49:40.560991",
+  "timestamp": "2025-10-26T21:35:00.473270",
   "total_experiments": 3,
   "successful": 0,
   "failed": 3,
@@ -10,9 +10,9 @@
       "method": "baseline",
       "seed": 42,
       "success": false,
-      "time_seconds": 0.10185384750366211,
-      "error": "argument of type 'NoneType' is not iterable",
-      "timestamp": "2025-10-26T19:49:40.559939"
+      "time_seconds": 0.16788291931152344,
+      "error": "not enough values to unpack (expected 8, got 7)",
+      "timestamp": "2025-10-26T21:35:00.379965"
     },
     {
       "name": "baseline_wesad_run2",
@@ -20,9 +20,9 @@
       "method": "baseline",
       "seed": 43,
       "success": false,
-      "time_seconds": 0.00045800209045410156,
-      "error": "argument of type 'NoneType' is not iterable",
-      "timestamp": "2025-10-26T19:49:40.560525"
+      "time_seconds": 0.05329585075378418,
+      "error": "not enough values to unpack (expected 8, got 7)",
+      "timestamp": "2025-10-26T21:35:00.433468"
     },
     {
       "name": "baseline_wesad_run3",
@@ -30,9 +30,9 @@
       "method": "baseline",
       "seed": 44,
       "success": false,
-      "time_seconds": 0.0003161430358886719,
-      "error": "argument of type 'NoneType' is not iterable",
-      "timestamp": "2025-10-26T19:49:40.560940"
+      "time_seconds": 0.03957700729370117,
+      "error": "not enough values to unpack (expected 8, got 7)",
+      "timestamp": "2025-10-26T21:35:00.473222"
     }
   ]
 }

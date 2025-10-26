@@ -3,7 +3,7 @@ dataset:
   path: "data/processed/wesad"
   n_channels: 14
   n_classes: 2
-  sequence_length: 1920
+  sequence_length: 512
   class_names: ["non-stress", "stress"]
 
 model:
