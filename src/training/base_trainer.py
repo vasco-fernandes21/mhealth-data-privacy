@@ -38,17 +38,16 @@ class BaseTrainer(ABC):
         # Initialize state
         self.optimizer = None
         self.criterion = None
-        self.best_val_loss = float('inf')
-        self.best_val_acc = -1.0
+        self.best_val_acc = 0.0
         self.epochs_no_improve = 0
         
-        # Training history
+        # Training history (standardized order)
         self.history = {
+            'epoch': [],
             'train_loss': [],
             'train_acc': [],
             'val_loss': [],
-            'val_acc': [],
-            'epoch': []
+            'val_acc': []
         }
     
     @abstractmethod
@@ -126,6 +125,9 @@ class BaseTrainer(ABC):
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
         
+        # Reset state for new training run
+        self._reset_training_state()
+        
         # Setup optimizer and loss
         self.setup_optimizer_and_loss()
         
@@ -166,7 +168,8 @@ class BaseTrainer(ABC):
         training_time = time.time() - start_time
         
         # Load best model
-        if output_path is not None and (output_path / 'best_model.pth').exists():
+        if output_path is not None and \
+           (output_path / 'best_model.pth').exists():
             self.load_checkpoint(output_path / 'best_model.pth')
         
         return {
@@ -180,6 +183,18 @@ class BaseTrainer(ABC):
             'history': self.history
         }
     
+    def _reset_training_state(self) -> None:
+        """Reset training state for new training run."""
+        self.best_val_acc = 0.0
+        self.epochs_no_improve = 0
+        self.history = {
+            'epoch': [],
+            'train_loss': [],
+            'train_acc': [],
+            'val_loss': [],
+            'val_acc': []
+        }
+    
     def _log_epoch(self, epoch: int, train_loss: float, train_acc: float,
                    val_loss: float, val_acc: float) -> None:
         """Log epoch results."""
@@ -189,7 +204,8 @@ class BaseTrainer(ABC):
     
     def _log_early_stopping(self, epoch: int, patience: int) -> None:
         """Log early stopping."""
-        print(f"Early stopping triggered after {epoch} epochs (patience={patience})")
+        print(f"Early stopping triggered after {epoch} epochs "
+              f"(patience={patience})")
     
     def save_checkpoint(self, path: Path) -> None:
         """
@@ -203,7 +219,8 @@ class BaseTrainer(ABC):
         
         torch.save({
             'model_state': self.model.state_dict(),
-            'optimizer_state': self.optimizer.state_dict() if self.optimizer else None,
+            'optimizer_state': (self.optimizer.state_dict()
+                               if self.optimizer else None),
             'epoch': len(self.history['epoch']),
             'best_val_acc': self.best_val_acc,
             'history': self.history
@@ -220,13 +237,17 @@ class BaseTrainer(ABC):
         checkpoint = torch.load(path, map_location=self.device)
         
         self.model.load_state_dict(checkpoint['model_state'])
-        if self.optimizer is not None and checkpoint['optimizer_state'] is not None:
-            self.optimizer.load_state_dict(checkpoint['optimizer_state'])
+        if self.optimizer is not None and \
+           checkpoint['optimizer_state'] is not None:
+            self.optimizer.load_state_dict(
+                checkpoint['optimizer_state']
+            )
         
         self.history = checkpoint['history']
         self.best_val_acc = checkpoint['best_val_acc']
     
-    def save_results(self, results: Dict[str, Any], output_dir: str) -> None:
+    def save_results(self, results: Dict[str, Any],
+                     output_dir: str) -> None:
         """
         Save training results to JSON.
         
@@ -237,7 +258,7 @@ class BaseTrainer(ABC):
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
-        # Add timestamp
+        # Add metadata
         results['timestamp'] = datetime.now().isoformat()
         results['device'] = str(self.device)
         results['model_class'] = self.model.__class__.__name__
@@ -247,4 +268,4 @@ class BaseTrainer(ABC):
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2)
         
-        print(f"✅ Results saved to {results_file}")
+        print(f"Results saved to {results_file}")

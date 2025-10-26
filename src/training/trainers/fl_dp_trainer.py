@@ -21,6 +21,44 @@ logger = get_logger(__name__)
 
 
 class FLDPTrainer(FLTrainer):
+    """FL + DP Trainer."""
+    
+    def __init__(self, model: nn.Module, config: Dict[str, Any],
+                 device: str = 'cuda'):
+        super().__init__(model, config, device)
+        self.dp_config = DPConfig(config)
+        self.privacy_budget_history = []
+    
+    def fit(self, train_loaders: List[DataLoader],
+            val_loaders: List[DataLoader],
+            client_ids: List[str],
+            epochs: int = 100,
+            patience: int = 8,
+            output_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Train with FL+DP.
+        
+        NOTE: Para implementação completa, DP deve ser aplicado
+        per-client (DP na comunicação dos clientes) ou
+        na agregação do servidor (não trivial).
+        
+        Por enquanto, apenas log do DP config.
+        """
+        
+        result = super().fit(train_loaders, val_loaders, client_ids,
+                           epochs, patience, output_dir)
+        
+        # Add DP info
+        if self.dp_config.enabled:
+            result['dp_config'] = {
+                'target_epsilon': self.dp_config.target_epsilon,
+                'target_delta': self.dp_config.target_delta,
+            }
+            self.logger.warning(
+                "FL+DP implementation requires per-client DP "
+                "or server-side aggregation DP (not yet implemented)"
+            )
+        
+        return result
     """Federated Learning + Differential Privacy Trainer."""
     
     def __init__(self,

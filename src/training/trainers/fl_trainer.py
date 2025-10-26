@@ -25,6 +25,197 @@ logger = get_logger(__name__)
 class FLTrainer(BaseTrainer):
     """Federated Learning Trainer."""
     
+    def __init__(self, model: nn.Module, config: Dict[str, Any],
+                 device: str = 'cuda'):
+        super().__init__(model, config, device)
+        self.logger = get_logger(__name__)
+        self.server = None
+        self.clients = []
+    
+    def setup_optimizer_and_loss(self) -> None:
+        """Setup loss (clients have their own optimizers)."""
+        training_cfg = self.config['training']
+        loss_name = training_cfg.get('loss', 'cross_entropy').lower()
+        label_smoothing = float(training_cfg.get('label_smoothing', 0.0))
+        
+        try:
+            from src.losses.focal_loss import FocalLoss
+            if loss_name == 'focal_loss':
+                self.criterion = FocalLoss(
+                    alpha=float(training_cfg.get('focal_alpha', 0.25)),
+                    gamma=float(training_cfg.get('focal_gamma', 2.0)),
+                    reduction='mean'
+                )
+            else:
+                self.criterion = nn.CrossEntropyLoss(
+                    label_smoothing=label_smoothing
+                )
+        except ImportError:
+            self.criterion = nn.CrossEntropyLoss(
+                label_smoothing=label_smoothing
+            )
+        
+        self.criterion = self.criterion.to(self.device)
+    
+    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
+        """Not used in FL."""
+        raise NotImplementedError("Use fit() directly for FL training")
+    
+    def setup_federated_learning(self, train_loaders: List[DataLoader],
+                                client_ids: List[str]) -> None:
+        """Setup FL clients and server."""
+        from src.privacy.fl_client import FLClient
+        from src.privacy.fl_server import FLServer
+        
+        self.clients = []
+        for client_id, train_loader in zip(client_ids, train_loaders):
+            client_model = type(self.model)(
+                self.config, device=str(self.device)
+            )
+            
+            client = FLClient(
+                client_id=client_id,
+                model=client_model,
+                train_loader=train_loader,
+                config=self.config,
+                device=str(self.device)
+            )
+            self.clients.append(client)
+        
+        self.server = FLServer(
+            model=self.model,
+            clients=self.clients,
+            config=self.config,
+            device=str(self.device)
+        )
+    
+    def fit(self, train_loaders: List[DataLoader],
+            val_loaders: List[DataLoader],
+            client_ids: List[str],
+            epochs: int = 100,
+            patience: int = 8,
+            output_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Train with FL."""
+        
+        from pathlib import Path
+        
+        self.setup_optimizer_and_loss()
+        self.setup_federated_learning(train_loaders, client_ids)
+        
+        output_path = None
+        if output_dir is not None:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+        
+        self._reset_training_state()
+        start_time = time.time()
+        
+        print(f"{'='*70}")
+        print(f"FL Training: {len(self.clients)} clients, max {epochs} rounds")
+        print(f"{'='*70}")
+        
+        for round_num in range(1, epochs + 1):
+            # FL round
+            train_metrics = self.server.train_round()
+            train_loss = train_metrics['avg_loss']
+            train_acc = train_metrics['avg_accuracy']
+            
+            # Validation
+            val_metrics = self.server.evaluate_on_clients(val_loaders)
+            val_loss = val_metrics['avg_loss']
+            val_acc = val_metrics['avg_accuracy']
+            
+            # History
+            self.history['epoch'].append(round_num)
+            self.history['train_loss'].append(train_loss)
+            self.history['train_acc'].append(train_acc)
+            self.history['val_loss'].append(val_loss)
+            self.history['val_acc'].append(val_acc)
+            
+            # Log
+            self._log_epoch(round_num, train_loss, train_acc,
+                          val_loss, val_acc)
+            
+            # Early stopping
+            if val_acc > self.best_val_acc:
+                self.best_val_acc = val_acc
+                self.epochs_no_improve = 0
+                
+                if output_path is not None:
+                    self.save_checkpoint(output_path / 'best_model.pth')
+            else:
+                self.epochs_no_improve += 1
+            
+            if self.epochs_no_improve >= patience:
+                self.logger.info(f"Early stopping after {round_num} rounds")
+                break
+        
+        elapsed = time.time() - start_time
+        
+        if output_path is not None and \
+           (output_path / 'best_model.pth').exists():
+            self.load_checkpoint(output_path / 'best_model.pth')
+        
+        return {
+            'total_epochs': round_num,
+            'training_time_seconds': elapsed,
+            'best_val_acc': self.best_val_acc,
+            'final_train_loss': train_loss,
+            'final_train_acc': train_acc,
+            'final_val_loss': val_loss,
+            'final_val_acc': val_acc,
+            'history': self.history,
+            'n_clients': len(self.clients)
+        }
+    
+    def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
+        """Evaluate on test set."""
+        import numpy as np
+        from sklearn.metrics import (
+            accuracy_score, precision_score, recall_score,
+            f1_score, confusion_matrix
+        )
+        
+        self.model.eval()
+        y_true = []
+        y_pred = []
+        
+        with torch.no_grad():
+            for batch_x, batch_y in test_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                outputs = self.model(batch_x)
+                _, predicted = torch.max(outputs, 1)
+                
+                y_true.extend(batch_y.cpu().numpy())
+                y_pred.extend(predicted.cpu().numpy())
+        
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        unique_labels = np.unique(y_true)
+        
+        return {
+            'accuracy': float(accuracy_score(y_true, y_pred)),
+            'precision': float(
+                precision_score(y_true, y_pred, average='weighted',
+                              zero_division=0, labels=unique_labels)
+            ),
+            'recall': float(
+                recall_score(y_true, y_pred, average='weighted',
+                           zero_division=0, labels=unique_labels)
+            ),
+            'f1_score': float(
+                f1_score(y_true, y_pred, average='weighted',
+                        zero_division=0, labels=unique_labels)
+            ),
+            'confusion_matrix': confusion_matrix(
+                y_true, y_pred, labels=unique_labels
+            ).tolist(),
+            'class_names': self.config['dataset'].get('class_names', [])
+        }
+    """Federated Learning Trainer."""
+    
     def __init__(self,
                  model: nn.Module,
                  config: Dict[str, Any],

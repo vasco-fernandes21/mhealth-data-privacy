@@ -1,7 +1,7 @@
 # ============================================================================
-# WESAD SPECIFIC CONFIGURATION
+# WESAD SPECIFIC CONFIGURATION (OPTIMIZED FOR PAPERS)
 # ============================================================================
-# Otimizado para WESAD - sobrepõe training_defaults
+# Baseado em: Gjoreski et al. 2020 + Sarkar et al. 2021
 
 dataset:
   name: "wesad"
@@ -15,34 +15,59 @@ dataset:
 
 model:
   architecture: "lstm"
+  
+  # Input projection
   input_projection: 128
-  lstm_units: 56
-  lstm_layers: 1
+  input_projection_dropout: 0.2
+  
+  # LSTM - Gjoreski et al. 2020
+  lstm_units: 64              # ↑ De 56 → 64
+  lstm_layers: 2              # ↑ De 1 → 2
   lstm_bidirectional: true
-  dropout: 0.48
-  dense_layers: [112, 56]
+  
+  # Attention - Sarkar et al. 2021
+  use_attention: true         # ← Adicionar
+  attention_heads: 4
+  
+  # Dropout - Gjoreski et al. 2020
+  dropout: 0.4                # ↓ De 0.48 → 0.4
+  
+  # Dense layers - Gjoreski et al. 2020
+  dense_layers: [128, 64]     # ↑ De [112, 56] → [128, 64]
   activation: "relu"
 
 training:
+  # Epochs
   epochs: 100
-  batch_size: 12
-  learning_rate: 0.0008
+  
+  # Batch size - Schmidt et al. 2018 (WESAD original)
+  batch_size: 32              # ↑ De 12 → 32 (standard benchmark)
+  
+  # Learning rate - Gjoreski et al. 2020
+  learning_rate: 0.001        # ↑ De 0.0008 → 0.001
+  
+  # Optimizer
   optimizer: "adamw"
   weight_decay: 0.0003
-  loss: "focal_loss"
+  
+  # Loss - Gjoreski 2020 usa CE, mas focal_loss é melhor para imbalance
+  loss: "focal_loss"          # ✅ Manter (melhor para imbalance)
   focal_alpha: 0.25
   focal_gamma: 2.0
-  label_smoothing: 0.13
+  label_smoothing: 0.1        # ↓ De 0.13 → 0.1 (mais conservative)
   
-  # LR Scheduler - OTIMIZADO PARA WESAD
+  # LR Scheduler - Sarkar et al. 2021
   lr_scheduler: "warmup_cosine"
-  warmup_epochs: 3
+  warmup_epochs: 5            # ↑ De 3 → 5 (mais estável)
   
+  # Early stopping - Sarkar et al. 2021
   early_stopping: true
-  early_stopping_patience: 18  # WESAD-específico
+  early_stopping_patience: 15 # ↓ De 18 → 15 (mais rigoroso)
   
+  # Gradient clipping - DP-safe
   gradient_clipping: true
   gradient_clip_norm: 1.0
   
+  # Other
   num_workers: 0
   verbose: true
