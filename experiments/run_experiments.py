@@ -342,7 +342,8 @@ Examples:
     parser.add_argument('--config_dir', default='./src/configs')
     parser.add_argument('--results_dir', default='./results')
     parser.add_argument('--device', default=None, help='Device (cuda, cpu, auto)')
-    
+    parser.add_argument('--auto', action='store_true',
+                   help='Skip confirmation prompt (ideal for Colab/CI)')
     args = parser.parse_args()
     
     # Determine device
@@ -413,10 +414,13 @@ Examples:
         print(f"  ... and {len(filtered_experiments) - 10} more")
     
     # Confirm
-    confirm = input("\n👉 Proceed? (y/n): ").lower()
-    if confirm != 'y':
-        print("Cancelled")
-        return 0
+    if not args.auto:
+        confirm = input("\n👉 Proceed? (y/n): ").lower()
+        if confirm != 'y':
+            print("Cancelled")
+            return 0
+    else:
+        print("\n✅ Auto mode: Starting execution...\n")
     
     # Run
     start_time = time.time()
