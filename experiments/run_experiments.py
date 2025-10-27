@@ -368,12 +368,6 @@ class ExperimentRunner:
             print(f"Data: train={X_train.shape}, val={X_val.shape}, "
                   f"test={X_test.shape}\n")
             
-            # Normalize
-            norm_stats = compute_normalization_stats(X_train)
-            X_train = apply_normalization(X_train, norm_stats)
-            X_val = apply_normalization(X_val, norm_stats)
-            X_test = apply_normalization(X_test, norm_stats)
-            
             # Create model
             print("Creating model...")
             config['dataset']['input_dim'] = X_train.shape[1]

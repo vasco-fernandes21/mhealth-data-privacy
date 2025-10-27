@@ -92,7 +92,6 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
                        batch_size: int, num_workers: int = 4):
     """Create data loaders."""
     
-    # ✅ Calculate flags correctly
     persistent_workers = num_workers > 0
     pin_memory = num_workers > 0
 

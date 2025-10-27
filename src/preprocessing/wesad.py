@@ -375,7 +375,7 @@ def preprocess_wesad_temporal(
     data_dir: str,
     output_dir: str,
     target_freq: int = 32,
-    window_size: int = 512,
+    window_size: int = 1920,
     overlap: float = 0.5,
     label_threshold: float = 0.7,
     binary: bool = True,

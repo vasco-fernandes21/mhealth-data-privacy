@@ -249,8 +249,8 @@ Examples:
     parser.add_argument(
         '--wesad_window_size',
         type=int,
-        default=512,
-        help='WESAD window size in samples (default: 512 = 16s @ 32Hz)'
+        default=1920,
+        help='WESAD window size in samples (default: 1920 = 60s @ 32Hz)'
     )
     
     parser.add_argument(
