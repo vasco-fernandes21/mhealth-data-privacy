@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Abstract base class for all trainers.
-
 Defines common training interface for all trainer implementations.
 """
 
@@ -11,6 +10,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from pathlib import Path
 from typing import Dict, Tuple, Optional, Any
+from copy import deepcopy
 import json
 import time
 from datetime import datetime
@@ -23,25 +23,17 @@ class BaseTrainer(ABC):
                  model: nn.Module,
                  config: Dict[str, Any],
                  device: str = 'cuda'):
-        """
-        Initialize trainer.
-        
-        Args:
-            model: PyTorch model
-            config: Configuration dictionary
-            device: Device to use
-        """
+        """Initialize trainer."""
         self.model = model.to(device)
         self.config = config
         self.device = torch.device(device)
         
-        # Initialize state
         self.optimizer = None
         self.criterion = None
         self.best_val_acc = 0.0
         self.epochs_no_improve = 0
+        self.best_model_state = None
         
-        # Training history (standardized order)
         self.history = {
             'epoch': [],
             'train_loss': [],
@@ -57,27 +49,11 @@ class BaseTrainer(ABC):
     
     @abstractmethod
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """
-        Train one epoch.
-        
-        Args:
-            train_loader: Training data loader
-        
-        Returns:
-            (loss, accuracy) for the epoch
-        """
+        """Train one epoch. Returns (loss, accuracy)."""
         pass
     
     def validate(self, val_loader: DataLoader) -> Tuple[float, float]:
-        """
-        Validate model.
-        
-        Args:
-            val_loader: Validation data loader
-        
-        Returns:
-            (loss, accuracy) on validation set
-        """
+        """Validate model. Returns (loss, accuracy)."""
         self.model.eval()
         total_loss = 0.0
         correct = 0
@@ -96,10 +72,7 @@ class BaseTrainer(ABC):
                 correct += (predicted == batch_y).sum().item()
                 total += batch_y.size(0)
         
-        val_loss = total_loss / total
-        val_acc = correct / total
-        
-        return val_loss, val_acc
+        return total_loss / total, correct / total
     
     def fit(self, 
             train_loader: DataLoader,
@@ -107,37 +80,20 @@ class BaseTrainer(ABC):
             epochs: int = 100,
             patience: int = 10,
             output_dir: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Main training loop.
-        
-        Args:
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            epochs: Maximum number of epochs
-            patience: Early stopping patience
-            output_dir: Directory to save checkpoints
-        
-        Returns:
-            Dictionary with training results
-        """
+        """Main training loop."""
         output_path = None
         if output_dir is not None:
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
         
-        # Reset state for new training run
         self._reset_training_state()
-        
-        # Setup optimizer and loss
         self.setup_optimizer_and_loss()
         
         start_time = time.time()
         
         for epoch in range(1, epochs + 1):
-            # Train
+            # Train and validate
             train_loss, train_acc = self.train_epoch(train_loader)
-            
-            # Validate
             val_loss, val_acc = self.validate(val_loader)
             
             # Store history
@@ -155,7 +111,10 @@ class BaseTrainer(ABC):
                 self.best_val_acc = val_acc
                 self.epochs_no_improve = 0
                 
-                # Save checkpoint
+                # Save best model in memory
+                self.best_model_state = deepcopy(self.model.state_dict())
+                
+                # Also save to disk if output_dir provided
                 if output_path is not None:
                     self.save_checkpoint(output_path / 'best_model.pth')
             else:
@@ -167,9 +126,11 @@ class BaseTrainer(ABC):
         
         training_time = time.time() - start_time
         
-        # Load best model
-        if output_path is not None and \
-           (output_path / 'best_model.pth').exists():
+        # Restore best model
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
+        elif output_path is not None and \
+             (output_path / 'best_model.pth').exists():
             self.load_checkpoint(output_path / 'best_model.pth')
         
         return {
@@ -184,9 +145,10 @@ class BaseTrainer(ABC):
         }
     
     def _reset_training_state(self) -> None:
-        """Reset training state for new training run."""
+        """Reset training state."""
         self.best_val_acc = 0.0
         self.epochs_no_improve = 0
+        self.best_model_state = None
         self.history = {
             'epoch': [],
             'train_loss': [],
@@ -208,12 +170,7 @@ class BaseTrainer(ABC):
               f"(patience={patience})")
     
     def save_checkpoint(self, path: Path) -> None:
-        """
-        Save model checkpoint.
-        
-        Args:
-            path: Path to save checkpoint
-        """
+        """Save model checkpoint."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -221,51 +178,24 @@ class BaseTrainer(ABC):
             'model_state': self.model.state_dict(),
             'optimizer_state': (self.optimizer.state_dict()
                                if self.optimizer else None),
-            'epoch': len(self.history['epoch']),
             'best_val_acc': self.best_val_acc,
             'history': self.history
         }, path)
     
     def load_checkpoint(self, path: Path) -> None:
-        """
-        Load model checkpoint.
-        
-        Args:
-            path: Path to checkpoint
-        """
+        """Load model checkpoint."""
         path = Path(path)
         checkpoint = torch.load(path, map_location=self.device)
         
         self.model.load_state_dict(checkpoint['model_state'])
         if self.optimizer is not None and \
            checkpoint['optimizer_state'] is not None:
-            self.optimizer.load_state_dict(
-                checkpoint['optimizer_state']
-            )
+            self.optimizer.load_state_dict(checkpoint['optimizer_state'])
         
         self.history = checkpoint['history']
         self.best_val_acc = checkpoint['best_val_acc']
     
-    def save_results(self, results: Dict[str, Any],
-                     output_dir: str) -> None:
-        """
-        Save training results to JSON.
-        
-        Args:
-            results: Results dictionary
-            output_dir: Output directory
-        """
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        # Add metadata
-        results['timestamp'] = datetime.now().isoformat()
-        results['device'] = str(self.device)
-        results['model_class'] = self.model.__class__.__name__
-        
-        # Save results
-        results_file = output_path / 'results.json'
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        print(f"Results saved to {results_file}")
+    @abstractmethod
+    def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
+        """Full evaluation with all metrics."""
+        pass

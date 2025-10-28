@@ -132,7 +132,8 @@ class BaselineTrainer(BaseTrainer):
             test_loader: Test data loader
         
         Returns:
-            Dictionary with accuracy, precision, recall, f1, confusion matrix
+            Dictionary with accuracy, precision, recall, f1, per-class metrics,
+            confusion matrix and class names.
         """
         self.model.eval()
         y_true = []
@@ -152,6 +153,14 @@ class BaselineTrainer(BaseTrainer):
         y_true = np.array(y_true)
         y_pred = np.array(y_pred)
         unique_labels = np.unique(y_true)
+        
+        # Per-class metrics
+        from sklearn.metrics import precision_recall_fscore_support
+        precision_per_class, recall_per_class, f1_per_class, _ = (
+            precision_recall_fscore_support(y_true, y_pred, labels=unique_labels, zero_division=0)
+        )
+        
+        cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
         
         metrics = {
             'accuracy': float(accuracy_score(y_true, y_pred)),
@@ -173,9 +182,10 @@ class BaselineTrainer(BaseTrainer):
                     zero_division=0, labels=unique_labels
                 )
             ),
-            'confusion_matrix': confusion_matrix(
-                y_true, y_pred, labels=unique_labels
-            ).tolist(),
+            'precision_per_class': precision_per_class.tolist(),
+            'recall_per_class': recall_per_class.tolist(),
+            'f1_per_class': f1_per_class.tolist(),
+            'confusion_matrix': cm.tolist(),
             'class_names': self.config['dataset'].get('class_names', [])
         }
         

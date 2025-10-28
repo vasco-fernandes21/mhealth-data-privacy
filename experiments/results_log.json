@@ -1,38 +1,44 @@
 {
-  "timestamp": "2025-10-26T21:35:00.473270",
+  "timestamp": "2025-10-28T14:53:32.667334",
   "total_experiments": 3,
-  "successful": 0,
-  "failed": 3,
+  "successful": 3,
+  "failed": 0,
   "results": [
     {
       "name": "baseline_wesad_run1",
       "dataset": "wesad",
       "method": "baseline",
       "seed": 42,
-      "success": false,
-      "time_seconds": 0.16788291931152344,
-      "error": "not enough values to unpack (expected 8, got 7)",
-      "timestamp": "2025-10-26T21:35:00.379965"
+      "success": true,
+      "time_seconds": 157.9241738319397,
+      "accuracy": 0.9803921568627451,
+      "f1_score": 0.9805190773594162,
+      "results_file": "results/baseline/wesad/seed_42/results.json",
+      "timestamp": "2025-10-28T14:47:47.741815"
     },
     {
       "name": "baseline_wesad_run2",
       "dataset": "wesad",
       "method": "baseline",
       "seed": 43,
-      "success": false,
-      "time_seconds": 0.05329585075378418,
-      "error": "not enough values to unpack (expected 8, got 7)",
-      "timestamp": "2025-10-26T21:35:00.433468"
+      "success": true,
+      "time_seconds": 157.6682801246643,
+      "accuracy": 0.9803921568627451,
+      "f1_score": 0.9805584733893559,
+      "results_file": "results/baseline/wesad/seed_43/results.json",
+      "timestamp": "2025-10-28T14:50:25.412058"
     },
     {
       "name": "baseline_wesad_run3",
       "dataset": "wesad",
       "method": "baseline",
       "seed": 44,
-      "success": false,
-      "time_seconds": 0.03957700729370117,
-      "error": "not enough values to unpack (expected 8, got 7)",
-      "timestamp": "2025-10-26T21:35:00.473222"
+      "success": true,
+      "time_seconds": 187.25217080116272,
+      "accuracy": 0.9754901960784313,
+      "f1_score": 0.975745570379523,
+      "results_file": "results/baseline/wesad/seed_44/results.json",
+      "timestamp": "2025-10-28T14:53:32.665999"
     }
   ]
 }
