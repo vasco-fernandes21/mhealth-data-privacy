@@ -49,15 +49,26 @@ class UnifiedLSTMModel(BaseModel):
         self.input_act = nn.ReLU()
         self.input_dropout = nn.Dropout(0.1)
         
-        # LSTM
-        self.lstm = nn.LSTM(
-            input_size=input_proj_dim,
-            hidden_size=lstm_units,
-            num_layers=lstm_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout if lstm_layers > 1 else 0.0
-        )
+        # LSTM - use DPLSTM for DP compatibility
+        try:
+            from opacus.layers import DPLSTM
+            self.lstm = DPLSTM(
+                input_size=input_proj_dim,
+                hidden_size=lstm_units,
+                num_layers=lstm_layers,
+                batch_first=True,
+                bidirectional=True,
+                dropout=dropout if lstm_layers > 1 else 0.0
+            )
+        except ImportError:
+            self.lstm = nn.LSTM(
+                input_size=input_proj_dim,
+                hidden_size=lstm_units,
+                num_layers=lstm_layers,
+                batch_first=True,
+                bidirectional=True,
+                dropout=dropout if lstm_layers > 1 else 0.0
+            )
         
         lstm_output_size = lstm_units * 2
         

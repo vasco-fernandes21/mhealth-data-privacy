@@ -154,7 +154,7 @@ class ExperimentRunner:
     
     def _create_dataloaders(self, X_train, y_train, X_val, y_val,
                            X_test, y_test, batch_size: int,
-                           is_dp: bool = False) -> Tuple:
+                           is_dp: bool = False, num_workers: int = 0) -> Tuple:
         """Create dataloaders."""
         train_dataset = TensorDataset(
             torch.tensor(X_train, dtype=torch.float32),
@@ -168,25 +168,25 @@ class ExperimentRunner:
             torch.tensor(X_test, dtype=torch.float32),
             torch.tensor(y_test, dtype=torch.long)
         )
-        
+
         train_loader = DataLoader(
             train_dataset, batch_size=batch_size,
-            shuffle=True, drop_last=is_dp, num_workers=0
+            shuffle=True, drop_last=is_dp, num_workers=num_workers
         )
         val_loader = DataLoader(
             val_dataset, batch_size=batch_size,
-            shuffle=False, num_workers=0
+            shuffle=False, num_workers=num_workers
         )
         test_loader = DataLoader(
             test_dataset, batch_size=batch_size,
-            shuffle=False, num_workers=0
+            shuffle=False, num_workers=num_workers
         )
-        
+
         return train_loader, val_loader, test_loader
     
     def _create_fl_dataloaders(self, X_train, y_train, X_val, y_val,
                               n_clients: int, batch_size: int,
-                              is_dp: bool = False) -> Tuple[List, List]:
+                              is_dp: bool = False, num_workers: int = 0) -> Tuple[List, List]:
         """Create FL dataloaders (partitioned by client)."""
         n_samples = len(X_train)
         samples_per_client = n_samples // n_clients
@@ -219,11 +219,11 @@ class ExperimentRunner:
             
             train_loader = DataLoader(
                 train_dataset, batch_size=batch_size,
-                shuffle=True, drop_last=is_dp, num_workers=0
+                shuffle=True, drop_last=is_dp, num_workers=num_workers
             )
             val_loader = DataLoader(
                 val_dataset, batch_size=batch_size,
-                shuffle=False, num_workers=0
+                shuffle=False, num_workers=num_workers
             )
             
             train_loaders.append(train_loader)
@@ -258,6 +258,12 @@ class ExperimentRunner:
             print(f"Config: batch_size={config['training'].get('batch_size')}, "
                   f"lr={config['training'].get('learning_rate')}, "
                   f"epochs={config['training'].get('epochs')}\n")
+
+            # Debug DP config
+            if method == 'dp':
+                dp_cfg = config.get('differential_privacy', {})
+                print(f"DP Config: σ={dp_cfg.get('noise_multiplier', 'N/A')}, "
+                      f"ε_target={dp_cfg.get('target_epsilon', 'N/A')}\n")
             
             # Load data
             print("Loading data...")
@@ -279,15 +285,15 @@ class ExperimentRunner:
                 method, model, config, X_train, y_train,
                 X_val, y_val, X_test, y_test, device
             )
-            
-            # Save results
-            elapsed = time.time() - start_time
+
+            # Calculate training time (excludes saving)
+            training_elapsed = time.time() - start_time
             test_metrics = result['test_metrics']
-            
+
             output_dir = (self.results_dir / method / dataset /
                          f'seed_{seed}')
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             results_file = output_dir / 'results.json'
 
             detailed_results = {
@@ -306,15 +312,24 @@ class ExperimentRunner:
                 'f1_per_class': test_metrics.get('f1_per_class', []),
                 'confusion_matrix': test_metrics.get('confusion_matrix', []),
                 'class_names': test_metrics.get('class_names', []),
-                'total_time_seconds': elapsed
+                'total_time_seconds': training_elapsed
             }
-            
+
             with open(results_file, 'w') as f:
                 json.dump(detailed_results, f, indent=2)
-            
-            print(f"✅ Completed in {elapsed:.1f}s")
+
+            # Total time includes saving
+            total_elapsed = time.time() - start_time
+
+            print(f"✅ Completed in {total_elapsed:.1f}s (training: {training_elapsed:.1f}s)")
             print(f"   Accuracy: {test_metrics.get('accuracy', 0):.4f}")
-            print(f"   F1-Score: {test_metrics.get('f1_score', 0):.4f}\n")
+            print(f"   F1-Score: {test_metrics.get('f1_score', 0):.4f}")
+
+            # Debug final DP metrics
+            if method == 'dp' and 'final_epsilon' in test_metrics:
+                print(f"   Final ε: {test_metrics['final_epsilon']:.4f}")
+
+            print()
             
             final_results = {
                 'name': exp_name,
@@ -322,7 +337,7 @@ class ExperimentRunner:
                 'method': method,
                 'seed': seed,
                 'success': True,
-                'time_seconds': elapsed,
+                'time_seconds': total_elapsed,
                 'accuracy': test_metrics.get('accuracy', 0),
                 'f1_score': test_metrics.get('f1_score', 0),
                 'results_file': str(results_file),
@@ -360,14 +375,16 @@ class ExperimentRunner:
                    X_val, y_val, X_test, y_test, device) -> Dict:
         """Run training method (consolidated)."""
         batch_size = config['training']['batch_size']
+        num_workers = config['training'].get('num_workers', 0)
         epochs = config['training']['epochs']
         patience = config['training'].get('early_stopping_patience', 10)
-        
+
         if method == 'baseline':
             train_loader, val_loader, test_loader = \
                 self._create_dataloaders(X_train, y_train, X_val, y_val,
-                                        X_test, y_test, batch_size)
-            
+                                        X_test, y_test, batch_size,
+                                        num_workers=num_workers)
+
             output_dir = tempfile.mkdtemp(prefix='checkpoint_')
             trainer = BaselineTrainer(model, config, device=device)
             training_results = trainer.fit(
@@ -376,12 +393,13 @@ class ExperimentRunner:
             )
             test_metrics = trainer.evaluate_full(test_loader)
             shutil.rmtree(output_dir, ignore_errors=True)
-        
+
         elif method == 'dp':
             train_loader, val_loader, test_loader = \
                 self._create_dataloaders(X_train, y_train, X_val, y_val,
-                                        X_test, y_test, batch_size, is_dp=True)
-            
+                                        X_test, y_test, batch_size, is_dp=True,
+                                        num_workers=num_workers)
+
             output_dir = tempfile.mkdtemp(prefix='checkpoint_')
             trainer = DPTrainer(model, config, device=device)
             training_results = trainer.fit(
@@ -395,12 +413,13 @@ class ExperimentRunner:
             n_clients = config['federated_learning'].get('n_clients', 5)
             train_loaders, val_loaders = \
                 self._create_fl_dataloaders(X_train, y_train, X_val, y_val,
-                                           n_clients, batch_size)
-            
+                                           n_clients, batch_size,
+                                           num_workers=num_workers)
+
             test_loader = DataLoader(
                 TensorDataset(torch.tensor(X_test, dtype=torch.float32),
                              torch.tensor(y_test, dtype=torch.long)),
-                batch_size=batch_size, shuffle=False
+                batch_size=batch_size, shuffle=False, num_workers=num_workers
             )
             
             client_ids = [f"client_{i:02d}" for i in range(n_clients)]
@@ -416,12 +435,13 @@ class ExperimentRunner:
             n_clients = config['federated_learning'].get('n_clients', 5)
             train_loaders, val_loaders = \
                 self._create_fl_dataloaders(X_train, y_train, X_val, y_val,
-                                           n_clients, batch_size, is_dp=True)
-            
+                                           n_clients, batch_size, is_dp=True,
+                                           num_workers=num_workers)
+
             test_loader = DataLoader(
                 TensorDataset(torch.tensor(X_test, dtype=torch.float32),
                              torch.tensor(y_test, dtype=torch.long)),
-                batch_size=batch_size, shuffle=False
+                batch_size=batch_size, shuffle=False, num_workers=num_workers
             )
             
             client_ids = [f"client_{i:02d}" for i in range(n_clients)]
