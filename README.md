@@ -118,7 +118,6 @@ Key flags:
 ## Implementation Notes
 
 - Framework: PyTorch
-- Mixed precision is supported by enabling `torch.cuda.amp` in trainers (optional).
 - Best-model evaluation: the runner enables checkpointing per run to restore best validation weights before test evaluation.
 
 ## Acknowledgements

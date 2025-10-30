@@ -1,13 +1,14 @@
-# Differential Privacy Experiments
-# Config base vem de: configs/datasets/{dataset}.yaml
-# Method overrides: configs/methods/dp.yaml
-# Experiment overrides: target_epsilon (varying)
+# ================================================================
+# DIFFERENTIAL PRIVACY EXPERIMENTS
+# ================================================================
+# 3 strategic values: low (near baseline), medium, high
+# 1 run for each configuration (seed=42)
 
 experiments:
-  # ===== SLEEP-EDF (Noise Sweep) =====
-  
+
+  # ================== SLEEP-EDF ==================
   dp_sleep_edf_noise0_6:
-    name: "DP - Sleep-EDF σ=0.6"
+    name: "DP - Sleep-EDF σ=0.6 (leve)"
     enabled: true
     dataset: "sleep-edf"
     method: "dp"
@@ -15,10 +16,10 @@ experiments:
     tags: ["dp", "sleep-edf", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 0.6
+        noise_multiplier: 0.6  
 
   dp_sleep_edf_noise1_0:
-    name: "DP - Sleep-EDF σ=1.0"
+    name: "DP - Sleep-EDF σ=1.0 (médio)"
     enabled: true
     dataset: "sleep-edf"
     method: "dp"
@@ -26,10 +27,10 @@ experiments:
     tags: ["dp", "sleep-edf", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 1.0
+        noise_multiplier: 1.0  
 
   dp_sleep_edf_noise2_0:
-    name: "DP - Sleep-EDF σ=2.0"
+    name: "DP - Sleep-EDF σ=2.0 (elevado)"
     enabled: true
     dataset: "sleep-edf"
     method: "dp"
@@ -37,23 +38,12 @@ experiments:
     tags: ["dp", "sleep-edf", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 2.0
-    
-  dp_sleep_edf_noise4_0:
-    name: "DP - Sleep-EDF σ=4.0"
-    enabled: true
-    dataset: "sleep-edf"
-    method: "dp"
-    seed: 42
-    tags: ["dp", "sleep-edf", "noise_sweep"]
-    hyperparameters:
-      differential_privacy:
-        noise_multiplier: 4.0
+        noise_multiplier: 2.0  
 
-  # ===== WESAD (Noise Sweep) =====
-  
+
+  # ================== WESAD ==================
   dp_wesad_noise0_6:
-    name: "DP - WESAD σ=0.6"
+    name: "DP - WESAD σ=0.6 (leve)"
     enabled: true
     dataset: "wesad"
     method: "dp"
@@ -61,10 +51,10 @@ experiments:
     tags: ["dp", "wesad", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 0.6
+        noise_multiplier: 0.6  
 
   dp_wesad_noise1_0:
-    name: "DP - WESAD σ=1.0"
+    name: "DP - WESAD σ=1.0 (médio)"
     enabled: true
     dataset: "wesad"
     method: "dp"
@@ -72,10 +62,10 @@ experiments:
     tags: ["dp", "wesad", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 1.0
+        noise_multiplier: 1.0  
 
   dp_wesad_noise2_0:
-    name: "DP - WESAD σ=2.0"
+    name: "DP - WESAD σ=2.0 (elevado)"
     enabled: true
     dataset: "wesad"
     method: "dp"
@@ -83,15 +73,4 @@ experiments:
     tags: ["dp", "wesad", "noise_sweep"]
     hyperparameters:
       differential_privacy:
-        noise_multiplier: 2.0
-
-  dp_wesad_noise4_0:
-    name: "DP - WESAD σ=4.0"
-    enabled: true
-    dataset: "wesad"
-    method: "dp"
-    seed: 42
-    tags: ["dp", "wesad", "noise_sweep"]
-    hyperparameters:
-      differential_privacy:
-        noise_multiplier: 4.0
+        noise_multiplier: 2.0  

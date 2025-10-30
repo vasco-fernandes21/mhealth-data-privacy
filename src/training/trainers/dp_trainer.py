@@ -11,6 +11,7 @@ from sklearn.metrics import (
 
 from src.training.base_trainer import BaseTrainer
 from src.privacy.dp_utils import DPConfig, setup_privacy_engine, get_epsilon
+from src.utils.logging_utils import get_logger
 
 
 class DPTrainer(BaseTrainer):
