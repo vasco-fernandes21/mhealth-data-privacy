@@ -6,7 +6,6 @@ All DP/FL compatible - no gradient computations.
 """
 
 import math
-from torch.optim.lr_scheduler import LambdaLR
 
 
 class CosineAnnealingWarmRestarts:

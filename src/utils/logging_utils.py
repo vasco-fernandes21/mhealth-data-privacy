@@ -114,74 +114,6 @@ def get_logger(name: str = __name__) -> logging.Logger:
     return logger
 
 
-class ExperimentLogger:
-    """Context manager for experiment-specific logging."""
-    
-    def __init__(self, 
-                 experiment_name: str,
-                 output_dir: str = './logs',
-                 level: str = 'INFO'):
-        """
-        Args:
-            experiment_name: Name of experiment
-            output_dir: Directory to save logs
-            level: Logging level
-        
-        Example:
-            with ExperimentLogger('baseline_sleep_edf') as logger:
-                logger.info("Starting training")
-                # ... training code ...
-                logger.info("Training completed")
-        """
-        self.experiment_name = experiment_name
-        self.output_dir = output_dir
-        self.level = level
-        self.logger = None
-        self.log_file = None
-    
-    def __enter__(self) -> logging.Logger:
-        # Create experiment directory
-        exp_dir = Path(self.output_dir) / self.experiment_name
-        exp_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Setup logging
-        self.logger = logging.getLogger(self.experiment_name)
-        self.logger.setLevel(getattr(logging, self.level))
-        
-        # Clear existing handlers
-        self.logger.handlers.clear()
-        
-        # Formatter
-        formatter = logging.Formatter(
-            fmt='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-        
-        # File handler
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.log_file = exp_dir / f'experiment_{timestamp}.log'
-        
-        file_handler = logging.FileHandler(self.log_file)
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-        
-        self.logger.info(f"Experiment '{self.experiment_name}' started")
-        self.logger.info(f"Log file: {self.log_file}")
-        
-        return self.logger
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            self.logger.error(f"Experiment failed with {exc_type.__name__}: {exc_val}")
-        else:
-            self.logger.info(f"Experiment completed successfully")
-
-
 def log_config(config: dict, logger: logging.Logger) -> None:
     """
     Log configuration dictionary nicely.
@@ -247,12 +179,5 @@ if __name__ == "__main__":
     print("\nTest 4 - Log metrics:")
     metrics = {'accuracy': 0.9234, 'f1_score': 0.8912, 'loss': 0.2341}
     log_metrics(metrics, logger, step=10)
-    
-    # Test 5: Experiment logger
-    print("\nTest 5 - Experiment logger:")
-    with ExperimentLogger('test_experiment') as exp_logger:
-        exp_logger.info("Experiment started")
-        exp_logger.info("Training...")
-        exp_logger.info("Experiment finished")
     
     print("\n✅ All tests completed!")

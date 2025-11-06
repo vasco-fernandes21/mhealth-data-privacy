@@ -43,7 +43,7 @@ from . import configs
 
 # Import commonly used classes and functions
 from .utils.seed_utils import set_all_seeds, set_reproducible, set_deterministic
-from .utils.logging_utils import setup_logging, get_logger, ExperimentLogger
+from .utils.logging_utils import setup_logging, get_logger
 from .models.base_model import BaseModel
 from .training.base_trainer import BaseTrainer
 
@@ -65,7 +65,6 @@ __all__ = [
     'set_deterministic',
     'setup_logging',
     'get_logger',
-    'ExperimentLogger',
 ]
 
 

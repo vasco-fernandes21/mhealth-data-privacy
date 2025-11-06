@@ -1,19 +1,14 @@
 dataset:
   name: "sleep-edf"
   path: "data/processed/sleep-edf"
-  n_features: 24
   n_classes: 5
-  sequence_length: 10
   class_names: ["W", "N1", "N2", "N3", "R"]
 
 model:
-  architecture: "lstm"
   lstm_units: 64
   lstm_layers: 1
-  lstm_bidirectional: true
   dropout: 0.3
-  dense_hidden: 128
-  use_attention: false
+  dense_layers: [128]
 
 training:
   epochs: 100

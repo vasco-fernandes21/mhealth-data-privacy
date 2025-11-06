@@ -350,12 +350,12 @@ def preprocess_wesad_temporal(
     data_dir: str,
     output_dir: str,
     target_freq: int = 32,
-    window_size: int = 1024,  # ⬆️ Changed from 1920 to 1024 (32s)
+    window_size: int = 1024,  
     overlap: float = 0.5,
     label_threshold: float = 0.7,
     binary: bool = True,
-    test_size: float = 0.15,
-    val_size: float = 0.15,
+    test_size: float = 0.10,
+    val_size: float = 0.10,
     random_state: int = 42,
     n_workers: int = None,
     force_reprocess: bool = False) -> Dict:

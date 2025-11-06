@@ -274,7 +274,7 @@ def normalize_per_channel(X_train: np.ndarray, X_val: np.ndarray, X_test: np.nda
 
 
 def split_by_subjects(X: np.ndarray, y: np.ndarray, subjects: np.ndarray,
-                      test_size: float = 0.15, val_size: float = 0.15,
+                      test_size: float = 0.10, val_size: float = 0.10,
                       random_state: int = 42) -> Tuple[Dict, Dict, Dict, Dict]:
     """
     Subject-wise split into train/val/test.
@@ -405,8 +405,8 @@ def match_psg_hypnogram_files(data_dir: str) -> List[Tuple[str, str]]:
 def preprocess_sleep_edf(data_dir: str,
                         output_dir: str,
                         window_epochs: int = 10,
-                        test_size: float = 0.15,
-                        val_size: float = 0.15,
+                        test_size: float = 0.10,
+                        val_size: float = 0.10,
                         random_state: int = 42,
                         n_workers: int = None,
                         force_reprocess: bool = False) -> Dict:
@@ -640,9 +640,9 @@ if __name__ == "__main__":
                        help='Output directory')
     parser.add_argument('--window_epochs', type=int, default=10,
                        help='Number of epochs per window')
-    parser.add_argument('--test_size', type=float, default=0.15,
+    parser.add_argument('--test_size', type=float, default=0.10,
                        help='Test set fraction')
-    parser.add_argument('--val_size', type=float, default=0.15,
+    parser.add_argument('--val_size', type=float, default=0.10,
                        help='Validation set fraction')
     parser.add_argument('--random_state', type=int, default=42,
                        help='Random seed')

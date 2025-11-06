@@ -26,7 +26,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.seed_utils import set_all_seeds, set_deterministic, RandomState
-from src.utils.logging_utils import setup_logging, get_logger, log_config, log_metrics, ExperimentLogger
+from src.utils.logging_utils import setup_logging, get_logger, log_config, log_metrics
 from src.models.base_model import BaseModel
 from src.models.sleep_edf_model import SleepEDFModel
 from src.models.wesad_model import WESADModel
@@ -182,13 +182,6 @@ def test_logging_utils():
             except Exception as e:
                 results.add_fail("Log metrics", str(e))
             
-            # Test 2.5: Experiment logger context manager
-            try:
-                with ExperimentLogger('test_exp', tmpdir) as exp_logger:
-                    exp_logger.info("Test message")
-                results.add_pass("Experiment logger context manager")
-            except Exception as e:
-                results.add_fail("Experiment logger", str(e))
     
     except Exception as e:
         results.add_fail("logging_utils general", str(e))

@@ -1,20 +1,15 @@
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
-  n_channels: 14
   n_classes: 2
-  sequence_length: 1024  
   class_names: ["non-stress", "stress"]
 
 model:
-  architecture: "lstm"
   input_projection: 128
   lstm_units: 64
   lstm_layers: 1
-  lstm_bidirectional: true
   dropout: 0.4          
   dense_layers: [128]   
-  activation: "relu"
 
 training:
   epochs: 80
@@ -24,16 +19,10 @@ training:
   weight_decay: 0.0005  
   loss: "cross_entropy"  
   label_smoothing: 0.1
-  
-  lr_scheduler: "reduce_on_plateau"
-  scheduler_factor: 0.5
-  scheduler_patience: 3
-  
-  early_stopping: true
+  lr_scheduler: "cosine_annealing_warm_restarts"
+  scheduler_T0: 10
+  scheduler_Tmult: 2
   early_stopping_patience: 10  
-  
   gradient_clipping: true
   gradient_clip_norm: 1.0
-  
   num_workers: 4
-  verbose: true

@@ -19,7 +19,6 @@ from .seed_utils import (
 from .logging_utils import (
     setup_logging,
     get_logger,
-    ExperimentLogger,
     log_config,
     log_metrics,
 )
@@ -38,7 +37,6 @@ __all__ = [
     # logging_utils
     'setup_logging',
     'get_logger',
-    'ExperimentLogger',
     'log_config',
     'log_metrics',
     # device_utils

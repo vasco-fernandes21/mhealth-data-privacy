@@ -264,15 +264,15 @@ Examples:
     parser.add_argument(
         '--test_size',
         type=float,
-        default=0.15,
-        help='Test set fraction (default: 0.15)'
+        default=0.10,
+        help='Test set fraction (default: 0.10)'
     )
     
     parser.add_argument(
         '--val_size',
         type=float,
-        default=0.15,
-        help='Validation set fraction (default: 0.15)'
+        default=0.10,
+        help='Validation set fraction (default: 0.10)'
     )
     
     parser.add_argument(

@@ -20,6 +20,8 @@ training:
   loss: "cross_entropy"
   label_smoothing: 0.1
   early_stopping_patience: 15  
+  num_workers: 4
+  verbose: true
 
 model:
   dropout: 0.5                
