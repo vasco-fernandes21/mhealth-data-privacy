@@ -5,11 +5,10 @@ from typing import Dict, Tuple, Any
 import numpy as np
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, 
-    f1_score, confusion_matrix
+    f1_score, confusion_matrix, precision_recall_fscore_support
 )
 
 from src.training.base_trainer import BaseTrainer
-from src.utils.logging_utils import get_logger
 
 try:
     from src.losses.focal_loss import FocalLoss
@@ -18,10 +17,15 @@ except ImportError:
 
 
 class BaselineTrainer(BaseTrainer):
-    """Standard training without privacy."""
+    """Standard training with Focal Loss (optimized for Colab)."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scaler = None
+        self.use_amp = False
     
     def setup_optimizer_and_loss(self) -> None:
-        """Setup optimizer and loss."""
+        """Setup optimizer, loss, and AMP."""
         cfg = self.config['training']
         
         # Optimizer
@@ -31,18 +35,20 @@ class BaselineTrainer(BaseTrainer):
         
         if opt_name == 'adamw':
             self.optimizer = torch.optim.AdamW(
-                self.model.parameters(), lr=lr, 
+                self.model.parameters(),
+                lr=lr,
                 weight_decay=weight_decay
             )
         else:
             self.optimizer = torch.optim.SGD(
-                self.model.parameters(), lr=lr,
-                weight_decay=weight_decay, momentum=0.9
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=weight_decay,
+                momentum=0.9
             )
         
-        # Loss
+        # Loss (Focal Loss for Sleep-EDF imbalance)
         loss_name = cfg.get('loss', 'cross_entropy').lower()
-        label_smoothing = float(cfg.get('label_smoothing', 0.0))
         
         if loss_name == 'focal_loss' and FocalLoss:
             self.criterion = FocalLoss(
@@ -50,41 +56,34 @@ class BaselineTrainer(BaseTrainer):
                 gamma=float(cfg.get('focal_gamma', 2.0))
             )
         else:
-            self.criterion = nn.CrossEntropyLoss(
-                label_smoothing=label_smoothing
-            )
+            self.criterion = nn.CrossEntropyLoss()
         
         self.criterion = self.criterion.to(self.device)
         
-        # LR Scheduler
+        # LR Scheduler (simplified)
         self._setup_scheduler()
+        
+        # Mixed precision
+        self.use_amp = cfg.get('use_amp', True)
+        if self.use_amp and self.device.type == 'cuda':
+            self.scaler = torch.cuda.amp.GradScaler()
     
     def _setup_scheduler(self) -> None:
-        """Setup learning rate scheduler."""
+        """Setup simplified learning rate scheduler."""
         cfg = self.config['training']
-        scheduler_type = cfg.get('lr_scheduler', 'none').lower()
+        total_epochs = int(cfg.get('epochs', 100))
         
-        if scheduler_type == 'warmup_cosine':
-            from src.training.schedulers import WarmupCosineAnnealingScheduler
-            self.scheduler = WarmupCosineAnnealingScheduler(
-                self.optimizer,
-                warmup_epochs=int(cfg.get('warmup_epochs', 5)),
-                total_epochs=int(cfg.get('epochs', 100)),
-                eta_min=1e-6
-            )
-        elif scheduler_type == 'cosine_annealing_warm_restarts':
-            from src.training.schedulers import CosineAnnealingWarmRestarts
-            self.scheduler = CosineAnnealingWarmRestarts(
-                self.optimizer,
-                T_0=int(cfg.get('scheduler_T0', 10)),
-                T_mult=int(cfg.get('scheduler_Tmult', 2)),
-                eta_min=1e-6
-            )
-        else:
-            self.scheduler = None
+        # Simple cosine annealing (no warmup overhead)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=total_epochs,
+            eta_min=1e-6
+        )
     
-    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """Train one epoch."""
+    def train_epoch(
+        self, train_loader: DataLoader
+    ) -> Tuple[float, float]:
+        """Train one epoch with mixed precision."""
         self.model.train()
         total_loss = 0.0
         correct = 0
@@ -94,24 +93,48 @@ class BaselineTrainer(BaseTrainer):
             batch_x = batch_x.to(self.device, non_blocking=True)
             batch_y = batch_y.to(self.device, non_blocking=True)
             
-            # Forward
             self.optimizer.zero_grad(set_to_none=True)
-            outputs = self.model(batch_x)
-            loss = self.criterion(outputs, batch_y)
             
-            # Backward
-            loss.backward()
-            
-            # Gradient clipping
-            if self.config['training'].get('gradient_clipping', True):
-                clip_norm = float(
-                    self.config['training'].get('gradient_clip_norm', 1.0)
-                )
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), clip_norm
-                )
-            
-            self.optimizer.step()
+            if self.use_amp and self.scaler is not None:
+                # Mixed precision forward
+                with torch.cuda.amp.autocast():
+                    outputs = self.model(batch_x)
+                    loss = self.criterion(outputs, batch_y)
+                
+                # Scaled backward
+                self.scaler.scale(loss).backward()
+                
+                # Gradient clipping
+                if self.config['training'].get('gradient_clipping', True):
+                    clip_norm = float(
+                        self.config['training'].get(
+                            'gradient_clip_norm', 1.0
+                        )
+                    )
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), clip_norm
+                    )
+                
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                # Standard forward/backward
+                outputs = self.model(batch_x)
+                loss = self.criterion(outputs, batch_y)
+                loss.backward()
+                
+                if self.config['training'].get('gradient_clipping', True):
+                    clip_norm = float(
+                        self.config['training'].get(
+                            'gradient_clip_norm', 1.0
+                        )
+                    )
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), clip_norm
+                    )
+                
+                self.optimizer.step()
             
             # Metrics
             total_loss += loss.item() * batch_x.size(0)
@@ -119,12 +142,13 @@ class BaselineTrainer(BaseTrainer):
             correct += (predicted == batch_y).sum().item()
             total += batch_y.size(0)
         
-        if self.scheduler:
-            self.scheduler.step()
+        self.scheduler.step()
         
         return total_loss / total, correct / total
     
-    def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
+    def evaluate_full(
+        self, test_loader: DataLoader
+    ) -> Dict[str, Any]:
         """
         Full evaluation with all metrics.
         
@@ -132,8 +156,8 @@ class BaselineTrainer(BaseTrainer):
             test_loader: Test data loader
         
         Returns:
-            Dictionary with accuracy, precision, recall, f1, per-class metrics,
-            confusion matrix and class names.
+            Dictionary with accuracy, precision, recall, f1, per-class
+            metrics, confusion matrix and class names.
         """
         self.model.eval()
         y_true = []
@@ -144,7 +168,12 @@ class BaselineTrainer(BaseTrainer):
                 batch_x = batch_x.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
-                outputs = self.model(batch_x)
+                if self.use_amp and self.scaler is not None:
+                    with torch.cuda.amp.autocast():
+                        outputs = self.model(batch_x)
+                else:
+                    outputs = self.model(batch_x)
+                
                 _, predicted = torch.max(outputs, 1)
                 
                 y_true.extend(batch_y.cpu().numpy())
@@ -155,9 +184,10 @@ class BaselineTrainer(BaseTrainer):
         unique_labels = np.unique(y_true)
         
         # Per-class metrics
-        from sklearn.metrics import precision_recall_fscore_support
-        precision_per_class, recall_per_class, f1_per_class, _ = (
-            precision_recall_fscore_support(y_true, y_pred, labels=unique_labels, zero_division=0)
+        (
+            precision_per_class, recall_per_class, f1_per_class, _
+        ) = precision_recall_fscore_support(
+            y_true, y_pred, labels=unique_labels, zero_division=0
         )
         
         cm = confusion_matrix(y_true, y_pred, labels=unique_labels)

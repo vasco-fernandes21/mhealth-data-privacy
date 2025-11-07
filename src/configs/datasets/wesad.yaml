@@ -1,3 +1,8 @@
+# WESAD Training Configuration
+# Based on: RACT-Net (Thakur et al., 2022) + Best practices
+# Objective: Stress detection in physiological signals
+# Expected performance: 85-90% accuracy
+
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
@@ -5,24 +10,24 @@ dataset:
   class_names: ["non-stress", "stress"]
 
 model:
-  input_projection: 128
-  lstm_units: 64
-  lstm_layers: 1
-  dropout: 0.4          
-  dense_layers: [128]   
+  input_projection: 256
+  lstm_units: 128
+  lstm_layers: 2
+  dropout: 0.5
+  dense_layers: [256, 128]
 
 training:
   epochs: 80
-  batch_size: 256        
-  learning_rate: 0.0003 
+  batch_size: 128         
+  learning_rate: 0.001
   optimizer: "adamw"
-  weight_decay: 0.0005  
-  loss: "cross_entropy"  
+  weight_decay: 0.0008
+  loss: "binary_crossentropy"
   label_smoothing: 0.1
   lr_scheduler: "cosine_annealing_warm_restarts"
   scheduler_T0: 10
   scheduler_Tmult: 2
-  early_stopping_patience: 10  
+  early_stopping_patience: 15
   gradient_clipping: true
   gradient_clip_norm: 1.0
-  num_workers: 4
+  num_workers: 2

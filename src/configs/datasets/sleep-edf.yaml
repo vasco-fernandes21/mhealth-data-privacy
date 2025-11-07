@@ -5,25 +5,25 @@ dataset:
   class_names: ["W", "N1", "N2", "N3", "R"]
 
 model:
-  lstm_units: 64
+  lstm_units: 128
   lstm_layers: 1
-  dropout: 0.3
-  dense_layers: [128]
+  dropout: 0.2
+  dense_layers: [256]
 
 training:
   epochs: 100
-  batch_size: 32
-  learning_rate: 0.0005
+  batch_size: 128
+  learning_rate: 0.0015
   optimizer: "adamw"
   weight_decay: 0.0001
   loss: "focal_loss"
   focal_alpha: 0.25
   focal_gamma: 2.0
-  label_smoothing: 0.05
-  lr_scheduler: "cosine_annealing_warm_restarts"
-  scheduler_T0: 10
-  scheduler_Tmult: 2
-  early_stopping_patience: 30
+  lr_scheduler: "cosine"
+  scheduler_T_max: 80
+  early_stopping_patience: 20
   gradient_clipping: true
   gradient_clip_norm: 1.0
   num_workers: 0
+  pin_memory: true
+  use_amp: true

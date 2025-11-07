@@ -1,33 +1,30 @@
 #!/usr/bin/env python3
 """
-WESAD Dataset Preprocessing (OPTIMIZED VERSION)
-
-Improvements:
-- window_size=1024 (32s context)
-- Per-subject normalization (removes inter-individual bias)
-- Balanced class handling
-- Subject-wise splitting
+WESAD Dataset Preprocessing (OPTIMIZED)
+Following best practices from RACT-Net (Thakur et al., 2022)
+- 32Hz sampling rate
+- 32s windows with 75% overlap (optimal for stress detection)
+- Multi-channel support (EDA, BVP, ECG, Temp, ACC, EMG, Resp)
+- Per-subject normalization (removes individual bias)
+- Memory efficient processing
 """
 
 import numpy as np
 import pickle
 from scipy import signal
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import joblib
 import os
 import time
 import glob
-from typing import Tuple, Dict, List
+import gc
+from typing import Tuple, Dict, List, Optional
 import warnings
 from multiprocessing import Pool, cpu_count
 
 warnings.filterwarnings('ignore')
 
-
-# ============================================================================
-# LOADING FUNCTIONS
-# ============================================================================
 
 def load_wesad_file(pkl_path: str) -> Dict:
     """Load a single WESAD pickle file."""
@@ -60,12 +57,7 @@ def load_wesad_file(pkl_path: str) -> Dict:
     }
 
 
-# ============================================================================
-# SIGNAL PROCESSING
-# ============================================================================
-
-def resample_signal(arr: np.ndarray, orig_freq: int,
-                   target_freq: int) -> np.ndarray:
+def resample_signal(arr: np.ndarray, orig_freq: int, target_freq: int) -> np.ndarray:
     """Resample signal using polyphase filtering."""
     if arr.ndim == 1:
         return signal.resample_poly(arr, int(target_freq), int(orig_freq),
@@ -73,20 +65,17 @@ def resample_signal(arr: np.ndarray, orig_freq: int,
     resampled_cols = []
     for c in range(arr.shape[1]):
         resampled_cols.append(
-            signal.resample_poly(arr[:, c], int(target_freq),
-                               int(orig_freq), axis=0).astype(np.float32)
+            signal.resample_poly(arr[:, c], int(target_freq), int(orig_freq), 
+                               axis=0).astype(np.float32)
         )
     return np.stack(resampled_cols, axis=1)
 
 
-def downsample_labels_temporal(labels: np.ndarray, orig_freq: int,
-                               target_freq: int) -> np.ndarray:
+def downsample_labels_temporal(labels: np.ndarray, orig_freq: int, target_freq: int) -> np.ndarray:
     """Downsample labels using temporal mapping."""
     orig_length = len(labels)
     target_length = int(np.round(orig_length * (target_freq / orig_freq)))
-    indices = np.round(
-        np.linspace(0, orig_length - 1, target_length)
-    ).astype(int)
+    indices = np.round(np.linspace(0, orig_length - 1, target_length)).astype(int)
     return labels[indices]
 
 
@@ -95,7 +84,6 @@ def resample_all_signals(data: Dict, target_freq: int = 32) -> Dict:
     sfreq = data['sfreq']
     resampled = {}
     
-    # Chest signals (700 Hz → target_freq)
     resampled['ecg'] = resample_signal(data['ecg'], sfreq['chest'], target_freq)
     resampled['eda_chest'] = resample_signal(data['eda_chest'], sfreq['chest'], target_freq)
     resampled['temp_chest'] = resample_signal(data['temp_chest'], sfreq['chest'], target_freq)
@@ -103,16 +91,12 @@ def resample_all_signals(data: Dict, target_freq: int = 32) -> Dict:
     resampled['emg'] = resample_signal(data['emg'], sfreq['chest'], target_freq)
     resampled['resp'] = resample_signal(data['resp'], sfreq['chest'], target_freq)
     
-    # Wrist signals
     resampled['acc_wrist'] = resample_signal(data['acc_wrist'], sfreq['acc_wrist'], target_freq)
     resampled['bvp'] = resample_signal(data['bvp'], sfreq['bvp'], target_freq)
     resampled['eda_wrist'] = resample_signal(data['eda_wrist'], sfreq['eda_wrist'], target_freq)
     resampled['temp_wrist'] = resample_signal(data['temp_wrist'], sfreq['temp_wrist'], target_freq)
     
-    # Labels
-    resampled['labels'] = downsample_labels_temporal(data['labels'],
-                                                    sfreq['chest'], target_freq)
-    
+    resampled['labels'] = downsample_labels_temporal(data['labels'], sfreq['chest'], target_freq)
     resampled['subject'] = data['subject']
     resampled['sfreq'] = target_freq
     
@@ -120,17 +104,18 @@ def resample_all_signals(data: Dict, target_freq: int = 32) -> Dict:
 
 
 def apply_filters(resampled: Dict, target_freq: int = 32) -> Dict:
-    """Apply bandpass/lowpass filters."""
+    """Apply bandpass/lowpass filters (standard ranges for physiological signals)."""
     filtered = resampled.copy()
     
     try:
+        # Standard filter ranges from literature
         sos_ecg = signal.butter(4, [0.5, 15], btype='band', fs=target_freq, output='sos')
         sos_bvp = signal.butter(4, [0.5, 12], btype='band', fs=target_freq, output='sos')
         sos_acc = signal.butter(4, [0.1, 2], btype='band', fs=target_freq, output='sos')
         sos_eda = signal.butter(4, 1.5, btype='low', fs=target_freq, output='sos')
         sos_resp = signal.butter(4, [0.1, 0.5], btype='band', fs=target_freq, output='sos')
     except Exception as e:
-        print(f"Warning: filter design failed ({e})")
+        print(f"WARNING: filter design failed ({e})")
         return resampled
     
     signal_filters = {
@@ -149,8 +134,7 @@ def apply_filters(resampled: Dict, target_freq: int = 32) -> Dict:
     return filtered
 
 
-def reduce_outliers(signals: Dict, lower_p: float = 1.0,
-                   upper_p: float = 99.0) -> Dict:
+def reduce_outliers(signals: Dict, lower_p: float = 1.0, upper_p: float = 99.0) -> Dict:
     """Clip outliers using percentile method."""
     clipped = signals.copy()
     keys = ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg', 'resp',
@@ -170,22 +154,22 @@ def reduce_outliers(signals: Dict, lower_p: float = 1.0,
     return clipped
 
 
-# ============================================================================
-# WINDOWING
-# ============================================================================
-
-def create_temporal_windows(data: Dict, window_size: int = 1024,
-                           overlap: float = 0.5,
-                           label_threshold: float = 0.7) -> Tuple[
-                               np.ndarray, np.ndarray, List[str], int, np.ndarray]:
-    """Create temporal sliding windows with strict label assignment."""
+def create_temporal_windows(data: Dict, window_size: int = 1024, overlap: float = 0.75,
+                           label_threshold: float = 0.7) -> Tuple[np.ndarray, np.ndarray, List[str], int, np.ndarray]:
+    """
+    Create temporal sliding windows.
+    
+    Args:
+        window_size: samples per window (1024 @ 32Hz = 32s)
+        overlap: fraction of overlap (0.75 = 75% = stride of 256)
+    """
     step_size = int(window_size * (1 - overlap))
     ref_length = len(data['ecg'])
     
     signal_names = ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg',
                     'resp', 'bvp', 'eda_wrist', 'temp_wrist', 'acc_wrist']
     
-    # Build channel names
+    # Build channel names with axis labels for 3D signals
     channel_names = []
     for name in signal_names:
         if name not in data:
@@ -209,7 +193,6 @@ def create_temporal_windows(data: Dict, window_size: int = 1024,
         if not all(len(data.get(name, [])) >= end_idx for name in signal_names if name in data):
             continue
         
-        # Extract window
         window_data = np.zeros((n_channels, window_size), dtype=np.float32)
         ch_idx = 0
         
@@ -227,7 +210,7 @@ def create_temporal_windows(data: Dict, window_size: int = 1024,
                 window_data[ch_idx] = series[start_idx:end_idx]
                 ch_idx += 1
         
-        # Strict label assignment
+        # Strict label assignment: majority voting
         window_labels = data['labels'][start_idx:end_idx]
         valid_labels = window_labels[window_labels != 0]
         
@@ -251,10 +234,6 @@ def create_temporal_windows(data: Dict, window_size: int = 1024,
             np.array(subjects_list, dtype=object))
 
 
-# ============================================================================
-# NORMALIZATION (PER-SUBJECT)
-# ============================================================================
-
 def zscore_per_subject(X: np.ndarray, subjects: np.ndarray) -> np.ndarray:
     """Normalize per-subject to remove inter-individual bias."""
     Xn = np.zeros_like(X, dtype=np.float32)
@@ -263,7 +242,6 @@ def zscore_per_subject(X: np.ndarray, subjects: np.ndarray) -> np.ndarray:
         mask = subjects == subj
         X_subj = X[mask]
         
-        # Per-channel z-score
         mean = X_subj.mean(axis=(0, 2), keepdims=True)
         std = X_subj.std(axis=(0, 2), keepdims=True) + 1e-8
         
@@ -289,10 +267,6 @@ def apply_normalization(X: np.ndarray, stats: Dict) -> np.ndarray:
     return (X - stats['mean']) / stats['std']
 
 
-# ============================================================================
-# CLASS IMBALANCE
-# ============================================================================
-
 def compute_class_weights(y: np.ndarray) -> Tuple[Dict, np.ndarray]:
     """Compute balanced class weights."""
     class_counts = np.bincount(y.astype(int))
@@ -309,11 +283,7 @@ def compute_class_weights(y: np.ndarray) -> Tuple[Dict, np.ndarray]:
     return weights, class_counts
 
 
-# ============================================================================
-# PARALLEL PROCESSING
-# ============================================================================
-
-def process_single_wesad_file(args: Tuple) -> Tuple[Dict, str]:
+def process_single_wesad_file(args: Tuple) -> Tuple[Optional[Dict], Optional[str]]:
     """Process a single WESAD file in parallel."""
     pkl_file, target_freq, window_size, overlap, label_threshold = args
     
@@ -338,58 +308,75 @@ def process_single_wesad_file(args: Tuple) -> Tuple[Dict, str]:
         }, subject
     
     except Exception as e:
-        print(f"  Error: {os.path.basename(pkl_file)}: {e}")
+        print(f"  ERROR: {os.path.basename(pkl_file)}: {e}")
         return None, None
 
-
-# ============================================================================
-# MAIN PREPROCESSING
-# ============================================================================
 
 def preprocess_wesad_temporal(
     data_dir: str,
     output_dir: str,
     target_freq: int = 32,
-    window_size: int = 1024,  
-    overlap: float = 0.5,
+    window_size: int = 1024,
+    overlap: float = 0.75,
     label_threshold: float = 0.7,
     binary: bool = True,
-    test_size: float = 0.10,
-    val_size: float = 0.10,
+    test_size: float = 0.15,
+    val_size: float = 0.15,
     random_state: int = 42,
     n_workers: int = None,
     force_reprocess: bool = False) -> Dict:
     """
-    Preprocess WESAD dataset (OPTIMIZED).
+    Preprocess WESAD dataset following RACT-Net paper.
     
-    Pipeline:
-    1. Load raw data from pickle files
-    2. Resample to 32 Hz
-    3. Apply bandpass filtering
-    4. Create sliding windows (1024 samples = 32s)
-    5. Subject-wise train/val/test split
-    6. Per-subject z-score normalization
-    7. Per-channel global normalization (on training set)
+    Reference: RACT-Net (Thakur et al., 2022)
+    - Window: 32s (1024 samples @ 32Hz)
+    - Overlap: 75% (stride=256)
+    - Normalization: Per-subject + global
+    - Binary: stress vs non-stress
     """
     print("="*70)
-    print("WESAD PREPROCESSING (OPTIMIZED)")
+    print("WESAD PREPROCESSING (Following RACT-Net)")
     print("="*70)
     print(f"Target freq: {target_freq} Hz")
-    print(f"Window: {window_size} samples ({window_size/target_freq:.1f}s)")
-    print(f"Overlap: {overlap*100:.0f}%")
-    print(f"Split: Train {(1-test_size-val_size)*100:.0f}% | "
-          f"Val {val_size*100:.0f}% | Test {test_size*100:.0f}%\n")
+    print(f"Window: {window_size/target_freq:.1f}s ({window_size} samples)")
+    print(f"Overlap: {overlap*100:.0f}% (stride={int(window_size*(1-overlap))})")
+    print(f"Split: {(1-test_size-val_size)*100:.0f}% train / {val_size*100:.0f}% val / {test_size*100:.0f}% test\n")
     
     os.makedirs(output_dir, exist_ok=True)
     
-    # Check if already processed
     required_files = ['X_train.npy', 'X_val.npy', 'X_test.npy',
                      'y_train.npy', 'y_val.npy', 'y_test.npy']
-    all_exist = all(os.path.exists(os.path.join(output_dir, f))
-                   for f in required_files)
+    all_exist = all(os.path.exists(os.path.join(output_dir, f)) for f in required_files)
+    
+    # Clean up old files if force_reprocess
+    if force_reprocess:
+        print("Force reprocess enabled - cleaning up old files...")
+        old_files = [
+            # Current format
+            'X_train.npy', 'X_val.npy', 'X_test.npy',
+            'y_train.npy', 'y_val.npy', 'y_test.npy',
+            # Metadata files
+            'metadata.pkl', 'normalization_stats.pkl', 'label_encoder.pkl',
+            'preprocessing_info.pkl', 'scaler.pkl'
+        ]
+        
+        removed_count = 0
+        for f in old_files:
+            filepath = os.path.join(output_dir, f)
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    removed_count += 1
+                except Exception as e:
+                    print(f"  Warning: Could not remove {f}: {e}")
+        
+        if removed_count > 0:
+            print(f"  Removed {removed_count} old file(s)\n")
+        else:
+            print("  No old files to remove\n")
     
     if all_exist and not force_reprocess:
-        print(f"⏭️  Data already preprocessed!")
+        print("Already preprocessed!")
         try:
             info = joblib.load(os.path.join(output_dir, "metadata.pkl"))
             return info
@@ -405,7 +392,6 @@ def preprocess_wesad_temporal(
     if not pkl_files:
         raise ValueError(f"No pickle files found in {data_dir}")
     
-    # Parallel processing
     process_args = [
         (pkl_file, target_freq, window_size, overlap, label_threshold)
         for pkl_file in pkl_files
@@ -414,38 +400,54 @@ def preprocess_wesad_temporal(
     print(f"Processing with {n_workers} workers...")
     start_time = time.time()
     
-    with Pool(processes=n_workers) as pool:
-        results = pool.map(process_single_wesad_file, process_args)
-    
-    elapsed_processing = time.time() - start_time
-    
-    # Combine results
     all_windows = []
     all_labels = []
     all_subjects = []
     total_dropped = 0
     channel_names = None
     
-    for result, subject in results:
-        if result is not None:
-            if channel_names is None:
-                channel_names = result['channel_names']
+    with Pool(processes=n_workers) as pool:
+        for idx, (result, subject) in enumerate(
+            pool.imap_unordered(process_single_wesad_file, process_args, chunksize=2)
+        ):
+            if result is not None:
+                if channel_names is None:
+                    channel_names = result['channel_names']
+                
+                all_windows.append(result['windows'])
+                all_labels.append(result['labels'])
+                all_subjects.extend(result['subjects'])
+                total_dropped += result['n_dropped']
             
-            all_windows.append(result['windows'])
-            all_labels.append(result['labels'])
-            all_subjects.extend(result['subjects'])
-            total_dropped += result['n_dropped']
+            if (idx + 1) % 2 == 0:
+                gc.collect()
     
+    elapsed_processing = time.time() - start_time
     print(f"Processed in {elapsed_processing:.1f}s")
-    print(f"Windows dropped: {total_dropped}\n")
+    print(f"Windows dropped (low label coverage): {total_dropped}\n")
     
-    X = np.concatenate(all_windows, axis=0)
-    y = np.concatenate(all_labels, axis=0)
+    print("Combining windows...")
+    total_windows = sum(len(w) for w in all_windows)
+    n_channels = all_windows[0].shape[1]
+    window_len = all_windows[0].shape[2]
+    
+    X = np.zeros((total_windows, n_channels, window_len), dtype=np.float32)
+    y = np.zeros(total_windows, dtype=np.uint8)
+    
+    idx = 0
+    for windows, labels in zip(all_windows, all_labels):
+        n = len(windows)
+        X[idx:idx+n] = windows
+        y[idx:idx+n] = labels
+        idx += n
+        del windows, labels
+    
     subjects_arr = np.array(all_subjects, dtype=object)
     
-    print(f"Total windows: {len(X)}")
-    print(f"Shape: {X.shape}")
-    print(f"Channels: {len(channel_names)}\n")
+    del all_windows, all_labels, all_subjects
+    gc.collect()
+    
+    print(f"Combined: {X.shape}\n")
     
     # Binary classification
     if binary:
@@ -454,19 +456,18 @@ def preprocess_wesad_temporal(
         y = y[valid_mask]
         subjects_arr = subjects_arr[valid_mask]
         
-        y_binary = (y == 2).astype(int)  # 0: non-stress, 1: stress
+        y_binary = (y == 2).astype(int)
         class_names = ['non-stress', 'stress']
         
-        print(f"Binary classification:")
         n_nonstress = np.sum(y_binary == 0)
         n_stress = np.sum(y_binary == 1)
-        print(f"  Non-stress (0): {n_nonstress:5d} ({100*n_nonstress/len(y_binary):.1f}%)")
-        print(f"  Stress (1):     {n_stress:5d} ({100*n_stress/len(y_binary):.1f}%)\n")
+        print(f"Binary classification (stress detection):")
+        print(f"  Non-stress: {n_nonstress:5d} ({100*n_nonstress/len(y_binary):.1f}%)")
+        print(f"  Stress:     {n_stress:5d} ({100*n_stress/len(y_binary):.1f}%)\n")
     else:
         y_binary = y
         class_names = ['baseline', 'stress', 'amusement']
     
-    # Subject-wise split
     print(f"Subject-wise split...")
     unique_subjects = sorted(list(set(subjects_arr)))
     
@@ -494,31 +495,31 @@ def preprocess_wesad_temporal(
     y_test = y_binary[test_mask]
     subj_test_arr = subjects_arr[test_mask]
     
-    print(f"  Train: {len(subj_train)} subjects → {len(X_train)} windows")
-    print(f"  Val:   {len(subj_val)} subjects → {len(X_val)} windows")
-    print(f"  Test:  {len(subj_test)} subjects → {len(X_test)} windows\n")
+    print(f"  Train: {len(subj_train)} subjects -> {len(X_train)} windows")
+    print(f"  Val:   {len(subj_val)} subjects -> {len(X_val)} windows")
+    print(f"  Test:  {len(subj_test)} subjects -> {len(X_test)} windows\n")
     
-    # ✅ Per-subject normalization
-    print(f"Normalization: per-subject z-score...")
+    del X, y_binary, subjects_arr
+    gc.collect()
+    
+    print(f"Normalization: per-subject + global z-score...")
     X_train = zscore_per_subject(X_train, subj_train_arr)
     X_val = zscore_per_subject(X_val, subj_val_arr)
     X_test = zscore_per_subject(X_test, subj_test_arr)
     
-    # Per-channel global normalization (for consistency)
-    print(f"Normalization: per-channel z-score (global)...")
     norm_stats = compute_normalization_stats(X_train)
     
     X_train = apply_normalization(X_train, norm_stats)
     X_val = apply_normalization(X_val, norm_stats)
     X_test = apply_normalization(X_test, norm_stats)
+    print("Normalized\n")
     
-    # Class weights
     weights, class_counts = compute_class_weights(y_train)
-    print(f"\nClass weights:")
+    print(f"Class weights (for loss function):")
     for c, w in weights.items():
-        print(f"  {class_names[c]}: {w:.3f}\n")
+        print(f"  {class_names[c]}: {w:.3f}")
+    print()
     
-    # Save
     print(f"Saving to {output_dir}...")
     np.save(os.path.join(output_dir, "X_train.npy"), X_train)
     np.save(os.path.join(output_dir, "X_val.npy"), X_val)
@@ -532,32 +533,46 @@ def preprocess_wesad_temporal(
     joblib.dump(norm_stats,
                os.path.join(output_dir, "normalization_stats.pkl"))
     
-    # Metadata
+    total_size_gb = (X_train.nbytes + X_val.nbytes + X_test.nbytes) / 1e9
+    
     metadata = {
-        'n_channels': X_train.shape[1],
+        'n_channels': n_channels,
         'channel_names': channel_names,
+        'n_channels_selected': n_channels,
         'window_size': window_size,
         'window_duration_s': window_size / target_freq,
+        'window_stride': int(window_size * (1 - overlap)),
         'target_freq': target_freq,
         'overlap': overlap,
         'class_names': class_names,
         'class_weights': weights,
+        'class_counts_train': {class_names[int(c)]: int(cnt) for c, cnt in enumerate(np.bincount(y_train))},
         'normalization': 'per_subject_zscore + per_channel_zscore',
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
-        'total_windows': len(X),
+        'total_windows': len(X_train) + len(X_val) + len(X_test),
+        'total_size_gb': total_size_gb,
         'total_subjects': len(unique_subjects),
         'train_subjects': [str(s) for s in subj_train],
         'val_subjects': [str(s) for s in subj_val],
-        'test_subjects': [str(s) for s in subj_test]
+        'test_subjects': [str(s) for s in subj_test],
+        'processing_time_s': elapsed_processing,
+        'paper_reference': 'RACT-Net (Thakur et al., 2022)'
     }
     
     joblib.dump(metadata, os.path.join(output_dir, "metadata.pkl"))
+    print("Saved\n")
     
-    print(f"{'='*70}")
-    print(f"✅ Preprocessing complete!")
-    print(f"{'='*70}\n")
+    print("="*70)
+    print(f"PREPROCESSING COMPLETE")
+    print("="*70)
+    print(f"Total windows: {metadata['total_windows']}")
+    print(f"Total size: {total_size_gb:.2f} GB")
+    print(f"Processing time: {elapsed_processing:.1f}s\n")
+    
+    del X_train, X_val, X_test, y_train, y_val, y_test
+    gc.collect()
     
     return metadata
 
@@ -576,11 +591,12 @@ def load_processed_wesad_temporal(data_dir: str) -> Tuple:
     info = joblib.load(os.path.join(data_dir, 'metadata.pkl'))
     scaler = joblib.load(os.path.join(data_dir, 'normalization_stats.pkl'))
     
-    print(f"✅ Loaded:")
+    print(f"Loaded:")
     print(f"   Train: {X_train.shape}")
     print(f"   Val:   {X_val.shape}")
     print(f"   Test:  {X_test.shape}")
-    print(f"   Classes: {info['class_names']}\n")
+    print(f"   Classes: {info['class_names']}")
+    print(f"   Window: {info['window_duration_s']:.0f}s, Overlap: {info['overlap']*100:.0f}%\n")
     
     return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info
 
@@ -588,17 +604,32 @@ def load_processed_wesad_temporal(data_dir: str) -> Tuple:
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='Preprocess WESAD')
+    parser = argparse.ArgumentParser(description='Preprocess WESAD (RACT-Net style)')
     parser.add_argument('--data_dir', default='data/raw/wesad')
-    parser.add_argument('--output_dir', default='data/processed/wesad_optimized')
-    parser.add_argument('--window_size', type=int, default=1024)
-    parser.add_argument('--force', action='store_true', help='Force reprocessing')
+    parser.add_argument('--output_dir', default='data/processed/wesad')
+    parser.add_argument('--window_size', type=int, default=1024,
+                       help='Window size in samples (1024 @ 32Hz = 32s)')
+    parser.add_argument('--overlap', type=float, default=0.75,
+                       help='Window overlap (0.75 = 75%)')
+    parser.add_argument('--target_freq', type=int, default=32,
+                       help='Target sampling frequency')
+    parser.add_argument('--test_size', type=float, default=0.15)
+    parser.add_argument('--val_size', type=float, default=0.15)
+    parser.add_argument('--n_workers', type=int, default=None)
+    parser.add_argument('--force_reprocess', action='store_true')
     
     args = parser.parse_args()
     
-    preprocess_wesad_temporal(
+    info = preprocess_wesad_temporal(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         window_size=args.window_size,
-        force_reprocess=args.force
+        overlap=args.overlap,
+        target_freq=args.target_freq,
+        test_size=args.test_size,
+        val_size=args.val_size,
+        n_workers=args.n_workers,
+        force_reprocess=args.force_reprocess
     )
+    
+    print(f"Preprocessing complete!")

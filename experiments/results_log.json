@@ -1,44 +1,38 @@
 {
-  "timestamp": "2025-11-04T19:19:03.481385",
+  "timestamp": "2025-11-07T17:01:28.689701",
   "total_experiments": 3,
-  "successful": 3,
-  "failed": 0,
+  "successful": 0,
+  "failed": 3,
   "results": [
     {
-      "name": "baseline_wesad_run1",
-      "dataset": "wesad",
+      "name": "baseline_sleep_edf_run1",
+      "dataset": "sleep-edf",
       "method": "baseline",
       "seed": 42,
-      "success": true,
-      "time_seconds": 322.96628189086914,
-      "accuracy": 0.9828431372549019,
-      "f1_score": 0.9829715843556673,
-      "results_file": "results/baseline/wesad/seed_42/results.json",
-      "timestamp": "2025-11-04T19:00:27.731187"
+      "success": false,
+      "time_seconds": 4.220991849899292,
+      "error": "Object arrays cannot be loaded when allow_pickle=False",
+      "timestamp": "2025-11-07T17:01:19.324182"
     },
     {
-      "name": "baseline_wesad_run2",
-      "dataset": "wesad",
+      "name": "baseline_sleep_edf_run2",
+      "dataset": "sleep-edf",
       "method": "baseline",
       "seed": 43,
-      "success": true,
-      "time_seconds": 538.1636381149292,
-      "accuracy": 0.9754901960784313,
-      "f1_score": 0.9756488466992704,
-      "results_file": "results/baseline/wesad/seed_43/results.json",
-      "timestamp": "2025-11-04T19:09:25.898897"
+      "success": false,
+      "time_seconds": 4.209707736968994,
+      "error": "Object arrays cannot be loaded when allow_pickle=False",
+      "timestamp": "2025-11-07T17:01:23.927481"
     },
     {
-      "name": "baseline_wesad_run3",
-      "dataset": "wesad",
+      "name": "baseline_sleep_edf_run3",
+      "dataset": "sleep-edf",
       "method": "baseline",
       "seed": 44,
-      "success": true,
-      "time_seconds": 577.5776560306549,
-      "accuracy": 0.9779411764705882,
-      "f1_score": 0.9781063227430009,
-      "results_file": "results/baseline/wesad/seed_44/results.json",
-      "timestamp": "2025-11-04T19:19:03.477897"
+      "success": false,
+      "time_seconds": 4.164730072021484,
+      "error": "Object arrays cannot be loaded when allow_pickle=False",
+      "timestamp": "2025-11-07T17:01:28.393877"
     }
   ]
 }
