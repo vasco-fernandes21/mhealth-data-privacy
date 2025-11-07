@@ -5,10 +5,12 @@ dataset:
   class_names: ["W", "N1", "N2", "N3", "R"]
 
 model:
+  input_projection: 128
   lstm_units: 128
   lstm_layers: 1
+  bidirectional: true
   dropout: 0.2
-  dense_layers: [256]
+  dense_layers: [128]
 
 training:
   epochs: 100

@@ -22,6 +22,7 @@ import gc
 from typing import Tuple, Dict, List, Optional
 import warnings
 from multiprocessing import Pool, cpu_count
+import concurrent.futures
 
 warnings.filterwarnings('ignore')
 
@@ -694,33 +695,37 @@ def preprocess_wesad_temporal(
 
 
 def load_processed_wesad_temporal(data_dir: str) -> Tuple:
-    """Load preprocessed WESAD data."""
+    """Load preprocessed WESAD data (optimized loading)."""
     print(f"Loading WESAD from {data_dir}...")
-
-    X_train = np.load(os.path.join(data_dir, 'X_train.npy'))
-    X_val = np.load(os.path.join(data_dir, 'X_val.npy'))
-    X_test = np.load(os.path.join(data_dir, 'X_test.npy'))
-    y_train = np.load(os.path.join(data_dir, 'y_train.npy'))
-    y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
-    y_test = np.load(os.path.join(data_dir, 'y_test.npy'))
-
-    # Carrega subjects (NOVO)
-    subj_train = np.load(
-        os.path.join(data_dir, 'subjects_train.npy'), allow_pickle=True
-    )
-    subj_val = np.load(
-        os.path.join(data_dir, 'subjects_val.npy'), allow_pickle=True
-    )
-    subj_test = np.load(
-        os.path.join(data_dir, 'subjects_test.npy'), allow_pickle=True
-    )
+    
+    def load_array(filename):
+        if 'subjects' in filename:
+            return np.load(os.path.join(data_dir, filename), allow_pickle=True)
+        else:
+            return np.load(os.path.join(data_dir, filename))
+    
+    # Lista de ficheiros por ordem
+    files = [
+        'X_train.npy', 'X_val.npy', 'X_test.npy',
+        'y_train.npy', 'y_val.npy', 'y_test.npy',
+        'subjects_train.npy', 'subjects_val.npy', 'subjects_test.npy'
+    ]
+    
+    # Load em paralelo
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        arrays = list(executor.map(load_array, files))
+    
+    X_train, X_val, X_test = arrays[0], arrays[1], arrays[2]
+    y_train, y_val, y_test = arrays[3], arrays[4], arrays[5]
+    subj_train, subj_val, subj_test = arrays[6], arrays[7], arrays[8]
+    
+    # Concatenar subjects
     subjects = np.concatenate([subj_train, subj_val, subj_test])
-
+    
+    # Load metadata
     info = joblib.load(os.path.join(data_dir, 'metadata.pkl'))
-    scaler = joblib.load(
-        os.path.join(data_dir, 'normalization_stats.pkl')
-    )
-
+    scaler = joblib.load(os.path.join(data_dir, 'normalization_stats.pkl'))
+    
     print(f"Loaded:")
     print(f"   Train: {X_train.shape}")
     print(f"   Val:   {X_val.shape}")
@@ -728,9 +733,8 @@ def load_processed_wesad_temporal(data_dir: str) -> Tuple:
     print(f"   Classes: {info['class_names']}")
     print(f"   Window: {info['window_duration_s']:.0f}s, "
           f"Overlap: {info['overlap']*100:.0f}%\n")
-
-    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info, \
-        subjects
+    
+    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info, subjects
 
 
 if __name__ == "__main__":

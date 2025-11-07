@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-07T17:01:28.689701",
+  "timestamp": "2025-11-07T19:40:36.516606",
   "total_experiments": 3,
   "successful": 0,
   "failed": 3,
@@ -10,9 +10,9 @@
       "method": "baseline",
       "seed": 42,
       "success": false,
-      "time_seconds": 4.220991849899292,
-      "error": "Object arrays cannot be loaded when allow_pickle=False",
-      "timestamp": "2025-11-07T17:01:19.324182"
+      "error": "[Errno 2] No such file or directory: 'data/processed/sleep-edf/X_train_windows.npy'",
+      "time_seconds": 0.002255678176879883,
+      "timestamp": "2025-11-07T19:40:36.488120"
     },
     {
       "name": "baseline_sleep_edf_run2",
@@ -20,9 +20,9 @@
       "method": "baseline",
       "seed": 43,
       "success": false,
-      "time_seconds": 4.209707736968994,
-      "error": "Object arrays cannot be loaded when allow_pickle=False",
-      "timestamp": "2025-11-07T17:01:23.927481"
+      "error": "[Errno 2] No such file or directory: 'data/processed/sleep-edf/X_train_windows.npy'",
+      "time_seconds": 0.0008981227874755859,
+      "timestamp": "2025-11-07T19:40:36.489037"
     },
     {
       "name": "baseline_sleep_edf_run3",
@@ -30,9 +30,9 @@
       "method": "baseline",
       "seed": 44,
       "success": false,
-      "time_seconds": 4.164730072021484,
-      "error": "Object arrays cannot be loaded when allow_pickle=False",
-      "timestamp": "2025-11-07T17:01:28.393877"
+      "error": "[Errno 2] No such file or directory: 'data/processed/sleep-edf/X_train_windows.npy'",
+      "time_seconds": 0.0009779930114746094,
+      "timestamp": "2025-11-07T19:40:36.490027"
     }
   ]
 }
