@@ -104,14 +104,13 @@ class BaselineTrainer(BaseTrainer):
             self.scheduler = None
 
     def train_epoch(
-        self, train_loader: DataLoader, log_interval: int = 50
+        self, train_loader: DataLoader
     ) -> Tuple[float, float]:
         """
         Train one epoch with mixed precision.
 
         Args:
             train_loader: Training data loader
-            log_interval: Log every N batches
 
         Returns:
             (average_loss, accuracy)
@@ -120,9 +119,8 @@ class BaselineTrainer(BaseTrainer):
         total_loss = 0.0
         correct = 0
         total = 0
-        num_batches = len(train_loader)
 
-        for batch_idx, (batch_x, batch_y) in enumerate(train_loader):
+        for batch_x, batch_y in train_loader:
             batch_x = batch_x.to(self.device, non_blocking=True)
             batch_y = batch_y.to(self.device, non_blocking=True)
 
@@ -177,13 +175,6 @@ class BaselineTrainer(BaseTrainer):
                 _, predicted = torch.max(outputs, 1)
                 correct += (predicted == batch_y).sum().item()
                 total += batch_y.size(0)
-
-            # Log progress
-            if (batch_idx + 1) % log_interval == 0:
-                avg_loss = total_loss / total
-                avg_acc = correct / total
-                print(f"  Batch {batch_idx+1}/{num_batches}: "
-                      f"loss={avg_loss:.4f} acc={avg_acc:.4f}")
 
         # Step scheduler (cosine doesn't need val metrics)
         if self.scheduler is not None and \

@@ -21,6 +21,7 @@ class UnifiedLSTMModel(BaseModel):
     - Flexible dense layers configuration
     - Bidirectional LSTM for context
     - Input projection to standardize dimensions
+    - Handles both 2D (features) and 3D (temporal) inputs
     """
     
     def __init__(self, config: Dict[str, Any], device: str = 'cpu'):
@@ -101,25 +102,40 @@ class UnifiedLSTMModel(BaseModel):
         Forward pass.
         
         Args:
-            x: (batch, seq_len, features) for Sleep-EDF
-               or (batch, channels, timesteps) for WESAD
+            x: Can be:
+               - 2D (batch, features): Sleep-EDF features
+               - 3D (batch, seq_len, features): Sleep-EDF or WESAD temporal
+               - 3D (batch, channels, timesteps): WESAD format
         
         Returns:
             (batch, n_classes)
         """
-        # Handle different input formats
-        if x.dim() == 3 and x.shape[1] < x.shape[2]:
-            # WESAD format: (batch, 14, 1920) -> permute
+        # Handle 2D input (Sleep-EDF features)
+        if x.dim() == 2:
+            # (batch, features) -> (batch, 1, features)
+            x = x.unsqueeze(1)
+        
+        # Handle WESAD format: (batch, channels, timesteps)
+        # If second dim is much smaller than third, assume it's (batch, channels, timesteps)
+        if x.dim() == 3 and x.shape[1] < 100 and x.shape[2] > 100:
+            # WESAD: (batch, 14, 1024) -> (batch, 1024, 14)
             x = x.permute(0, 2, 1)
         
-        # Input projection
-        x = self.input_proj(x)
-        x = self.input_norm(x.transpose(1, 2)).transpose(1, 2)
-        x = self.input_act(x)
-        x = self.input_dropout(x)
+        # Now x is (batch, seq_len, features)
+        batch_size, seq_len, n_features = x.shape
+        
+        # Input projection: reshape to 2D, apply linear, reshape back
+        x_flat = x.reshape(batch_size * seq_len, n_features)
+        x_proj = self.input_proj(x_flat)
+        x_proj = x_proj.reshape(batch_size, seq_len, -1)
+        
+        # Apply norm, activation, dropout
+        x_proj = self.input_norm(x_proj.transpose(1, 2)).transpose(1, 2)
+        x_proj = self.input_act(x_proj)
+        x_proj = self.input_dropout(x_proj)
         
         # LSTM
-        lstm_out, (h_n, c_n) = self.lstm(x)
+        lstm_out, (h_n, c_n) = self.lstm(x_proj)
         
         # Extract last hidden states (bidirectional)
         # h_n shape: (num_layers * num_directions, batch, hidden_size)
@@ -169,14 +185,14 @@ if __name__ == "__main__":
         }
     }
     
-    # Config for Sleep-EDF
+    # Config for Sleep-EDF (2D features)
     sleep_config = {
         'dataset': {
             'name': 'sleep-edf',
             'input_dim': 24,
             'n_features': 24,
             'n_classes': 5,
-            'sequence_length': 10
+            'sequence_length': 1
         },
         'model': {
             'input_projection': 128,
@@ -189,25 +205,32 @@ if __name__ == "__main__":
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    # Test WESAD
-    print("\n📊 WESAD Configuration:")
+    # Test WESAD (3D temporal)
+    print("\n📊 WESAD Configuration (3D temporal):")
     model_wesad = UnifiedLSTMModel(wesad_config, device=device)
     print(f"Model: {model_wesad.get_model_info()}")
     
-    x_wesad = torch.randn(32, 14, 1920).to(device)
+    x_wesad = torch.randn(32, 14, 1024).to(device)
     y_wesad = model_wesad(x_wesad)
     print(f"Input: {x_wesad.shape} → Output: {y_wesad.shape}")
     print(f"✅ Correct: {y_wesad.shape == (32, 2)}")
     
-    # Test Sleep-EDF
-    print("\n📊 Sleep-EDF Configuration:")
+    # Test Sleep-EDF (2D features)
+    print("\n📊 Sleep-EDF Configuration (2D features):")
     model_sleep = UnifiedLSTMModel(sleep_config, device=device)
     print(f"Model: {model_sleep.get_model_info()}")
     
-    x_sleep = torch.randn(32, 10, 24).to(device)
+    x_sleep = torch.randn(32, 24).to(device)
     y_sleep = model_sleep(x_sleep)
     print(f"Input: {x_sleep.shape} → Output: {y_sleep.shape}")
-    print(f"✅ Correct: {y_sleep.shape == (32, 5)}")
+    print(f"Correct: {y_sleep.shape == (32, 5)}")
+    
+    # Test Sleep-EDF (3D temporal from windowing)
+    print("\n📊 Sleep-EDF Configuration (3D windowed):")
+    x_sleep_3d = torch.randn(32, 10, 24).to(device)
+    y_sleep_3d = model_sleep(x_sleep_3d)
+    print(f"Input: {x_sleep_3d.shape} → Output: {y_sleep_3d.shape}")
+    print(f"Correct: {y_sleep_3d.shape == (32, 5)}")
     
     # Verify parameter count
     wesad_params = sum(p.numel() for p in model_wesad.parameters())
@@ -216,4 +239,4 @@ if __name__ == "__main__":
     print(f"WESAD: {wesad_params:,} parameters")
     print(f"Sleep-EDF: {sleep_params:,} parameters")
     print(f"Ratio: {max(wesad_params, sleep_params) / min(wesad_params, sleep_params):.2f}x")
-    print("✅ Parameters balanced")
+    print("Parameters balanced")
