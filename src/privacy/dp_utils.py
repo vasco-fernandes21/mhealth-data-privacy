@@ -59,7 +59,6 @@ def make_lstm_dp_compatible(lstm: nn.LSTM) -> DPLSTM:
     Returns:
         DPLSTM layer with same parameters
     """
-    # Extract LSTM parameters
     input_size = lstm.input_size
     hidden_size = lstm.hidden_size
     num_layers = lstm.num_layers
@@ -67,7 +66,6 @@ def make_lstm_dp_compatible(lstm: nn.LSTM) -> DPLSTM:
     bidirectional = lstm.bidirectional
     dropout = lstm.dropout
     
-    # Create DPLSTM
     dplstm = DPLSTM(
         input_size=input_size,
         hidden_size=hidden_size,
@@ -99,6 +97,8 @@ def setup_privacy_engine(
     
     Returns:
         (dp_model, dp_optimizer, privacy_engine)
+    
+    IMPORTANTE: Usa noise_multiplier fixo, não target_epsilon!
     """
     
     if not dp_config.enabled:
@@ -110,25 +110,25 @@ def setup_privacy_engine(
     # Create Privacy Engine
     privacy_engine = PrivacyEngine()
     
-    # Make model private
+    # FIX: Não usar target_epsilon/target_delta como constraints
+    # Usar noise_multiplier fixo para controlar o noise
     dp_model, dp_optimizer, dp_train_loader = privacy_engine.make_private(
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
-        noise_multiplier=dp_config.noise_multiplier,
+        noise_multiplier=dp_config.noise_multiplier,  # FIXO - varia por experimento
         max_grad_norm=dp_config.max_grad_norm,
-        target_epsilon=dp_config.target_epsilon,
-        target_delta=dp_config.target_delta,
+        # NÃO passar target_epsilon/target_delta - calcula-se depois
         poisson_sampling=dp_config.poisson_sampling,
-        clipping_mode='flat',  # Clip all gradients together
+        clipping_mode='flat',
         grad_sample_mode=dp_config.grad_sample_mode
     )
     
     logger.info(f"PrivacyEngine setup complete")
-    logger.info(f"  Target epsilon: {dp_config.target_epsilon}")
-    logger.info(f"  Target delta: {dp_config.target_delta}")
+    logger.info(f"  Noise multiplier (FIXED): {dp_config.noise_multiplier}")
     logger.info(f"  Max grad norm: {dp_config.max_grad_norm}")
-    logger.info(f"  Noise multiplier: {dp_config.noise_multiplier}")
+    logger.info(f"  Target delta (para epsilon calc): {dp_config.target_delta}")
+    logger.info(f"  Accounting method: {dp_config.accounting_method}")
     
     return dp_model, dp_optimizer, privacy_engine
 
@@ -146,9 +146,14 @@ def get_epsilon(privacy_engine: Optional[PrivacyEngine],
         Current epsilon
     """
     if privacy_engine is None:
-        return float('inf')  # No privacy
+        return float('inf')
     
-    return privacy_engine.get_epsilon(delta)
+    try:
+        epsilon = privacy_engine.get_epsilon(delta)
+        return epsilon
+    except Exception as e:
+        logger.error(f"Error computing epsilon: {e}")
+        return float('inf')
 
 
 def log_privacy_budget(privacy_engine: Optional[PrivacyEngine],
@@ -160,7 +165,7 @@ def log_privacy_budget(privacy_engine: Optional[PrivacyEngine],
     Args:
         privacy_engine: PrivacyEngine instance
         delta: Delta value
-        target_epsilon: Target epsilon
+        target_epsilon: Reference epsilon (for comparison)
     
     Returns:
         Dictionary with privacy metrics
@@ -169,17 +174,17 @@ def log_privacy_budget(privacy_engine: Optional[PrivacyEngine],
         return {'epsilon': float('inf'), 'privacy_budget_used': 0.0}
     
     epsilon = get_epsilon(privacy_engine, delta)
-    budget_used = epsilon / target_epsilon if target_epsilon > 0 else 0
+    budget_ratio = epsilon / target_epsilon if target_epsilon > 0 else 0
     
     metrics = {
         'epsilon': epsilon,
         'delta': delta,
-        'target_epsilon': target_epsilon,
-        'privacy_budget_used': min(budget_used, 1.0)  # Capped at 100%
+        'reference_epsilon': target_epsilon,
+        'epsilon_ratio': budget_ratio
     }
     
-    logger.info(f"Privacy Budget: ε={epsilon:.4f} (target: {target_epsilon})")
-    logger.info(f"  Budget used: {budget_used*100:.1f}%")
+    logger.info(f"Privacy Budget: ε={epsilon:.4f} (reference: {target_epsilon})")
+    logger.info(f"  Epsilon ratio: {budget_ratio:.2f}x")
     
     return metrics
 
@@ -196,7 +201,6 @@ def check_dp_compatibility(model: nn.Module) -> Tuple[bool, list]:
     """
     incompatible_layers = []
     
-    # Check for BatchNorm (not DP-compatible)
     for name, module in model.named_modules():
         if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
             incompatible_layers.append((name, type(module).__name__))
@@ -215,10 +219,8 @@ def check_dp_compatibility(model: nn.Module) -> Tuple[bool, list]:
 
 
 if __name__ == "__main__":
-    # Test script
     print("Testing DP utilities...\n")
     
-    # Test DPConfig
     config = {
         'differential_privacy': {
             'enabled': True,
@@ -232,7 +234,6 @@ if __name__ == "__main__":
     dp_config = DPConfig(config)
     print(f"DP Config: {dp_config}\n")
     
-    # Test DP compatibility check
     model = nn.Sequential(
         nn.Linear(10, 20),
         nn.ReLU(),

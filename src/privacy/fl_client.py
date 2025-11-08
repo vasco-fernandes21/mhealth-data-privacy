@@ -156,12 +156,7 @@ class FLClient:
             self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
     def train_local(self) -> Dict[str, float]:
-        """
-        Train model locally for local_epochs.
-        
-        Returns:
-            Dictionary with training metrics
-        """
+        """Train model locally for local_epochs."""
         metrics = {
             'local_loss': 0.0,
             'local_accuracy': 0.0,
@@ -188,12 +183,8 @@ class FLClient:
                 loss.backward()
                 
                 # Gradient clipping
-                if self.config['training'].get(
-                    'gradient_clipping', True
-                ):
-                    clip_norm = self.config['training'].get(
-                        'gradient_clip_norm', 1.0
-                    )
+                if self.config['training'].get('gradient_clipping', True):
+                    clip_norm = self.config['training'].get('gradient_clip_norm', 1.0)
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), clip_norm
                     )
@@ -215,14 +206,14 @@ class FLClient:
             metrics['local_loss'] = epoch_loss
             metrics['local_accuracy'] = epoch_acc
             metrics['local_samples'] = epoch_total
-            
-            # Step scheduler after each local epoch
-            if self.scheduler is not None:
-                self.scheduler.step()
+        
+        # Step scheduler APÓS todas as epochs locais (uma vez por round)
+        if self.scheduler is not None:
+            self.scheduler.step()
         
         self.update_count += 1
         return metrics
-    
+
     def get_weights(self) -> Dict[str, torch.Tensor]:
         """
         Get model weights.

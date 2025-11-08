@@ -1,88 +1,250 @@
+
 # ================================================================
 # FEDERATED LEARNING EXPERIMENTS 
 # ================================================================
-# 3 valores estratégicos: leve (próximo baseline), médio, elevado
-# 1 run por configuração (seed=42)
+# 3 client counts × 3 runs = 9 experiments por dataset
 
-experiments:
+# ================== SLEEP-EDF ==================
 
-  # ================== SLEEP-EDF ==================
-  fl_sleep_edf_c3:
-    name: "FL - Sleep-EDF (3 clients - leve)"
-    enabled: true
-    dataset: "sleep-edf"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "sleep-edf", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 3  # Leve: próximo ao baseline (treino centralizado)
+# Light: 3 clients
+fl_sleep_edf_c3_run1:
+  name: "FL - Sleep-EDF (3 clients) - Run 1"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
 
-  fl_sleep_edf_c5:
-    name: "FL - Sleep-EDF (5 clients - médio)"
-    enabled: true
-    dataset: "sleep-edf"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "sleep-edf", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 5  # Médio: configuração intermediária
+fl_sleep_edf_c3_run2:
+  name: "FL - Sleep-EDF (3 clients) - Run 2"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
 
-  fl_sleep_edf_c10:
-    name: "FL - Sleep-EDF (10 clients - elevado)"
-    enabled: true
-    dataset: "sleep-edf"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "sleep-edf", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 10  # Elevado: mostra impacto/complexidade da comunicação
+fl_sleep_edf_c3_run3:
+  name: "FL - Sleep-EDF (3 clients) - Run 3"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
+
+# Medium: 5 clients
+fl_sleep_edf_c5_run1:
+  name: "FL - Sleep-EDF (5 clients) - Run 1"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+fl_sleep_edf_c5_run2:
+  name: "FL - Sleep-EDF (5 clients) - Run 2"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+fl_sleep_edf_c5_run3:
+  name: "FL - Sleep-EDF (5 clients) - Run 3"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+# High: 10 clients
+fl_sleep_edf_c10_run1:
+  name: "FL - Sleep-EDF (10 clients) - Run 1"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10
+
+fl_sleep_edf_c10_run2:
+  name: "FL - Sleep-EDF (10 clients) - Run 2"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10
+
+fl_sleep_edf_c10_run3:
+  name: "FL - Sleep-EDF (10 clients) - Run 3"
+  enabled: true
+  dataset: "sleep-edf"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "sleep-edf", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10
 
 
-  # ================== WESAD ==================
-  fl_wesad_c3:
-    name: "FL - WESAD (3 clients - leve)"
-    enabled: true
-    dataset: "wesad"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "wesad", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 3  # Leve: próximo ao baseline (treino centralizado)
+# ================== WESAD ==================
 
-  fl_wesad_c5:
-    name: "FL - WESAD (5 clients - médio)"
-    enabled: true
-    dataset: "wesad"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "wesad", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 5  # Médio: configuração intermediária
+# Light: 3 clients
+fl_wesad_c3_run1:
+  name: "FL - WESAD (3 clients) - Run 1"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
 
-  fl_wesad_c10:
-    name: "FL - WESAD (10 clients - elevado)"
-    enabled: true
-    dataset: "wesad"
-    method: "fl"
-    seed: 42
-    tags: ["fl", "wesad", "clients_sweep"]
-    hyperparameters:
-      training:
-        batch_size: 64
-      federated_learning:
-        n_clients: 10  # Elevado: mostra impacto/complexidade da comunicação
+fl_wesad_c3_run2:
+  name: "FL - WESAD (3 clients) - Run 2"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
+
+fl_wesad_c3_run3:
+  name: "FL - WESAD (3 clients) - Run 3"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 3
+
+# Medium: 5 clients
+fl_wesad_c5_run1:
+  name: "FL - WESAD (5 clients) - Run 1"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+fl_wesad_c5_run2:
+  name: "FL - WESAD (5 clients) - Run 2"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+fl_wesad_c5_run3:
+  name: "FL - WESAD (5 clients) - Run 3"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 5
+
+# High: 10 clients
+fl_wesad_c10_run1:
+  name: "FL - WESAD (10 clients) - Run 1"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 42
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10
+
+fl_wesad_c10_run2:
+  name: "FL - WESAD (10 clients) - Run 2"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 123
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10
+
+fl_wesad_c10_run3:
+  name: "FL - WESAD (10 clients) - Run 3"
+  enabled: true
+  dataset: "wesad"
+  method: "fl"
+  seed: 456
+  tags: ["fl", "wesad", "clients_sweep"]
+  hyperparameters:
+    training:
+      batch_size: 64
+    federated_learning:
+      n_clients: 10

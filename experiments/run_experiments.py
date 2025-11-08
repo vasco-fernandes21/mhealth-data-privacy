@@ -12,7 +12,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import time
 from copy import deepcopy
 import gc
@@ -372,6 +372,158 @@ class SimpleExperimentRunner:
         
         return self.results
 
+    def _create_case_key(self, result: Dict) -> str:
+        """Create a unique key for grouping experiments by case (ignoring seed)."""
+        dataset = result.get('dataset', 'unknown')
+        method = result.get('method', 'unknown')
+        
+        # Try to extract hyperparameters from experiment name or load from file
+        exp_name = result.get('name', '')
+        hyperparams_str = ''
+        
+        # Try to load detailed results to get hyperparameters
+        seed = result.get('seed', 'unknown')
+        if result.get('success', False):
+            results_file = self.results_dir / method / dataset / f'seed_{seed}' / 'results.json'
+            if results_file.exists():
+                try:
+                    with open(results_file, 'r') as f:
+                        detailed = json.load(f)
+                    hyperparams = detailed.get('experiment_info', {}).get('hyperparameters', {})
+                    # Create a string representation of hyperparameters
+                    hyperparams_str = json.dumps(hyperparams, sort_keys=True)
+                except:
+                    pass
+        
+        return f"{dataset}::{method}::{hyperparams_str}"
+    
+    def _load_detailed_results(self, method: str, dataset: str, seed: int) -> Optional[Dict]:
+        """Load detailed results from JSON file."""
+        results_file = self.results_dir / method / dataset / f'seed_{seed}' / 'results.json'
+        if not results_file.exists():
+            return None
+        
+        try:
+            with open(results_file, 'r') as f:
+                return json.load(f)
+        except:
+            return None
+    
+    def _calculate_aggregated_metrics(self, results_group: List[Dict]) -> Dict[str, Any]:
+        """Calculate aggregated metrics (mean, std, min, max) for a group of runs."""
+        if not results_group:
+            return {}
+        
+        # Load detailed results for all runs in the group
+        detailed_results = []
+        for result in results_group:
+            if not result.get('success', False):
+                continue
+            
+            dataset = result.get('dataset')
+            method = result.get('method')
+            seed = result.get('seed')
+            
+            detailed = self._load_detailed_results(method, dataset, seed)
+            if detailed:
+                detailed_results.append(detailed)
+        
+        if not detailed_results:
+            return {}
+        
+        # Extract metrics from detailed results
+        metrics_to_aggregate = {
+            'test_accuracy': [],
+            'test_f1_score': [],
+            'test_precision': [],
+            'test_recall': [],
+            'best_val_acc': [],
+            'training_time_seconds': [],
+            'total_epochs': []
+        }
+        
+        for detailed in detailed_results:
+            test_metrics = detailed.get('test_metrics', {})
+            training_metrics = detailed.get('training_metrics', {})
+            
+            if 'accuracy' in test_metrics:
+                metrics_to_aggregate['test_accuracy'].append(test_metrics['accuracy'])
+            if 'f1_score' in test_metrics:
+                metrics_to_aggregate['test_f1_score'].append(test_metrics['f1_score'])
+            if 'precision' in test_metrics:
+                metrics_to_aggregate['test_precision'].append(test_metrics['precision'])
+            if 'recall' in test_metrics:
+                metrics_to_aggregate['test_recall'].append(test_metrics['recall'])
+            if 'best_val_acc' in training_metrics:
+                metrics_to_aggregate['best_val_acc'].append(training_metrics['best_val_acc'])
+            if 'training_time_seconds' in training_metrics:
+                metrics_to_aggregate['training_time_seconds'].append(training_metrics['training_time_seconds'])
+            if 'total_epochs' in training_metrics:
+                metrics_to_aggregate['total_epochs'].append(training_metrics['total_epochs'])
+        
+        # Calculate statistics for each metric
+        aggregated = {}
+        for metric_name, values in metrics_to_aggregate.items():
+            if not values:
+                continue
+            
+            values_array = np.array(values)
+            aggregated[metric_name] = {
+                'mean': float(np.mean(values_array)),
+                'std': float(np.std(values_array)),
+                'min': float(np.min(values_array)),
+                'max': float(np.max(values_array)),
+                'n_runs': len(values)
+            }
+        
+        return aggregated
+    
+    def calculate_aggregated_results(self) -> Dict[str, Any]:
+        """Calculate aggregated metrics across multiple runs for each case."""
+        if not self.results:
+            return {}
+        
+        successful_results = [r for r in self.results if r.get('success', False)]
+        if not successful_results:
+            return {}
+        
+        # Group results by case (dataset + method + hyperparameters)
+        grouped_results = {}
+        for result in successful_results:
+            case_key = self._create_case_key(result)
+            if case_key not in grouped_results:
+                grouped_results[case_key] = []
+            grouped_results[case_key].append(result)
+        
+        # Calculate aggregated metrics for each group
+        aggregated_results = {}
+        for case_key, results_group in grouped_results.items():
+            # Get case info from first result
+            first_result = results_group[0]
+            dataset = first_result.get('dataset', 'unknown')
+            method = first_result.get('method', 'unknown')
+            
+            # Load hyperparameters from first detailed result
+            seed = first_result.get('seed')
+            detailed = self._load_detailed_results(method, dataset, seed)
+            hyperparams = {}
+            if detailed:
+                hyperparams = detailed.get('experiment_info', {}).get('hyperparameters', {})
+            
+            # Calculate aggregated metrics
+            aggregated_metrics = self._calculate_aggregated_metrics(results_group)
+            
+            aggregated_results[case_key] = {
+                'dataset': dataset,
+                'method': method,
+                'hyperparameters': hyperparams,
+                'n_runs': len(results_group),
+                'seeds': [r.get('seed') for r in results_group],
+                'metrics': aggregated_metrics
+            }
+        
+        return aggregated_results
+    
     def save_results(self, output_file='experiments/results_log.json'):
         """Save results summary."""
         if not self.results:
@@ -379,6 +531,9 @@ class SimpleExperimentRunner:
             return
         
         successful_results = [r for r in self.results if r['success']]
+        
+        # Calculate aggregated metrics
+        aggregated_results = self.calculate_aggregated_results()
         
         summary = {
             'timestamp': datetime.now().isoformat(),
@@ -388,7 +543,8 @@ class SimpleExperimentRunner:
             'average_accuracy': np.mean([r['accuracy'] for r in successful_results]) if successful_results else 0,
             'average_f1': np.mean([r['f1_score'] for r in successful_results]) if successful_results else 0,
             'total_time_hours': sum(r['time_seconds'] for r in self.results) / 3600,
-            'results': self.results
+            'results': self.results,
+            'aggregated_results': aggregated_results
         }
         
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -405,6 +561,29 @@ class SimpleExperimentRunner:
             print(f"📈 Avg F1-Score: {summary['average_f1']:.4f}")
         print(f"⏱️  Total time: {summary['total_time_hours']:.2f} hours")
         print(f"💾 Saved to: {output_file}")
+        
+        # Print aggregated results summary
+        if aggregated_results:
+            print(f"\n{'='*60}")
+            print(f"📊 AGGREGATED METRICS (across multiple runs)")
+            print(f"{'='*60}")
+            for case_key, case_data in aggregated_results.items():
+                dataset = case_data['dataset']
+                method = case_data['method']
+                n_runs = case_data['n_runs']
+                metrics = case_data.get('metrics', {})
+                
+                print(f"\n{method.upper()} - {dataset} ({n_runs} runs)")
+                if metrics:
+                    if 'test_accuracy' in metrics:
+                        acc = metrics['test_accuracy']
+                        print(f"  Accuracy: {acc['mean']:.4f} ± {acc['std']:.4f} "
+                              f"(min: {acc['min']:.4f}, max: {acc['max']:.4f})")
+                    if 'test_f1_score' in metrics:
+                        f1 = metrics['test_f1_score']
+                        print(f"  F1-Score:  {f1['mean']:.4f} ± {f1['std']:.4f} "
+                              f"(min: {f1['min']:.4f}, max: {f1['max']:.4f})")
+        
         print(f"{'='*60}\n")
 
 
