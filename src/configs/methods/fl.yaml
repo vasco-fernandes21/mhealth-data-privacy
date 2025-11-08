@@ -8,18 +8,18 @@ description: "Federated Learning (FedAvg)"
 federated_learning:
   enabled: true
   n_clients: 10
-  global_rounds: 100
-  local_epochs: 5
+  global_rounds: 60
+  local_epochs: 4
   aggregation_method: "fedavg"
   client_sampling_fraction: 1.0
 
 training:
-  epochs: 100
+  epochs: 60
   batch_size: 128
-  learning_rate: 0.002
+  learning_rate: 0.0015
   weight_decay: 0.0001
   lr_scheduler: "cosine_annealing"
-  scheduler_T_max: 80
-  early_stopping_patience: 15
-  num_workers: 2
+  scheduler_T_max: 50
+  early_stopping_patience: 12
+  num_workers: 4
   use_amp: true
