@@ -42,8 +42,10 @@ class FLServer:
         
         # FL config
         fl_cfg = config.get('federated_learning', {})
-        self.global_rounds = fl_cfg.get('global_rounds', 100)
+        self.global_rounds = fl_cfg.get('global_rounds', 30)
+        self.local_epochs = fl_cfg.get('local_epochs', 1)
         self.aggregation_method = fl_cfg.get('aggregation_method', 'fedavg')
+        self.validation_frequency = fl_cfg.get('validation_frequency', 5)
         
         # Aggregator
         self.aggregator = create_aggregator(self.aggregation_method)
@@ -55,6 +57,14 @@ class FLServer:
             'avg_client_loss': [],
             'aggregation_time': []
         }
+        
+        logger.info(
+            f"FL Server initialized: "
+            f"rounds={self.global_rounds}, "
+            f"local_epochs={self.local_epochs}, "
+            f"validation_freq={self.validation_frequency}, "
+            f"aggregation={self.aggregation_method}"
+        )
     
     def broadcast_model(self) -> None:
         """Send global model to all clients."""
@@ -167,9 +177,12 @@ class FLServer:
             'max_accuracy': max(accuracies) if accuracies else 0
         }
     
-    def train_round(self) -> Dict[str, Any]:
+    def train_round(self, global_round: int = 0) -> Dict[str, Any]:
         """
         Execute one federated learning round.
+        
+        Args:
+            global_round: Current global round number
         
         Returns:
             Metrics for this round
@@ -210,4 +223,7 @@ class FLServer:
     
     def __repr__(self) -> str:
         return (f"FLServer(n_clients={len(self.clients)}, "
+                f"global_rounds={self.global_rounds}, "
+                f"local_epochs={self.local_epochs}, "
+                f"validation_freq={self.validation_frequency}, "
                 f"aggregation={self.aggregation_method})")

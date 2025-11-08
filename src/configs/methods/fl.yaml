@@ -8,8 +8,8 @@ description: "Federated Learning (FedAvg)"
 federated_learning:
   enabled: true
   n_clients: 10
-  global_rounds: 60
-  local_epochs: 4
+  global_rounds: 30
+  local_epochs: 1
   aggregation_method: "fedavg"
   client_sampling_fraction: 1.0
 

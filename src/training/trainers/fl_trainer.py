@@ -1,4 +1,3 @@
-# src/training/fl_trainer.py
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -105,25 +104,44 @@ class FLTrainer(BaseTrainer):
         
         return metrics
     
-    def _update_history(self, epoch: int, train_loss: float, train_acc: float,
-                       val_loss: float, val_acc: float) -> None:
+    def _update_history(self, round_num: int, train_loss: float, train_acc: float,
+                       val_loss: float = None, val_acc: float = None) -> None:
         """Update training history."""
-        self.history['epoch'].append(epoch)
+        self.history['round'].append(round_num)
         self.history['train_loss'].append(train_loss)
         self.history['train_acc'].append(train_acc)
-        self.history['val_loss'].append(val_loss)
-        self.history['val_acc'].append(val_acc)
+        if val_loss is not None:
+            self.history['val_loss'].append(val_loss)
+        if val_acc is not None:
+            self.history['val_acc'].append(val_acc)
     
     def fit(self, train_loaders: List[DataLoader],
             val_loaders: List[DataLoader],
             client_ids: List[str],
-            epochs: int = 100,
+            epochs: int = 30,
             patience: int = 8,
             output_dir: str = None) -> Dict[str, Any]:
-        """Train with FL."""
+        """
+        Train with Federated Learning.
+        
+        Args:
+            train_loaders: List of training loaders (one per client)
+            val_loaders: List of validation loaders (one per client)
+            client_ids: List of client identifiers
+            epochs: Number of global rounds (default: 30)
+            patience: Early stopping patience (default: 8)
+            output_dir: Directory to save best model
+        
+        Returns:
+            Dictionary with training results
+        """
         
         self.setup_optimizer_and_loss()
         self._reset_training_state()
+        
+        # Get FL config
+        fl_cfg = self.config.get('federated_learning', {})
+        validation_frequency = fl_cfg.get('validation_frequency', 5)
         
         # Setup clients + server
         clients = [
@@ -148,56 +166,84 @@ class FLTrainer(BaseTrainer):
         
         start_time = time.time()
         
-        print(f"\n🚀 Starting FL training with {len(clients)} clients, {epochs} global rounds", flush=True)
-        print(f"   Local epochs per round: {self.config['federated_learning'].get('local_epochs', 1)}", flush=True)
-        print(f"   Patience: {patience}\n", flush=True)
+        print(f"\n🚀 Starting FL training", flush=True)
+        print(f"   Clients: {len(clients)}", flush=True)
+        print(f"   Global rounds: {epochs}", flush=True)
+        print(f"   Local epochs: {fl_cfg.get('local_epochs', 1)}", flush=True)
+        print(f"   Validation frequency: every {validation_frequency} rounds", flush=True)
+        print(f"   Early stopping patience: {patience}\n", flush=True)
+        
+        best_round = 0
         
         for round_num in range(1, epochs + 1):
-            # Train round
-            train_metrics = server.train_round()
+            # Train round (sem validação)
+            train_metrics = server.train_round(global_round=round_num)
             train_loss = train_metrics['avg_loss']
             train_acc = train_metrics['avg_accuracy']
             
-            # Validate
-            val_metrics = server.evaluate_on_clients(val_loaders)
-            val_loss = val_metrics['avg_loss']
-            val_acc = val_metrics['avg_accuracy']
+            # Validar APENAS a cada N rounds
+            should_validate = (round_num % validation_frequency == 0) or (round_num == epochs)
             
-            # Store + log
-            self._update_history(round_num, train_loss, train_acc,
-                               val_loss, val_acc)
-            print(
-                f"Round {round_num:03d}: "
-                f"loss={train_loss:.4f} acc={train_acc:.4f} | "
-                f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}",
-                flush=True
-            )
-            
-            # Early stopping
-            if val_acc > self.best_val_acc:
-                self.best_val_acc = val_acc
-                self.epochs_no_improve = 0
-                if output_dir:
-                    from pathlib import Path
-                    Path(output_dir).mkdir(parents=True, exist_ok=True)
-                    self.save_checkpoint(
-                        f"{output_dir}/best_model.pth"
-                    )
+            if should_validate:
+                val_metrics = server.evaluate_on_clients(val_loaders)
+                val_loss = val_metrics['avg_loss']
+                val_acc = val_metrics['avg_accuracy']
+                
+                # Update history
+                self._update_history(round_num, train_loss, train_acc,
+                                   val_loss, val_acc)
+                
+                print(
+                    f"Round {round_num:03d}: "
+                    f"loss={train_loss:.4f} acc={train_acc:.4f} | "
+                    f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}",
+                    flush=True
+                )
+                
+                # Early stopping (baseado em val_acc)
+                if val_acc > self.best_val_acc:
+                    self.best_val_acc = val_acc
+                    self.epochs_no_improve = 0
+                    best_round = round_num
+                    
+                    if output_dir:
+                        from pathlib import Path
+                        Path(output_dir).mkdir(parents=True, exist_ok=True)
+                        self.save_checkpoint(
+                            f"{output_dir}/best_model.pth"
+                        )
+                else:
+                    self.epochs_no_improve += 1
+                    if self.epochs_no_improve >= patience:
+                        print(
+                            f"\n⏹️  Early stopping triggered at round {round_num}",
+                            f"(no improvement for {patience} validation checks)",
+                            flush=True
+                        )
+                        break
             else:
-                self.epochs_no_improve += 1
-                if self.epochs_no_improve >= patience:
-                    print(f"\n⏹️  Early stopping triggered after {round_num} rounds (patience={patience})", flush=True)
-                    break
+                # Não valida - apenas train metrics
+                self._update_history(round_num, train_loss, train_acc)
+                
+                # Log reduzido (sem validação)
+                if round_num % (validation_frequency // 2) == 0:
+                    print(
+                        f"Round {round_num:03d}: "
+                        f"loss={train_loss:.4f} acc={train_acc:.4f}",
+                        flush=True
+                    )
         
         elapsed = time.time() - start_time
         
+        print(f"\n{'='*60}")
         if round_num == epochs:
-            print(f"\n✅ Training completed: {round_num} rounds in {elapsed:.1f}s", flush=True)
+            print(f"✅ Training completed: {round_num} rounds in {elapsed:.1f}s")
         else:
-            print(f"\n✅ Training stopped early: {round_num} rounds in {elapsed:.1f}s", flush=True)
+            print(f"✅ Training stopped early: {round_num} rounds in {elapsed:.1f}s")
+        print(f"   Best validation accuracy: {self.best_val_acc:.4f} (round {best_round})")
+        print(f"{'='*60}\n", flush=True)
         
-        print(f"   Best validation accuracy: {self.best_val_acc:.4f}\n", flush=True)
-        
+        # Load best model
         if output_dir:
             from pathlib import Path
             best_path = Path(output_dir) / 'best_model.pth'
@@ -206,8 +252,10 @@ class FLTrainer(BaseTrainer):
         
         return {
             'total_rounds': round_num,
+            'best_round': best_round,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
             'history': self.history,
-            'n_clients': len(clients)
+            'n_clients': len(clients),
+            'validation_frequency': validation_frequency
         }

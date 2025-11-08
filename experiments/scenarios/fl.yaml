@@ -3,6 +3,7 @@
 # ================================================================
 # 3 client counts × 3 runs = 9 experiments por dataset
 
+
 experiments:
 
   # ================== SLEEP-EDF ==================
@@ -16,8 +17,6 @@ experiments:
     seed: 42
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -29,8 +28,6 @@ experiments:
     seed: 123
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -42,8 +39,6 @@ experiments:
     seed: 456
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -56,8 +51,6 @@ experiments:
     seed: 42
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -69,8 +62,6 @@ experiments:
     seed: 123
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -82,8 +73,6 @@ experiments:
     seed: 456
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -96,8 +85,6 @@ experiments:
     seed: 42
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
 
@@ -109,8 +96,6 @@ experiments:
     seed: 123
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
 
@@ -122,8 +107,6 @@ experiments:
     seed: 456
     tags: ["fl", "sleep-edf", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
 
@@ -138,8 +121,6 @@ experiments:
     seed: 42
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -151,8 +132,6 @@ experiments:
     seed: 123
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -164,8 +143,6 @@ experiments:
     seed: 456
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 3
 
@@ -178,8 +155,6 @@ experiments:
     seed: 42
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -191,8 +166,6 @@ experiments:
     seed: 123
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -204,8 +177,6 @@ experiments:
     seed: 456
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 5
 
@@ -218,8 +189,6 @@ experiments:
     seed: 42
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
 
@@ -231,8 +200,6 @@ experiments:
     seed: 123
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
 
@@ -244,7 +211,5 @@ experiments:
     seed: 456
     tags: ["fl", "wesad", "clients_sweep"]
     hyperparameters:
-      training:
-        batch_size: 64
       federated_learning:
         n_clients: 10
