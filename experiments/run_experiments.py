@@ -649,9 +649,35 @@ Examples:
     for scenario in scenarios:
         try:
             scenario_data = runner.load_scenario(scenario)
-            all_experiments.update(scenario_data.get('experiments', {}))
+            
+            # Validate scenario_data
+            if scenario_data is None:
+                print(f"⚠️  Scenario {scenario} returned None")
+                continue
+            
+            # Get experiments dictionary
+            experiments = scenario_data.get('experiments')
+            if experiments is None:
+                print(f"⚠️  Scenario {scenario} has no 'experiments' key")
+                continue
+            
+            if not isinstance(experiments, dict):
+                print(f"⚠️  Scenario {scenario} 'experiments' is not a dict: {type(experiments)}")
+                continue
+            
+            # Filter only enabled experiments
+            enabled_experiments = {
+                name: config for name, config in experiments.items()
+                if isinstance(config, dict) and config.get('enabled', True)  # Default to True if not specified
+            }
+            all_experiments.update(enabled_experiments)
         except FileNotFoundError:
             print(f"⚠️  Scenario not found: {scenario}")
+            continue
+        except Exception as e:
+            print(f"⚠️  Error loading scenario {scenario}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
     if not all_experiments:

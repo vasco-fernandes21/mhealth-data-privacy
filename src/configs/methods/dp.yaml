@@ -1,29 +1,29 @@
+# ================================================================
+# Differential Privacy: DP-SGD with Opacus 2.0
+# ================================================================
+
 method: "dp"
 description: "Differential Privacy via DP-SGD (Opacus 2.0)"
 
 differential_privacy:
   enabled: true
-  target_epsilon: 8.0
-  target_delta: 1e-5               # ≈ 1/N²
-  max_grad_norm: 1.0               # Clipping threshold
-  noise_multiplier: 0.8            # σ ~ 0.6–1.0 é ótimo
-  accounting_method: "rdp"        
-  poisson_sampling: true          
+  target_delta: 1e-5
+  max_grad_norm: 1.0
+  noise_multiplier: 0.8
+  accounting_method: "rdp"
+  poisson_sampling: true
   grad_sample_mode: "hooks"
 
 training:
-  optimizer: "adamw"
   batch_size: 64
-  learning_rate: 0.0025
-  weight_decay: 0.0001
-  epochs: 80
-  loss: "cross_entropy"
-  label_smoothing: 0.1
-  early_stopping_patience: 15  
-  num_workers: 4
-  verbose: true
+  learning_rate: 0.001
+  weight_decay: 0.00005
+  epochs: 60
+  lr_scheduler: "cosine_annealing"
+  scheduler_T_max: 50
+  early_stopping_patience: 15
+  num_workers: 2
+  use_amp: false
 
 model:
-  dropout: 0.5                
-  lstm_units: 64
-  dense_layers: [128]
+  dropout: 0.15

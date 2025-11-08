@@ -1,13 +1,25 @@
+# ================================================================
+# Federated Learning: FedAvg without privacy
+# ================================================================
+
 method: "fl"
-description: "Federated Learning without privacy"
+description: "Federated Learning (FedAvg)"
 
 federated_learning:
   enabled: true
   n_clients: 10
   global_rounds: 100
   local_epochs: 5
-  local_batch_size: 32
   aggregation_method: "fedavg"
-  trimming_fraction: 0.1
+  client_sampling_fraction: 1.0
 
-# Sem overrides - usa config do dataset
+training:
+  epochs: 100
+  batch_size: 128
+  learning_rate: 0.002
+  weight_decay: 0.0001
+  lr_scheduler: "cosine_annealing"
+  scheduler_T_max: 80
+  early_stopping_patience: 15
+  num_workers: 2
+  use_amp: true

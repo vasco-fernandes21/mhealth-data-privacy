@@ -1,89 +1,237 @@
 # ================================================================
-# FEDERATED LEARNING + DIFFERENTIAL PRIVACY EXPERIMENTS
+# Federated Learning + Differential Privacy Experiments (3×3×2 = 18)
 # ================================================================
-# 3 strategic combinations: low (near baseline), medium, high
-# Variations: n_clients + noise_multiplier (σ)
-# 1 run for each configuration (seed=42)
 
-experiments:
-
-  # ================== SLEEP-EDF ==================
-  dp_fl_sleep_edf_c3_sigma0_6:
-    name: "DP+FL - Sleep-EDF (3 clients, σ=0.6 - leve)"
+  dp_fl_sleep_edf_c3_sigma0_6_run1:
+    name: "DP+FL - Sleep-EDF (3 clients, σ=0.6) Run 1"
     enabled: true
     dataset: "sleep-edf"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "sleep-edf", "clients_sweep"]
+    tags: ["dp_fl", "sleep-edf"]
     hyperparameters:
       federated_learning:
-        n_clients: 3  
+        n_clients: 3
       differential_privacy:
-        noise_multiplier: 0.6  
+        client_noise_multiplier: 0.3
 
-  dp_fl_sleep_edf_c5_sigma1_0:
-    name: "DP+FL - Sleep-EDF (5 clients, σ=1.0 - médio)"
+  dp_fl_sleep_edf_c3_sigma0_6_run2:
+    name: "DP+FL - Sleep-EDF (3 clients, σ=0.6) Run 2"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 3
+      differential_privacy:
+        client_noise_multiplier: 0.3
+
+  dp_fl_sleep_edf_c3_sigma0_6_run3:
+    name: "DP+FL - Sleep-EDF (3 clients, σ=0.6) Run 3"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 3
+      differential_privacy:
+        client_noise_multiplier: 0.3
+
+  dp_fl_sleep_edf_c5_sigma1_0_run1:
+    name: "DP+FL - Sleep-EDF (5 clients, σ=1.0) Run 1"
     enabled: true
     dataset: "sleep-edf"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "sleep-edf", "clients_sweep"]
+    tags: ["dp_fl", "sleep-edf"]
     hyperparameters:
       federated_learning:
-        n_clients: 5  
+        n_clients: 5
       differential_privacy:
-        noise_multiplier: 1.0  
+        client_noise_multiplier: 0.5
 
-  dp_fl_sleep_edf_c10_sigma2_0:
-    name: "DP+FL - Sleep-EDF (10 clients, σ=2.0 - elevado)"
+  dp_fl_sleep_edf_c5_sigma1_0_run2:
+    name: "DP+FL - Sleep-EDF (5 clients, σ=1.0) Run 2"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+      differential_privacy:
+        client_noise_multiplier: 0.5
+
+  dp_fl_sleep_edf_c5_sigma1_0_run3:
+    name: "DP+FL - Sleep-EDF (5 clients, σ=1.0) Run 3"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+      differential_privacy:
+        client_noise_multiplier: 0.5
+
+  dp_fl_sleep_edf_c10_sigma2_0_run1:
+    name: "DP+FL - Sleep-EDF (10 clients, σ=2.0) Run 1"
     enabled: true
     dataset: "sleep-edf"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "sleep-edf", "clients_sweep"]
+    tags: ["dp_fl", "sleep-edf"]
     hyperparameters:
       federated_learning:
-        n_clients: 10  
+        n_clients: 10
       differential_privacy:
-        noise_multiplier: 2.0  
+        client_noise_multiplier: 1.0
 
+  dp_fl_sleep_edf_c10_sigma2_0_run2:
+    name: "DP+FL - Sleep-EDF (10 clients, σ=2.0) Run 2"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+      differential_privacy:
+        client_noise_multiplier: 1.0
 
-  # ================== WESAD ==================
-  dp_fl_wesad_c3_sigma0_6:
-    name: "DP+FL - WESAD (3 clients, σ=0.6 - leve)"
+  dp_fl_sleep_edf_c10_sigma2_0_run3:
+    name: "DP+FL - Sleep-EDF (10 clients, σ=2.0) Run 3"
+    enabled: true
+    dataset: "sleep-edf"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "sleep-edf"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+      differential_privacy:
+        client_noise_multiplier: 1.0
+
+  dp_fl_wesad_c3_sigma0_6_run1:
+    name: "DP+FL - WESAD (3 clients, σ=0.6) Run 1"
     enabled: true
     dataset: "wesad"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "wesad", "clients_sweep"]
+    tags: ["dp_fl", "wesad"]
     hyperparameters:
       federated_learning:
-        n_clients: 3  
+        n_clients: 3
       differential_privacy:
-        noise_multiplier: 0.6  
+        client_noise_multiplier: 0.3
 
-  dp_fl_wesad_c5_sigma1_0:
-    name: "DP+FL - WESAD (5 clients, σ=1.0 - médio)"
+  dp_fl_wesad_c3_sigma0_6_run2:
+    name: "DP+FL - WESAD (3 clients, σ=0.6) Run 2"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 3
+      differential_privacy:
+        client_noise_multiplier: 0.3
+
+  dp_fl_wesad_c3_sigma0_6_run3:
+    name: "DP+FL - WESAD (3 clients, σ=0.6) Run 3"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 3
+      differential_privacy:
+        client_noise_multiplier: 0.3
+
+  dp_fl_wesad_c5_sigma1_0_run1:
+    name: "DP+FL - WESAD (5 clients, σ=1.0) Run 1"
     enabled: true
     dataset: "wesad"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "wesad", "clients_sweep"]
+    tags: ["dp_fl", "wesad"]
     hyperparameters:
       federated_learning:
-        n_clients: 5  
+        n_clients: 5
       differential_privacy:
-        noise_multiplier: 1.0  
+        client_noise_multiplier: 0.5
 
-  dp_fl_wesad_c10_sigma2_0:
-    name: "DP+FL - WESAD (10 clients, σ=2.0 - elevado)"
+  dp_fl_wesad_c5_sigma1_0_run2:
+    name: "DP+FL - WESAD (5 clients, σ=1.0) Run 2"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+      differential_privacy:
+        client_noise_multiplier: 0.5
+
+  dp_fl_wesad_c5_sigma1_0_run3:
+    name: "DP+FL - WESAD (5 clients, σ=1.0) Run 3"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 5
+      differential_privacy:
+        client_noise_multiplier: 0.5
+
+  dp_fl_wesad_c10_sigma2_0_run1:
+    name: "DP+FL - WESAD (10 clients, σ=2.0) Run 1"
     enabled: true
     dataset: "wesad"
     method: "dp_fl"
     seed: 42
-    tags: ["dp_fl", "wesad", "clients_sweep"]
+    tags: ["dp_fl", "wesad"]
     hyperparameters:
       federated_learning:
-        n_clients: 10  
+        n_clients: 10
       differential_privacy:
-        noise_multiplier: 2.0  
+        client_noise_multiplier: 1.0
+
+  dp_fl_wesad_c10_sigma2_0_run2:
+    name: "DP+FL - WESAD (10 clients, σ=2.0) Run 2"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 123
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+      differential_privacy:
+        client_noise_multiplier: 1.0
+
+  dp_fl_wesad_c10_sigma2_0_run3:
+    name: "DP+FL - WESAD (10 clients, σ=2.0) Run 3"
+    enabled: true
+    dataset: "wesad"
+    method: "dp_fl"
+    seed: 456
+    tags: ["dp_fl", "wesad"]
+    hyperparameters:
+      federated_learning:
+        n_clients: 10
+      differential_privacy:
+        client_noise_multiplier: 1.0

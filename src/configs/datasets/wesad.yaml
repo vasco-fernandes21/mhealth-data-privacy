@@ -1,32 +1,32 @@
 dataset:
   name: "wesad"
   path: "data/processed/wesad"
-  input_dim: 14              
+  input_dim: 14
   n_classes: 2
   class_names: ["non-stress", "stress"]
   class_weights: [0.714, 1.667]
 
 model:
-  input_projection: 128      
-  lstm_units: 64               
+  input_projection: 128
+  lstm_units: 64
   lstm_layers: 1
-  bidirectional: true        
-  dropout: 0.25              
-  dense_layers: [64, 32]     
+  bidirectional: true
+  dropout: 0.2
+  dense_layers: [64, 32]
 
 training:
-  epochs: 50                 
-  batch_size: 128            
-  learning_rate: 0.0015     
+  epochs: 40
+  batch_size: 256
+  learning_rate: 0.0015
   optimizer: "adamw"
-  weight_decay: 0.0001        
-  loss: "cross_entropy"      
-  label_smoothing: 0.1       
-  lr_scheduler: "cosine_annealing" 
-  scheduler_T_max: 40        
-  early_stopping_patience: 12 
+  weight_decay: 0.0001
+  loss: "cross_entropy"
+  label_smoothing: 0.1
+  lr_scheduler: "cosine_annealing"
+  scheduler_T_max: 35
+  early_stopping_patience: 10
   gradient_clipping: true
   gradient_clip_norm: 1.0
-  num_workers: 2             
+  num_workers: 2
   pin_memory: true
-  use_amp: true              
+  use_amp: true

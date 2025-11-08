@@ -1,23 +1,40 @@
+# ================================================================
+# Federated Learning + Differential Privacy: DP-FedAvg
+# ================================================================
+
 method: "dp_fl"
 description: "Federated Learning + Differential Privacy"
 
 differential_privacy:
   enabled: true
-  target_epsilon: [1.0, 3.0, 8.0]
   target_delta: 1e-5
   client_noise_multiplier: 0.3
   server_noise_multiplier: 0.5
   max_grad_norm: 1.0
+  accounting_method: "rdp"
+  poisson_sampling: true
+  grad_sample_mode: "hooks"
 
 federated_learning:
   enabled: true
   n_clients: 10
   global_rounds: 100
-  local_epochs: 1  
-  local_batch_size: 32
+  local_epochs: 3
+  aggregation_method: "fedavg"
+  client_sampling_fraction: 1.0
 
 training:
-  optimizer: "sgd"
+  batch_size: 32
   learning_rate: 0.001
+  weight_decay: 0.00002
   epochs: 150
-  early_stopping_patience: 40
+  label_smoothing: 0.05
+  lr_scheduler: "cosine_annealing"
+  scheduler_T_max: 120
+  early_stopping_patience: 20
+  num_workers: 2
+  use_amp: false
+
+model:
+  dropout: 0.1
+  dense_layers: [64]
