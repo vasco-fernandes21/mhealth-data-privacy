@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Abstract base class for all models.
 
@@ -37,7 +37,7 @@ class BaseModel(ABC, nn.Module):
         
         # Extract common config
         self.dataset_name = config.get('dataset', {}).get('name', 'unknown')
-        self.n_classes = config.get('dataset', {}).get('n_classes', 2)
+        self.n_classes = config.get('dataset', {}).get('n_classes', )
     
     @abstractmethod
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -86,7 +86,7 @@ class BaseModel(ABC, nn.Module):
         return {
             'total_parameters': int(total_params),
             'trainable_parameters': int(trainable_params),
-            'model_size_mb': float(total_params * 4 / (1024 ** 2)),  # Assume float32
+            'model_size_mb': float(total_params * 4 / (1024 ** 2)),  # Assume float32 (4 bytes per param)
             'dataset': self.dataset_name,
             'n_classes': self.n_classes,
             'device': self.device_name
@@ -95,16 +95,16 @@ class BaseModel(ABC, nn.Module):
     def print_model_summary(self) -> None:
         """Print model summary to console."""
         info = self.get_model_info()
-        print(f"\n{'='*50}")
+        print(f"\n{'='*0}")
         print(f"Model Summary: {self.__class__.__name__}")
-        print(f"{'='*50}")
+        print(f"{'='*0}")
         print(f"Dataset: {info['dataset']}")
         print(f"Classes: {info['n_classes']}")
         print(f"Total Parameters: {info['total_parameters']:,}")
         print(f"Trainable Parameters: {info['trainable_parameters']:,}")
-        print(f"Model Size: {info['model_size_mb']:.2f} MB")
+        print(f"Model Size: {info['model_size_mb']:.f} MB")
         print(f"Device: {info['device']}")
-        print(f"{'='*50}\n")
+        print(f"{'='*0}\n")
     
     def save(self, path: str) -> None:
         """
@@ -122,7 +122,7 @@ class BaseModel(ABC, nn.Module):
             'model_class': self.__class__.__name__
         }, path)
         
-        print(f"✅ Model saved to {path}")
+        print(f" Model saved to {path}")
     
     @classmethod
     def load(cls, path: str, device: str = 'cpu') -> 'BaseModel':
@@ -147,7 +147,7 @@ class BaseModel(ABC, nn.Module):
         # Load weights
         model.load_state_dict(checkpoint['model_state'])
         
-        print(f"✅ Model loaded from {path}")
+        print(f" Model loaded from {path}")
         return model
     
     def freeze(self) -> None:

@@ -10,15 +10,9 @@ dataset:
   class_names: ["non-stress", "stress"]
   class_weights: [0.714, 1.667]
 
-<<<<<<< HEAD
 model:
   input_projection: 64
   lstm_units: 32
-=======
-
-  input_projection: 128
-  lstm_units: 64
->>>>>>> 7facd31d9112913babcef83aa7bdd3d689c68d3f
   lstm_layers: 1
   bidirectional: true
   dropout: 0.2
@@ -33,11 +27,7 @@ training:
   weight_decay: 0.0001
   loss: "cross_entropy"
   label_smoothing: 0.1
-<<<<<<< HEAD
   scheduler: "cosine"
-=======
-  scheduler: "cosine"           
->>>>>>> 7facd31d9112913babcef83aa7bdd3d689c68d3f
   scheduler_T_max: 35
   early_stopping_patience: 10
   gradient_clipping: true
