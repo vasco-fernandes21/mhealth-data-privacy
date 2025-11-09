@@ -1,9 +1,9 @@
 # ================================================================
-# Differential Privacy: DP-SGD with Opacus 2.0 - OPTIMIZED
+# Differential Privacy: DP-SGD with Opacus 2.0 
 # ================================================================
 
 method: "dp"
-description: "Differential Privacy via DP-SGD (Opacus 2.0) - Optimized"
+description: "Differential Privacy via DP-SGD (Opacus 2.0)"
 
 differential_privacy:
   enabled: true
