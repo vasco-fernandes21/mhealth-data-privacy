@@ -95,32 +95,34 @@ class FLClient:
     
     def setup_scheduler(self) -> None:
         """Setup learning rate scheduler."""
+        # Accept either 'scheduler' or 'lr_scheduler' keys
         scheduler_name = (
-            self.config['training'].get('lr_scheduler', 'none').lower()
+            (self.config['training'].get('scheduler') or
+             self.config['training'].get('lr_scheduler') or
+             'none').lower()
         )
-        
+
         if scheduler_name == 'none':
             self.scheduler = None
-        elif scheduler_name == 'cosine_annealing':
+        elif scheduler_name in ('cosine', 'cosine_annealing'):
             # Simple cosine annealing
-            T_max = self.config['training'].get('scheduler_T_max', 100)
+            T_max = int(self.config['training'].get('scheduler_T_max', 100))
             self.scheduler = CosineAnnealingLR(
                 self.optimizer,
                 T_max=T_max
             )
         elif scheduler_name == 'cosine_annealing_warm_restarts':
             # Cosine with warm restarts
-            T0 = self.config['training'].get('scheduler_T0', 10)
-            Tmult = self.config['training'].get('scheduler_Tmult', 2)
+            T0 = int(self.config['training'].get('scheduler_T0', 10))
+            Tmult = int(self.config['training'].get('scheduler_Tmult', 2))
             self.scheduler = CosineAnnealingWarmRestarts(
                 self.optimizer,
                 T_0=T0,
                 T_mult=Tmult
             )
         elif scheduler_name == 'warmup_cosine':
-            # Para FL, warmup é difícil (já começamos treino)
-            # Usamos apenas cosine decay
-            T_max = self.config['training'].get('scheduler_T_max', 100)
+            # For FL, warmup is tricky; use cosine decay
+            T_max = int(self.config['training'].get('scheduler_T_max', 100))
             self.scheduler = CosineAnnealingLR(
                 self.optimizer,
                 T_max=T_max
