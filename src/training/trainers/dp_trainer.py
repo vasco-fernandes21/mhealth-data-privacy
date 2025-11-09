@@ -46,16 +46,37 @@ class DPConfig:
             config: Configuration dictionary with 'differential_privacy' key
         """
         dp_cfg = config.get('differential_privacy', {})
-        
-        self.enabled = dp_cfg.get('enabled', False)
-        self.target_epsilon = dp_cfg.get('target_epsilon', 8.0)
-        self.target_delta = dp_cfg.get('target_delta', 1e-5)
-        self.max_grad_norm = dp_cfg.get('max_grad_norm', 1.0)
-        self.noise_multiplier = dp_cfg.get('noise_multiplier', 0.9)
-        self.poisson_sampling = dp_cfg.get('poisson_sampling', True)
-        self.accounting_method = dp_cfg.get('accounting_method', 'rdp')
-        self.secure_rng = dp_cfg.get('secure_rng', True)
-        self.grad_sample_mode = dp_cfg.get('grad_sample_mode', 'hooks')
+
+        # Coerce common DP config fields to expected types to avoid runtime
+        # errors when values come from YAML/CLI as strings.
+        self.enabled = bool(dp_cfg.get('enabled', False))
+
+        # Numeric fields: try to cast to float; fall back to defaults on failure
+        try:
+            self.target_epsilon = float(dp_cfg.get('target_epsilon', 8.0))
+        except (TypeError, ValueError):
+            self.target_epsilon = 8.0
+
+        try:
+            self.target_delta = float(dp_cfg.get('target_delta', 1e-5))
+        except (TypeError, ValueError):
+            self.target_delta = 1e-5
+
+        try:
+            self.max_grad_norm = float(dp_cfg.get('max_grad_norm', 1.0))
+        except (TypeError, ValueError):
+            self.max_grad_norm = 1.0
+
+        try:
+            self.noise_multiplier = float(dp_cfg.get('noise_multiplier', 0.9))
+        except (TypeError, ValueError):
+            self.noise_multiplier = 0.9
+
+        # Boolean/string fields
+        self.poisson_sampling = bool(dp_cfg.get('poisson_sampling', True))
+        self.accounting_method = str(dp_cfg.get('accounting_method', 'rdp'))
+        self.secure_rng = bool(dp_cfg.get('secure_rng', True))
+        self.grad_sample_mode = str(dp_cfg.get('grad_sample_mode', 'hooks'))
     
     def __repr__(self) -> str:
         return (
@@ -125,7 +146,6 @@ def setup_privacy_engine(
     # Create Privacy Engine
     privacy_engine = PrivacyEngine()
     
-    # FIX: Não usar target_epsilon/target_delta como constraints
     # Usar noise_multiplier fixo para controlar o noise
     dp_model, dp_optimizer, dp_train_loader = privacy_engine.make_private(
         module=model,
@@ -162,10 +182,11 @@ def get_epsilon(privacy_engine: Optional[PrivacyEngine],
     """
     if privacy_engine is None:
         return float('inf')
-    
+
+    # Assume delta is already a float from DPConfig
     try:
         epsilon = privacy_engine.get_epsilon(delta)
-        return epsilon
+        return float(epsilon)
     except Exception as e:
         logger.error(f"Error computing epsilon: {e}")
         return float('inf')
@@ -327,33 +348,31 @@ class DPTrainer(BaseTrainer):
             return train_loader
         
         logger.info(f"Setting up PrivacyEngine with {self.dp_config}")
+        logger.info(f"Train loader batches: {len(train_loader)}")
         
         # Check DP compatibility
         is_compatible, incompatible = check_dp_compatibility(self.model)
         if not is_compatible:
             logger.warning(f"Model has {len(incompatible)} incompatible layers")
+        # Check DP compatibility
+        is_compatible, incompatible = check_dp_compatibility(self.model)
+        if not is_compatible:
+            logger.warning(f"Model has {len(incompatible)} incompatible layers")
         
-        # Setup PrivacyEngine - returns (dp_model, dp_optimizer, privacy_engine, dp_train_loader)
-        self.model, self.optimizer, self.privacy_engine, self.dp_train_loader = setup_privacy_engine(
-            self.model,
-            self.optimizer,
-            train_loader,
-            self.dp_config,
-            device=str(self.device)
-        )
-        
-        if self.privacy_engine is not None:
-            logger.info("PrivacyEngine setup complete")
-        else:
-            logger.warning("PrivacyEngine setup returned None")
+        # Setup PrivacyEngine
+        try:
+            self.model, self.optimizer, self.privacy_engine, self.dp_train_loader = setup_privacy_engine(
+                self.model,
+                self.optimizer,
+                train_loader,
+                self.dp_config,
+                device=str(self.device)
+            )
+        except Exception as e:
+            logger.error(f"❌ PrivacyEngine setup failed: {e}")
+            raise
         
         return self.dp_train_loader if self.dp_train_loader else train_loader
-    
-    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """
-        Train one epoch with Differential Privacy.
-        
-        Args:
             train_loader: Training data loader (may be DP-wrapped)
         
         Returns:
@@ -389,8 +408,10 @@ class DPTrainer(BaseTrainer):
                 _, predicted = torch.max(outputs, 1)
                 correct += (predicted == batch_y).sum().item()
                 total += batch_y.size(0)
-        
-        # Step scheduler (cosine doesn't need val metrics)
+
+        # Use centralized cleanup helper from BaseTrainer
+        self.cleanup_memory()
+
         if self.scheduler is not None and \
            not isinstance(self.scheduler,
                          torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -401,19 +422,19 @@ class DPTrainer(BaseTrainer):
     def fit(self,
             train_loader: DataLoader,
             val_loader: DataLoader,
-            epochs: int = 100,
-            patience: int = 10,
+            epochs: int = 20,
+            patience: int = 8,
             output_dir: Optional[str] = None) -> Dict[str, Any]:
         """
         Main training loop with DP.
-        
+
         Args:
             train_loader: Training data loader
             val_loader: Validation data loader
-            epochs: Maximum number of epochs
+            epochs: Maximum number of epochs (default: 20, intentionally low for DP training)
             patience: Early stopping patience
             output_dir: Directory to save checkpoints
-        
+
         Returns:
             Dictionary with training results including privacy metrics
         """
@@ -424,58 +445,57 @@ class DPTrainer(BaseTrainer):
         
         self._reset_training_state()
         self.setup_optimizer_and_loss()
-        
-        # Setup PrivacyEngine (this wraps the model and optimizer)
-        # Note: PrivacyEngine modifies model and optimizer in-place
         self.setup_privacy_engine(train_loader)
         
         start_time = time.time()
         
+        # Get validation frequency
+        validation_frequency = max(1, epochs // 5)  # Validate approximately 5 times
+        
         for epoch in range(1, epochs + 1):
-            # Train and validate
+            # Train
             train_loss, train_acc = self.train_epoch(train_loader)
-            val_loss, val_acc = self.validate(val_loader)
             
-            # Store history
-            self.history['epoch'].append(epoch)
-            self.history['train_loss'].append(train_loss)
-            self.history['train_acc'].append(train_acc)
-            self.history['val_loss'].append(val_loss)
-            self.history['val_acc'].append(val_acc)
+            # Validate APENAS a cada N epochs
+            should_validate = (epoch % validation_frequency == 0) or (epoch == epochs)
             
-            # Log privacy budget periodically
-            if self.privacy_engine is not None and epoch % 10 == 0:
-                epsilon = get_epsilon(self.privacy_engine, self.dp_config.target_delta)
-                logger.info(f"Privacy Budget (epoch {epoch}): ε={epsilon:.4f}")
-            
-            # Log
-            self._log_epoch(epoch, train_loss, train_acc, val_loss, val_acc)
-            
-            # Early stopping with best model tracking
-            if val_acc > self.best_val_acc:
-                self.best_val_acc = val_acc
-                self.epochs_no_improve = 0
+            if should_validate:
+                val_loss, val_acc = self.validate(val_loader)
                 
-                # Save best model in memory
-                self.best_model_state = deepcopy(self.model.state_dict())
+                # Store history
+                self.history['epoch'].append(epoch)
+                self.history['train_loss'].append(train_loss)
+                self.history['train_acc'].append(train_acc)
+                self.history['val_loss'].append(val_loss)
+                self.history['val_acc'].append(val_acc)
                 
-                # Also save to disk if output_dir provided
-                if output_path is not None:
-                    self.save_checkpoint(output_path / 'best_model.pth')
+                # Log privacy budget
+                if self.privacy_engine is not None:
+                    epsilon = get_epsilon(self.privacy_engine, self.dp_config.target_delta)
+                    logger.info(f"Epoch {epoch}: ε={epsilon:.4f}")
+                
+                # Log
+                self._log_epoch(epoch, train_loss, train_acc, val_loss, val_acc)
+                
+                # Early stopping
+                if val_acc > self.best_val_acc:
+                    self.best_val_acc = val_acc
+                    self.epochs_no_improve = 0
+                    self.best_model_state = deepcopy(self.model.state_dict())
+                    
+                    if output_path is not None:
+                        self.save_checkpoint(output_path / 'best_model.pth')
+                else:
+                    self.epochs_no_improve += 1
+                
+                if self.epochs_no_improve >= patience:
+                    logger.info(f"Early stopping at epoch {epoch}")
+                    break
             else:
-                self.epochs_no_improve += 1
-            
-            # Step ReduceLROnPlateau scheduler (if applicable)
-            if isinstance(
-                self.scheduler,
-                torch.optim.lr_scheduler.ReduceLROnPlateau
-            ):
-                self.scheduler.step(val_acc)
-            
-            # Early stopping check
-            if self.epochs_no_improve >= patience:
-                self._log_early_stopping(epoch, patience)
-                break
+                # Sem validação - só train
+                self.history['epoch'].append(epoch)
+                self.history['train_loss'].append(train_loss)
+                self.history['train_acc'].append(train_acc)
         
         training_time = time.time() - start_time
         

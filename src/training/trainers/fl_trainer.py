@@ -176,11 +176,11 @@ class FLTrainer(BaseTrainer):
         best_round = 0
         
         for round_num in range(1, epochs + 1):
-            # Train round (sem validação)
+            # Train round (no validation)
+            # Train round (conditional validation)
             train_metrics = server.train_round(global_round=round_num)
             train_loss = train_metrics['avg_loss']
             train_acc = train_metrics['avg_accuracy']
-            
             # Validar APENAS a cada N rounds
             should_validate = (round_num % validation_frequency == 0) or (round_num == epochs)
             
@@ -232,6 +232,10 @@ class FLTrainer(BaseTrainer):
                         f"loss={train_loss:.4f} acc={train_acc:.4f}",
                         flush=True
                     )
+
+                if round_num % 5 == 0 and self.device.type == 'cuda':
+                    # Use centralized cleanup helper
+                    self.cleanup_memory()
         
         elapsed = time.time() - start_time
         

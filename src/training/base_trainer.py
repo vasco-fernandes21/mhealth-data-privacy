@@ -246,6 +246,30 @@ class BaseTrainer(ABC):
         self.history = checkpoint.get('history', self.history)
         self.best_val_acc = checkpoint.get('best_val_acc', 0.0)
 
+    def cleanup_memory(self) -> None:
+        """Free up GPU memory and run Python garbage collector.
+
+        Safe helper used by trainers to reduce memory pressure between
+        epochs/rounds. It forces a Python GC pass and asks PyTorch to
+        release unused CUDA memory. Any exceptions are swallowed to
+        avoid interfering with training flow.
+        """
+        import gc
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            gc.collect()
+        except Exception as e:
+            logger.debug(f"GC collection failed: {e}")
+
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            logger.debug(f"CUDA empty_cache failed: {e}")
+
     @abstractmethod
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
         """

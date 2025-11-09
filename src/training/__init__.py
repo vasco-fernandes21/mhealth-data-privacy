@@ -28,17 +28,7 @@ Usage:
 
 from .base_trainer import BaseTrainer
 
-from .utils import (
-    ProgressBar,
-    GradientMonitor,
-    LearningRateScheduler,
-)
-
 __all__ = [
     # base_trainer
     'BaseTrainer',
-    # utils
-    'ProgressBar',
-    'GradientMonitor',
-    'LearningRateScheduler',
 ]

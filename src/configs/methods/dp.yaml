@@ -1,9 +1,9 @@
 # ================================================================
-# Differential Privacy: DP-SGD with Opacus 2.0
+# Differential Privacy: DP-SGD with Opacus 2.0 - OPTIMIZED
 # ================================================================
 
 method: "dp"
-description: "Differential Privacy via DP-SGD (Opacus 2.0)"
+description: "Differential Privacy via DP-SGD (Opacus 2.0) - Optimized"
 
 differential_privacy:
   enabled: true
@@ -15,14 +15,14 @@ differential_privacy:
   grad_sample_mode: "hooks"
 
 training:
-  batch_size: 64
+  batch_size: 256
   learning_rate: 0.001
   weight_decay: 0.00005
-  epochs: 60
-  lr_scheduler: "cosine_annealing"
-  scheduler_T_max: 50
-  early_stopping_patience: 15
-  num_workers: 2
+  epochs: 20                
+  lr_scheduler: "cosine"
+  scheduler_T_max: 20        
+  early_stopping_patience: 8 
+  num_workers: 0           
   use_amp: false
 
 model:

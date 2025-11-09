@@ -176,6 +176,8 @@ class BaselineTrainer(BaseTrainer):
                 correct += (predicted == batch_y).sum().item()
                 total += batch_y.size(0)
 
+        self.cleanup_memory()
+
         # Step scheduler (cosine doesn't need val metrics)
         if self.scheduler is not None and \
            not isinstance(self.scheduler,

@@ -40,8 +40,23 @@ def get_device() -> str:
 
 
 def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                             batch_size=128):
-    """Create simple, fast dataloaders."""
+                             batch_size=128, num_workers=0):
+    """
+    Create simple, fast dataloaders.
+
+    Parameters:
+        X_train (np.ndarray): Training features.
+        y_train (np.ndarray): Training labels.
+        X_val (np.ndarray): Validation features.
+        y_val (np.ndarray): Validation labels.
+        X_test (np.ndarray): Test features.
+        y_test (np.ndarray): Test labels.
+        batch_size (int, optional): Batch size for dataloaders. Default is 128.
+        num_workers (int, optional): Number of worker processes for data loading. Default is 0.
+
+    Returns:
+        tuple: (train_loader, val_loader, test_loader)
+    """
     from torch.utils.data import TensorDataset, DataLoader
     
     # Convert to tensors once
@@ -58,15 +73,15 @@ def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
     test_dataset = TensorDataset(X_test_t, y_test_t)
     
     # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     
     return train_loader, val_loader, test_loader
 
 
 def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients, 
-                         batch_size=128):
+                         batch_size=128, num_workers=0):
     """Create FL dataloaders (simple subject-aware partition)."""
     from torch.utils.data import TensorDataset, DataLoader
     
@@ -87,7 +102,7 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients,
         y_client_t = torch.from_numpy(y_train[start:end].astype(np.int64))
         
         train_dataset = TensorDataset(X_client_t, y_client_t)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
         train_loaders.append(train_loader)
         
         # Val split
@@ -98,7 +113,7 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients,
         y_val_client_t = torch.from_numpy(y_val[val_start:val_end].astype(np.int64))
         
         val_dataset = TensorDataset(X_val_client_t, y_val_client_t)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
         val_loaders.append(val_loader)
     
     return train_loaders, val_loaders
@@ -217,12 +232,22 @@ class SimpleExperimentRunner:
             batch_size = config['training'].get('batch_size', 32)
             epochs = config['training'].get('epochs', 40)
             patience = config['training'].get('early_stopping_patience', 10)
+            num_workers = config['training'].get('num_workers', 0)
+
+            # Print / log effective training parameters so the user can see them
+            self.logger.info(
+                f"Training config:\n"
+                f"  batch_size={batch_size}\n"
+                f"  num_workers={num_workers}\n"
+                f"  epochs={epochs}\n"
+                f"  patience={patience}"
+            )
             
             # Run training based on method
             if method == 'baseline':
                 print("\n📊 Training: Baseline")
                 train_loader, val_loader, test_loader = create_simple_dataloaders(
-                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size
+                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size, num_workers=num_workers
                 )
                 trainer = BaselineTrainer(model, config, device=device)
                 training_results = trainer.fit(
@@ -235,7 +260,7 @@ class SimpleExperimentRunner:
             elif method == 'dp':
                 print("\n🔒 Training: Differential Privacy")
                 train_loader, val_loader, test_loader = create_simple_dataloaders(
-                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size
+                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size, num_workers=num_workers
                 )
                 trainer = DPTrainer(model, config, device=device)
                 training_results = trainer.fit(
@@ -251,11 +276,11 @@ class SimpleExperimentRunner:
                 print(f"   Clients: {n_clients}")
                 
                 train_loaders, val_loaders = create_fl_dataloaders(
-                    X_train, y_train, X_val, y_val, n_clients, batch_size
+                    X_train, y_train, X_val, y_val, n_clients, batch_size, num_workers=num_workers
                 )
                 
                 _, _, test_loader = create_simple_dataloaders(
-                    X_test, y_test, X_test, y_test, X_test, y_test, batch_size
+                    X_test, y_test, X_test, y_test, X_test, y_test, batch_size, num_workers=num_workers
                 )
                 
                 client_ids = [f"client_{i:02d}" for i in range(n_clients)]
@@ -364,7 +389,7 @@ class SimpleExperimentRunner:
             print(f"\n[{idx}/{total}]", flush=True)
             self.run_experiment(exp_name, exp_config, device)
             
-            # Cleanup periodically
+            # Perform memory cleanup every 3 experiments
             if idx % 3 == 0:
                 gc.collect()
                 if device == 'cuda':
@@ -636,6 +661,16 @@ Examples:
     device = get_device() if args.device == 'auto' else args.device
     print(f"\n🖥️  Device: {device}")
     
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+        
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"🚀 CUDA Device: {gpu_name}")
+        print(f"💾 CUDA Memory: {gpu_memory:.1f}GB\n")
+        
     # Create runner
     runner = SimpleExperimentRunner()
     

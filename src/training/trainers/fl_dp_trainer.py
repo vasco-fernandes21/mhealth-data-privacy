@@ -166,6 +166,9 @@ class FLDPTrainer(FLTrainer):
             if self.epochs_no_improve >= patience:
                 self.logger.info(f"Early stopping after {round_num} rounds")
                 break
+            # Periodic cleanup to reduce memory pressure during long FL+DP runs
+            if round_num % 5 == 0 and self.device.type == 'cuda':
+                self.cleanup_memory()
         
         elapsed_time = time.time() - start_time
         
