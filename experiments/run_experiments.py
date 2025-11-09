@@ -210,6 +210,17 @@ class SimpleExperimentRunner:
             set_reproducible(seed=seed, device=device, verbose=False)
             config = self._get_config(dataset, method, exp_config.get('hyperparameters'))
             
+            # Ensure model section exists (merge should handle this, but add safety check)
+            if 'model' not in config:
+                self.logger.warning(f"Config missing 'model' section, adding defaults")
+                config['model'] = {
+                    'input_projection': 128,
+                    'lstm_units': 64,
+                    'lstm_layers': 1,
+                    'dropout': 0.3,
+                    'dense_layers': [128]
+                }
+            
             # Load data
             data = self._load_data(dataset)
             X_train, X_val, X_test, y_train, y_val, y_test, scaler, info, subjects = data
@@ -217,6 +228,8 @@ class SimpleExperimentRunner:
             print(f"Loaded: train={X_train.shape} val={X_val.shape} test={X_test.shape}")
             
             # Setup config - input_dim é número de canais
+            if 'dataset' not in config:
+                config['dataset'] = {}
             config['dataset']['input_dim'] = X_train.shape[1]
             
             # Create model

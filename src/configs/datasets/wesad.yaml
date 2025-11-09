@@ -7,12 +7,12 @@ dataset:
   class_weights: [0.714, 1.667]
 
 model:
-  input_projection: 128
-  lstm_units: 64
+  input_projection: 64
+  lstm_units: 32
   lstm_layers: 1
   bidirectional: true
   dropout: 0.2
-  dense_layers: [64, 32]
+  dense_layers: [32]
 
 training:
   epochs: 40
@@ -22,11 +22,11 @@ training:
   weight_decay: 0.0001
   loss: "cross_entropy"
   label_smoothing: 0.1
-  lr_scheduler: "cosine_annealing"
+  scheduler: "cosine"
   scheduler_T_max: 35
   early_stopping_patience: 10
   gradient_clipping: true
   gradient_clip_norm: 1.0
-  num_workers: 2
+  num_workers: 0
   pin_memory: true
   use_amp: true
