@@ -373,6 +373,12 @@ class DPTrainer(BaseTrainer):
             raise
         
         return self.dp_train_loader if self.dp_train_loader else train_loader
+    
+    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
+        """
+        Train for one epoch with DP.
+        
+        Args:
             train_loader: Training data loader (may be DP-wrapped)
         
         Returns:
