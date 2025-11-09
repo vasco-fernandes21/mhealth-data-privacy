@@ -15,7 +15,7 @@ model:
 
 training:
   epochs: 40
-  batch_size: 512
+  batch_size: 256
   learning_rate: 0.002
   optimizer: "adamw"
   weight_decay: 0.0001

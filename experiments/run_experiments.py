@@ -40,9 +40,11 @@ def get_device() -> str:
 
 
 def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                             batch_size=128, num_workers=0):
+                             batch_size=128, num_workers=0,
+                             pin_memory=False, persistent_workers=False,
+                             prefetch_factor=2):
     """
-    Create simple, fast dataloaders.
+    Create simple, fast dataloaders with DP compatibility.
 
     Parameters:
         X_train (np.ndarray): Training features.
@@ -52,7 +54,10 @@ def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         X_test (np.ndarray): Test features.
         y_test (np.ndarray): Test labels.
         batch_size (int, optional): Batch size for dataloaders. Default is 128.
-        num_workers (int, optional): Number of worker processes for data loading. Default is 0.
+        num_workers (int, optional): Number of worker processes. Default is 0.
+        pin_memory (bool, optional): Pin memory for faster GPU transfer.
+        persistent_workers (bool, optional): Keep workers alive between epochs.
+        prefetch_factor (int, optional): Prefetch factor for data loading.
 
     Returns:
         tuple: (train_loader, val_loader, test_loader)
@@ -72,17 +77,62 @@ def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
     val_dataset = TensorDataset(X_val_t, y_val_t)
     test_dataset = TensorDataset(X_test_t, y_test_t)
     
-    # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    # Create dataloaders with DP compatibility (drop_last=True)
+    # Only pass prefetch_factor/persistent_workers when num_workers > 0
+    dl_kwargs = dict(
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=True  # ✅ CRITICAL for DP: ensures all batches same size
+    )
+    if num_workers and num_workers > 0:
+        dl_kwargs.update(
+            persistent_workers=persistent_workers,
+            prefetch_factor=prefetch_factor
+        )
+
+    train_loader = DataLoader(train_dataset, shuffle=True, **dl_kwargs)
+    val_loader = DataLoader(val_dataset, shuffle=False, **dl_kwargs)
+    
+    # Test loader: drop_last=False (we want to evaluate on all test samples)
+    test_dl_kwargs = dict(
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=False
+    )
+    if num_workers and num_workers > 0:
+        test_dl_kwargs.update(
+            persistent_workers=persistent_workers,
+            prefetch_factor=prefetch_factor
+        )
+    test_loader = DataLoader(test_dataset, shuffle=False, **test_dl_kwargs)
     
     return train_loader, val_loader, test_loader
 
 
 def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients, 
-                         batch_size=128, num_workers=0):
-    """Create FL dataloaders (simple subject-aware partition)."""
+                         batch_size=128, num_workers=0,
+                         pin_memory=False, persistent_workers=False,
+                         prefetch_factor=2):
+    """
+    Create FL dataloaders with DP compatibility.
+    
+    Parameters:
+        X_train: Training features
+        y_train: Training labels
+        X_val: Validation features
+        y_val: Validation labels
+        n_clients: Number of FL clients
+        batch_size: Batch size
+        num_workers: Number of workers
+        pin_memory: Pin memory flag
+        persistent_workers: Persistent workers flag
+        prefetch_factor: Prefetch factor
+    
+    Returns:
+        tuple: (train_loaders, val_loaders)
+    """
     from torch.utils.data import TensorDataset, DataLoader
     
     train_loaders = []
@@ -102,7 +152,20 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients,
         y_client_t = torch.from_numpy(y_train[start:end].astype(np.int64))
         
         train_dataset = TensorDataset(X_client_t, y_client_t)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        
+        dl_kwargs = dict(
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=True  # ✅ CRITICAL for DP
+        )
+        if num_workers and num_workers > 0:
+            dl_kwargs.update(
+                persistent_workers=persistent_workers,
+                prefetch_factor=prefetch_factor
+            )
+
+        train_loader = DataLoader(train_dataset, shuffle=True, **dl_kwargs)
         train_loaders.append(train_loader)
         
         # Val split
@@ -113,7 +176,7 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, n_clients,
         y_val_client_t = torch.from_numpy(y_val[val_start:val_end].astype(np.int64))
         
         val_dataset = TensorDataset(X_val_client_t, y_val_client_t)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        val_loader = DataLoader(val_dataset, shuffle=False, **dl_kwargs)
         val_loaders.append(val_loader)
     
     return train_loaders, val_loaders
@@ -224,8 +287,8 @@ class SimpleExperimentRunner:
             n_params = sum(p.numel() for p in model.parameters())
             print(f"Model: {n_params:,} parameters")
             
-            # Output directory
-            output_dir = self.results_dir / method / dataset / f'seed_{seed}'
+            # Output directory - organized by method/dataset/experiment_name
+            output_dir = self.results_dir / method / dataset / exp_name
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # Get training config
@@ -233,21 +296,29 @@ class SimpleExperimentRunner:
             epochs = config['training'].get('epochs', 40)
             patience = config['training'].get('early_stopping_patience', 10)
             num_workers = config['training'].get('num_workers', 0)
+            pin_memory = config['training'].get('pin_memory', False)
+            persistent_workers = config['training'].get('persistent_workers', num_workers > 0)
+            prefetch_factor = config['training'].get('prefetch_factor', 2)
 
-            # Print / log effective training parameters so the user can see them
+            # Print / log effective training parameters
             self.logger.info(
                 f"Training config:\n"
                 f"  batch_size={batch_size}\n"
                 f"  num_workers={num_workers}\n"
                 f"  epochs={epochs}\n"
-                f"  patience={patience}"
+                f"  patience={patience}\n"
+                f"  drop_last=True (for DP compatibility)"
             )
             
             # Run training based on method
             if method == 'baseline':
                 print("\n📊 Training: Baseline")
                 train_loader, val_loader, test_loader = create_simple_dataloaders(
-                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size, num_workers=num_workers
+                    X_train, y_train, X_val, y_val, X_test, y_test,
+                    batch_size=batch_size, num_workers=num_workers,
+                    pin_memory=pin_memory,
+                    persistent_workers=persistent_workers,
+                    prefetch_factor=prefetch_factor
                 )
                 trainer = BaselineTrainer(model, config, device=device)
                 training_results = trainer.fit(
@@ -260,7 +331,11 @@ class SimpleExperimentRunner:
             elif method == 'dp':
                 print("\n🔒 Training: Differential Privacy")
                 train_loader, val_loader, test_loader = create_simple_dataloaders(
-                    X_train, y_train, X_val, y_val, X_test, y_test, batch_size, num_workers=num_workers
+                    X_train, y_train, X_val, y_val, X_test, y_test,
+                    batch_size=batch_size, num_workers=num_workers,
+                    pin_memory=pin_memory,
+                    persistent_workers=persistent_workers,
+                    prefetch_factor=prefetch_factor
                 )
                 trainer = DPTrainer(model, config, device=device)
                 training_results = trainer.fit(
@@ -276,11 +351,19 @@ class SimpleExperimentRunner:
                 print(f"   Clients: {n_clients}")
                 
                 train_loaders, val_loaders = create_fl_dataloaders(
-                    X_train, y_train, X_val, y_val, n_clients, batch_size, num_workers=num_workers
+                    X_train, y_train, X_val, y_val, n_clients,
+                    batch_size=batch_size, num_workers=num_workers,
+                    pin_memory=pin_memory,
+                    persistent_workers=persistent_workers,
+                    prefetch_factor=prefetch_factor
                 )
                 
                 _, _, test_loader = create_simple_dataloaders(
-                    X_test, y_test, X_test, y_test, X_test, y_test, batch_size, num_workers=num_workers
+                    X_test, y_test, X_test, y_test, X_test, y_test,
+                    batch_size=batch_size, num_workers=num_workers,
+                    pin_memory=pin_memory,
+                    persistent_workers=persistent_workers,
+                    prefetch_factor=prefetch_factor
                 )
                 
                 client_ids = [f"client_{i:02d}" for i in range(n_clients)]
@@ -299,41 +382,15 @@ class SimpleExperimentRunner:
             
             elapsed = time.time() - start_time
             
-            # Save detailed results
-            results_data = {
-                'experiment_info': {
-                    'name': exp_name,
-                    'dataset': dataset,
-                    'method': method,
-                    'seed': seed,
-                    'timestamp': datetime.now().isoformat(),
-                    'hyperparameters': exp_config.get('hyperparameters', {})
-                },
-                'training_metrics': {
-                    'total_epochs': training_results.get('total_epochs', 0),
-                    'best_val_acc': training_results.get('best_val_acc', 0),
-                    'training_time_seconds': training_results.get('training_time_seconds', 0),
-                    'final_train_loss': training_results.get('final_train_loss', 0),
-                    'final_train_acc': training_results.get('final_train_acc', 0),
-                    'final_val_loss': training_results.get('final_val_loss', 0),
-                    'final_val_acc': training_results.get('final_val_acc', 0),
-                },
-                'test_metrics': {
-                    'accuracy': test_metrics.get('accuracy', 0),
-                    'precision': test_metrics.get('precision', 0),
-                    'recall': test_metrics.get('recall', 0),
-                    'f1_score': test_metrics.get('f1_score', 0),
-                    'confusion_matrix': test_metrics.get('confusion_matrix', []),
-                    'class_names': test_metrics.get('class_names', [])
-                },
-                'timing': {
-                    'total_time_seconds': elapsed,
-                    'training_time_seconds': training_results.get('training_time_seconds', 0),
-                    'evaluation_time_seconds': elapsed - training_results.get('training_time_seconds', 0)
-                }
-            }
+            # Build results data with method-specific information
+            results_data = self._build_results_data(
+                exp_name, dataset, method, seed, elapsed,
+                training_results, test_metrics, config, exp_config
+            )
             
-            with open(output_dir / 'results.json', 'w') as f:
+            # Save results to JSON
+            results_file = output_dir / 'results.json'
+            with open(results_file, 'w') as f:
                 json.dump(results_data, f, indent=2)
             
             # Print summary
@@ -344,6 +401,8 @@ class SimpleExperimentRunner:
             
             if method == 'dp' and 'final_epsilon' in test_metrics:
                 print(f"   Final ε: {test_metrics['final_epsilon']:.4f}")
+            elif method == 'fl':
+                print(f"   Global Rounds: {training_results.get('total_rounds', 0)}")
             
             result = {
                 'name': exp_name,
@@ -378,6 +437,92 @@ class SimpleExperimentRunner:
         self.results.append(result)
         return result
 
+    def _build_results_data(self, exp_name: str, dataset: str, method: str,
+                           seed: int, elapsed: float, training_results: Dict,
+                           test_metrics: Dict, config: Dict,
+                           exp_config: Dict) -> Dict:
+        """
+        Build results data with method-specific information.
+        
+        Args:
+            exp_name: Experiment name
+            dataset: Dataset name
+            method: Method (baseline, dp, fl, dp_fl)
+            seed: Random seed
+            elapsed: Total elapsed time
+            training_results: Training results from trainer
+            test_metrics: Test metrics from trainer
+            config: Full config
+            exp_config: Experiment-specific config
+        
+        Returns:
+            Dictionary with complete results data
+        """
+        results_data = {
+            'experiment_info': {
+                'name': exp_name,
+                'dataset': dataset,
+                'method': method,
+                'seed': seed,
+                'timestamp': datetime.now().isoformat(),
+                'hyperparameters': exp_config.get('hyperparameters', {})
+            },
+            'training_metrics': {
+                'total_epochs': training_results.get('total_epochs', 0),
+                'best_val_acc': training_results.get('best_val_acc', 0),
+                'training_time_seconds': training_results.get('training_time_seconds', 0),
+                'final_train_loss': training_results.get('final_train_loss', 0),
+                'final_train_acc': training_results.get('final_train_acc', 0),
+                'final_val_loss': training_results.get('final_val_loss', 0),
+                'final_val_acc': training_results.get('final_val_acc', 0),
+            },
+            'test_metrics': {
+                'accuracy': test_metrics.get('accuracy', 0),
+                'precision': test_metrics.get('precision', 0),
+                'recall': test_metrics.get('recall', 0),
+                'f1_score': test_metrics.get('f1_score', 0),
+                'confusion_matrix': test_metrics.get('confusion_matrix', []),
+                'class_names': test_metrics.get('class_names', [])
+            },
+            'timing': {
+                'total_time_seconds': elapsed,
+                'training_time_seconds': training_results.get('training_time_seconds', 0),
+                'evaluation_time_seconds': elapsed - training_results.get('training_time_seconds', 0)
+            }
+        }
+        
+        # Add method-specific metrics
+        if method == 'dp':
+            results_data['privacy_metrics'] = {
+                'final_epsilon': test_metrics.get('final_epsilon', float('inf')),
+                'target_delta': config.get('differential_privacy', {}).get('target_delta', 1e-5),
+                'noise_multiplier': config.get('differential_privacy', {}).get('noise_multiplier', 0.9),
+                'max_grad_norm': config.get('differential_privacy', {}).get('max_grad_norm', 1.0),
+            }
+        
+        elif method == 'fl':
+            results_data['federated_metrics'] = {
+                'total_rounds': training_results.get('total_rounds', 0),
+                'best_round': training_results.get('best_round', 0),
+                'n_clients': training_results.get('n_clients', 0),
+                'validation_frequency': training_results.get('validation_frequency', 0),
+            }
+        
+        elif method == 'dp_fl':
+            results_data['privacy_metrics'] = {
+                'final_epsilon': test_metrics.get('final_epsilon', float('inf')),
+                'target_delta': config.get('differential_privacy', {}).get('target_delta', 1e-5),
+                'client_noise_multiplier': config.get('differential_privacy', {}).get('client_noise_multiplier', 0.3),
+                'server_noise_multiplier': config.get('differential_privacy', {}).get('server_noise_multiplier', 0.5),
+            }
+            results_data['federated_metrics'] = {
+                'total_rounds': training_results.get('total_rounds', 0),
+                'best_round': training_results.get('best_round', 0),
+                'n_clients': training_results.get('n_clients', 0),
+            }
+        
+        return results_data
+
     def run_all(self, experiments: Dict, device: str) -> List[Dict]:
         """Run all experiments."""
         total = len(experiments)
@@ -389,42 +534,37 @@ class SimpleExperimentRunner:
             print(f"\n[{idx}/{total}]", flush=True)
             self.run_experiment(exp_name, exp_config, device)
             
-            # Perform memory cleanup every 3 experiments
-            if idx % 3 == 0:
-                gc.collect()
-                if device == 'cuda':
-                    torch.cuda.empty_cache()
+            # Cleanup every experiment (aggressive for Colab)
+            gc.collect()
+            if device == 'cuda':
+                torch.cuda.empty_cache()
         
         return self.results
 
     def _create_case_key(self, result: Dict) -> str:
-        """Create a unique key for grouping experiments by case (ignoring seed)."""
+        """Create a unique key for grouping by hyperparameters (not by seed)."""
         dataset = result.get('dataset', 'unknown')
         method = result.get('method', 'unknown')
         
-        # Try to extract hyperparameters from experiment name or load from file
-        exp_name = result.get('name', '')
         hyperparams_str = ''
-        
-        # Try to load detailed results to get hyperparameters
-        seed = result.get('seed', 'unknown')
         if result.get('success', False):
-            results_file = self.results_dir / method / dataset / f'seed_{seed}' / 'results.json'
+            exp_name = result.get('name', '')
+            results_file = self.results_dir / method / dataset / exp_name / 'results.json'
             if results_file.exists():
                 try:
                     with open(results_file, 'r') as f:
                         detailed = json.load(f)
                     hyperparams = detailed.get('experiment_info', {}).get('hyperparameters', {})
-                    # Create a string representation of hyperparameters
                     hyperparams_str = json.dumps(hyperparams, sort_keys=True)
                 except:
                     pass
         
         return f"{dataset}::{method}::{hyperparams_str}"
     
-    def _load_detailed_results(self, method: str, dataset: str, seed: int) -> Optional[Dict]:
+    def _load_detailed_results(self, method: str, dataset: str, 
+                              exp_name: str) -> Optional[Dict]:
         """Load detailed results from JSON file."""
-        results_file = self.results_dir / method / dataset / f'seed_{seed}' / 'results.json'
+        results_file = self.results_dir / method / dataset / exp_name / 'results.json'
         if not results_file.exists():
             return None
         
@@ -439,7 +579,6 @@ class SimpleExperimentRunner:
         if not results_group:
             return {}
         
-        # Load detailed results for all runs in the group
         detailed_results = []
         for result in results_group:
             if not result.get('success', False):
@@ -447,16 +586,15 @@ class SimpleExperimentRunner:
             
             dataset = result.get('dataset')
             method = result.get('method')
-            seed = result.get('seed')
+            exp_name = result.get('name')
             
-            detailed = self._load_detailed_results(method, dataset, seed)
+            detailed = self._load_detailed_results(method, dataset, exp_name)
             if detailed:
                 detailed_results.append(detailed)
         
         if not detailed_results:
             return {}
         
-        # Extract metrics from detailed results
         metrics_to_aggregate = {
             'test_accuracy': [],
             'test_f1_score': [],
@@ -465,6 +603,11 @@ class SimpleExperimentRunner:
             'best_val_acc': [],
             'training_time_seconds': [],
             'total_epochs': []
+        }
+        
+        # Add privacy metrics for DP
+        privacy_metrics = {
+            'final_epsilon': []
         }
         
         for detailed in detailed_results:
@@ -485,8 +628,13 @@ class SimpleExperimentRunner:
                 metrics_to_aggregate['training_time_seconds'].append(training_metrics['training_time_seconds'])
             if 'total_epochs' in training_metrics:
                 metrics_to_aggregate['total_epochs'].append(training_metrics['total_epochs'])
+            
+            # Privacy metrics
+            if 'final_epsilon' in detailed.get('privacy_metrics', {}):
+                privacy_metrics['final_epsilon'].append(
+                    detailed['privacy_metrics']['final_epsilon']
+                )
         
-        # Calculate statistics for each metric
         aggregated = {}
         for metric_name, values in metrics_to_aggregate.items():
             if not values:
@@ -501,10 +649,27 @@ class SimpleExperimentRunner:
                 'n_runs': len(values)
             }
         
+        # Add privacy metrics
+        for metric_name, values in privacy_metrics.items():
+            if not values:
+                continue
+            
+            values_array = np.array(values)
+            # Filter out inf values
+            finite_values = values_array[np.isfinite(values_array)]
+            if len(finite_values) > 0:
+                aggregated[metric_name] = {
+                    'mean': float(np.mean(finite_values)),
+                    'std': float(np.std(finite_values)),
+                    'min': float(np.min(finite_values)),
+                    'max': float(np.max(finite_values)),
+                    'n_runs': len(finite_values)
+                }
+        
         return aggregated
     
     def calculate_aggregated_results(self) -> Dict[str, Any]:
-        """Calculate aggregated metrics across multiple runs for each case."""
+        """Calculate aggregated metrics across multiple runs grouped by hyperparameters."""
         if not self.results:
             return {}
         
@@ -512,7 +677,6 @@ class SimpleExperimentRunner:
         if not successful_results:
             return {}
         
-        # Group results by case (dataset + method + hyperparameters)
         grouped_results = {}
         for result in successful_results:
             case_key = self._create_case_key(result)
@@ -520,22 +684,18 @@ class SimpleExperimentRunner:
                 grouped_results[case_key] = []
             grouped_results[case_key].append(result)
         
-        # Calculate aggregated metrics for each group
         aggregated_results = {}
         for case_key, results_group in grouped_results.items():
-            # Get case info from first result
             first_result = results_group[0]
             dataset = first_result.get('dataset', 'unknown')
             method = first_result.get('method', 'unknown')
+            exp_name = first_result.get('name', '')
             
-            # Load hyperparameters from first detailed result
-            seed = first_result.get('seed')
-            detailed = self._load_detailed_results(method, dataset, seed)
+            detailed = self._load_detailed_results(method, dataset, exp_name)
             hyperparams = {}
             if detailed:
                 hyperparams = detailed.get('experiment_info', {}).get('hyperparameters', {})
             
-            # Calculate aggregated metrics
             aggregated_metrics = self._calculate_aggregated_metrics(results_group)
             
             aggregated_results[case_key] = {
@@ -543,6 +703,7 @@ class SimpleExperimentRunner:
                 'method': method,
                 'hyperparameters': hyperparams,
                 'n_runs': len(results_group),
+                'experiment_names': [r.get('name') for r in results_group],
                 'seeds': [r.get('seed') for r in results_group],
                 'metrics': aggregated_metrics
             }
@@ -556,8 +717,6 @@ class SimpleExperimentRunner:
             return
         
         successful_results = [r for r in self.results if r['success']]
-        
-        # Calculate aggregated metrics
         aggregated_results = self.calculate_aggregated_results()
         
         summary = {
@@ -587,18 +746,20 @@ class SimpleExperimentRunner:
         print(f"⏱️  Total time: {summary['total_time_hours']:.2f} hours")
         print(f"💾 Saved to: {output_file}")
         
-        # Print aggregated results summary
         if aggregated_results:
             print(f"\n{'='*60}")
-            print(f"📊 AGGREGATED METRICS (across multiple runs)")
+            print(f"📊 AGGREGATED METRICS (grouped by hyperparameters)")
             print(f"{'='*60}")
             for case_key, case_data in aggregated_results.items():
                 dataset = case_data['dataset']
                 method = case_data['method']
                 n_runs = case_data['n_runs']
+                hyperparams = case_data.get('hyperparameters', {})
                 metrics = case_data.get('metrics', {})
                 
                 print(f"\n{method.upper()} - {dataset} ({n_runs} runs)")
+                print(f"  Hyperparameters: {json.dumps(hyperparams, indent=16)}")
+                
                 if metrics:
                     if 'test_accuracy' in metrics:
                         acc = metrics['test_accuracy']
@@ -608,6 +769,10 @@ class SimpleExperimentRunner:
                         f1 = metrics['test_f1_score']
                         print(f"  F1-Score:  {f1['mean']:.4f} ± {f1['std']:.4f} "
                               f"(min: {f1['min']:.4f}, max: {f1['max']:.4f})")
+                    if 'final_epsilon' in metrics:
+                        eps = metrics['final_epsilon']
+                        print(f"  Privacy (ε): {eps['mean']:.4f} ± {eps['std']:.4f} "
+                              f"(min: {eps['min']:.4f}, max: {eps['max']:.4f})")
         
         print(f"{'='*60}\n")
 
@@ -685,12 +850,10 @@ Examples:
         try:
             scenario_data = runner.load_scenario(scenario)
             
-            # Validate scenario_data
             if scenario_data is None:
                 print(f"⚠️  Scenario {scenario} returned None")
                 continue
             
-            # Get experiments dictionary
             experiments = scenario_data.get('experiments')
             if experiments is None:
                 print(f"⚠️  Scenario {scenario} has no 'experiments' key")
@@ -700,10 +863,9 @@ Examples:
                 print(f"⚠️  Scenario {scenario} 'experiments' is not a dict: {type(experiments)}")
                 continue
             
-            # Filter only enabled experiments
             enabled_experiments = {
                 name: config for name, config in experiments.items()
-                if isinstance(config, dict) and config.get('enabled', True)  # Default to True if not specified
+                if isinstance(config, dict) and config.get('enabled', True)
             }
             all_experiments.update(enabled_experiments)
         except FileNotFoundError:

@@ -321,12 +321,13 @@ class DPTrainer(BaseTrainer):
         """Setup learning rate scheduler."""
         cfg = self.config['training']
         total_epochs = int(cfg.get('epochs', 100))
-        scheduler_name = cfg.get('scheduler', 'cosine').lower()
-        
-        if scheduler_name == 'cosine':
+        scheduler_name = (cfg.get('scheduler') or cfg.get('lr_scheduler') or 'cosine').lower()
+        scheduler_T_max = int(cfg.get('scheduler_T_max', total_epochs))
+
+        if scheduler_name in ('cosine', 'cosine_annealing'):
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                T_max=total_epochs,
+                T_max=scheduler_T_max,
                 eta_min=1e-6
             )
         elif scheduler_name == 'plateau':
