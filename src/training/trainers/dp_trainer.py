@@ -1,425 +1,472 @@
 #!/usr/bin/env python3
 """
-Differential Privacy Trainer using Opacus.
-
-Implements privacy-preserving training with per-sample gradient clipping
-and Gaussian noise addition.
+DP Trainer - Version with fair-comparison optimizations.
 """
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional
 import numpy as np
-import json
 import time
 from pathlib import Path
+from copy import deepcopy
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, precision_recall_fscore_support
+)
+
+from opacus import PrivacyEngine
+from src.training.base_trainer import BaseTrainer
+from src.utils.logging_utils import get_logger
 
 try:
-    from opacus import PrivacyEngine
-    from opacus.utils.batch_memory_manager import BatchMemoryManager
-    OPACUS_AVAILABLE = True
+    from src.losses.focal_loss import FocalLoss
 except ImportError:
-    OPACUS_AVAILABLE = False
+    FocalLoss = None
+
+logger = get_logger(__name__)
 
 
-class DPTrainer:
-    """
-    Trainer with Differential Privacy via Opacus.
+class DPConfig:
+    """Configuration for Differential Privacy training."""
 
-    Features:
-    - Per-sample gradient clipping
-    - Gaussian noise addition
-    - Privacy accounting (epsilon-delta)
-    - Early stopping
-    - Batch memory management
-    """
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize DP config with type coercion."""
+        dp_cfg = config.get('differential_privacy', {})
 
-    def __init__(self, model: nn.Module, config: Dict[str, Any],
-                 device: str = 'cpu'):
-        """
-        Initialize DP trainer.
+        self.enabled = bool(dp_cfg.get('enabled', False))
 
-        Args:
-            model: Neural network model
-            config: Configuration dictionary
-            device: Computing device (cuda/mps/cpu)
-        """
-        if not OPACUS_AVAILABLE:
-            raise RuntimeError(
-                "Opacus not installed. "
-                "Install with: pip install opacus"
+        try:
+            self.noise_multiplier = float(
+                dp_cfg.get('noise_multiplier', 0.9)
             )
+        except (TypeError, ValueError):
+            self.noise_multiplier = 0.9
 
-        self.model = model
-        self.config = config
-        self.device = device
-        self.logger = self._setup_logger()
+        try:
+            self.max_grad_norm = float(dp_cfg.get('max_grad_norm', 1.0))
+        except (TypeError, ValueError):
+            self.max_grad_norm = 1.0
 
-        self.dp_config = config.get('differential_privacy', {})
-        self.noise_multiplier = self.dp_config.get('noise_multiplier', 1.0)
-        self.max_grad_norm = self.dp_config.get('max_grad_norm', 1.0)
-        self.delta = self.dp_config.get('delta', 1e-5)
-        self.target_epsilon = self.dp_config.get('target_epsilon', None)
+        try:
+            self.delta = float(dp_cfg.get('delta', 1e-5))
+        except (TypeError, ValueError):
+            self.delta = 1e-5
 
-        self.training_config = config.get('training', {})
-        self.lr = self.training_config.get('learning_rate', 1e-3)
-        self.weight_decay = self.training_config.get('weight_decay', 0.0)
+        self.poisson_sampling = bool(
+            dp_cfg.get('poisson_sampling', True)
+        )
+        self.accounting_method = str(
+            dp_cfg.get('accounting_method', 'rdp')
+        )
+        self.grad_sample_mode = str(
+            dp_cfg.get('grad_sample_mode', 'hooks')
+        )
 
+    def __repr__(self) -> str:
+        return (
+            f"DPConfig(noise_mult={self.noise_multiplier}, "
+            f"max_grad={self.max_grad_norm}, delta={self.delta})"
+        )
+
+
+def check_dp_compatibility(model: nn.Module) -> Tuple[bool, list]:
+    """Check if model is DP-compatible with Opacus."""
+    incompatible_layers = []
+
+    for name, module in model.named_modules():
+        if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d,
+                              nn.BatchNorm3d)):
+            incompatible_layers.append((name, type(module).__name__))
+
+    is_compatible = len(incompatible_layers) == 0
+
+    if not is_compatible:
+        logger.warning(
+            f"Model has {len(incompatible_layers)} incompatible layers:"
+        )
+        for name, layer_type in incompatible_layers:
+            logger.warning(f"  - {name}: {layer_type}")
+        logger.warning("Replace BatchNorm with GroupNorm or LayerNorm")
+    else:
+        logger.info("Model is DP-compatible")
+
+    return is_compatible, incompatible_layers
+
+
+class DPTrainer(BaseTrainer):
+    """Differential Privacy Trainer using Opacus."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dp_config = DPConfig(self.config)
         self.privacy_engine = None
-        self.optimizer = None
-        self.train_history = []
-        self.val_history = []
+        self.dp_train_loader = None
+        
+        # Otimizações de I/O transparentes
+        torch.backends.cudnn.benchmark = True
 
-    def _setup_logger(self):
-        """Simple logger setup."""
-        import logging
-        logger = logging.getLogger('DPTrainer')
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    def setup_optimizer_and_loss(self) -> None:
+        """Setup optimizer, loss, and scheduler."""
+        cfg = self.config['training']
+
+        lr = float(cfg.get('learning_rate', 1e-3))
+        weight_decay = float(cfg.get('weight_decay', 1e-4))
+        opt_name = cfg.get('optimizer', 'adamw').lower()
+
+        if opt_name == 'adamw':
+            self.optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=weight_decay
             )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
-        return logger
-
-    def _setup_privacy_engine(self,
-                             train_loader: DataLoader) -> PrivacyEngine:
-        """
-        Setup Opacus privacy engine.
-
-        Args:
-            train_loader: Training data loader
-
-        Returns:
-            Configured PrivacyEngine
-        """
-        privacy_engine = PrivacyEngine()
-
-        self.model, self.optimizer, train_loader = (
-            privacy_engine.make_private(
-                module=self.model,
-                optimizer=self.optimizer,
-                data_loader=train_loader,
-                noise_multiplier=self.noise_multiplier,
-                max_grad_norm=self.max_grad_norm,
-                clipping_mode="per_sample"
+        elif opt_name == 'adam':
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=weight_decay
             )
-        )
+        else:
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=weight_decay,
+                momentum=0.9
+            )
 
-        return privacy_engine, train_loader
+        loss_name = cfg.get('loss', 'cross_entropy').lower()
+        class_weights = cfg.get('class_weights', None)
 
-    def _create_optimizer(self) -> optim.Optimizer:
-        """Create optimizer."""
-        return optim.Adam(
-            self.model.parameters(),
-            lr=self.lr,
-            weight_decay=self.weight_decay
-        )
+        if class_weights is not None:
+            weights_tensor = torch.tensor(
+                class_weights, dtype=torch.float32, device=self.device
+            )
+        else:
+            weights_tensor = None
 
-    def _train_epoch(self, train_loader: DataLoader,
-                     criterion: nn.Module) -> Dict[str, float]:
-        """
-        Train for one epoch.
+        if loss_name == 'focal_loss' and FocalLoss:
+            self.criterion = FocalLoss(
+                alpha=float(cfg.get('focal_alpha', 0.25)),
+                gamma=float(cfg.get('focal_gamma', 2.0))
+            )
+        else:
+            self.criterion = nn.CrossEntropyLoss(
+                weight=weights_tensor, reduction='mean'
+            )
 
-        Args:
-            train_loader: Training data loader
-            criterion: Loss function
+        self.criterion = self.criterion.to(self.device)
 
-        Returns:
-            Dictionary with epoch metrics
-        """
+        self._setup_scheduler(cfg)
+
+    def _setup_scheduler(self, cfg: Dict[str, Any]) -> None:
+        """Setup learning rate scheduler."""
+        epochs = int(cfg.get('epochs', 20))
+        scheduler_name = cfg.get('scheduler', 'cosine').lower()
+
+        if scheduler_name == 'cosine':
+            self.scheduler = (
+                torch.optim.lr_scheduler.CosineAnnealingLR(
+                    self.optimizer,
+                    T_max=epochs,
+                    eta_min=1e-6
+                )
+            )
+        elif scheduler_name == 'plateau':
+            self.scheduler = (
+                torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer,
+                    mode='max',
+                    factor=0.5,
+                    patience=5,
+                    min_lr=1e-6,
+                    verbose=False
+                )
+            )
+        else:
+            self.scheduler = None
+
+    def setup_privacy_engine(self, train_loader: DataLoader) -> DataLoader:
+        """Setup Opacus PrivacyEngine for DP training."""
+        if not self.dp_config.enabled:
+            logger.info("DP disabled - using standard training")
+            return train_loader
+
+        logger.info(f"Setting up PrivacyEngine: {self.dp_config}")
+
+        is_compatible, _ = check_dp_compatibility(self.model)
+        if not is_compatible:
+            logger.warning("Model may not be fully DP-compatible")
+
+        try:
+            privacy_engine = PrivacyEngine()
+
+            self.model, self.optimizer, self.dp_train_loader = (
+                privacy_engine.make_private(
+                    module=self.model,
+                    optimizer=self.optimizer,
+                    data_loader=train_loader,
+                    noise_multiplier=self.dp_config.noise_multiplier,
+                    max_grad_norm=self.dp_config.max_grad_norm,
+                    poisson_sampling=self.dp_config.poisson_sampling,
+                    clipping_mode='flat',
+                    grad_sample_mode=self.dp_config.grad_sample_mode
+                )
+            )
+
+            self.privacy_engine = privacy_engine
+
+            logger.info(
+                f"PrivacyEngine configured:\n"
+                f"  noise_multiplier: {self.dp_config.noise_multiplier}\n"
+                f"  max_grad_norm: {self.dp_config.max_grad_norm}\n"
+                f"  delta: {self.dp_config.delta}"
+            )
+
+            return self.dp_train_loader
+
+        except Exception as e:
+            logger.error(f"PrivacyEngine setup failed: {e}")
+            raise
+
+    def _get_epsilon(self) -> float:
+        """Get current privacy budget (epsilon)."""
+        if self.privacy_engine is None:
+            return float('inf')
+
+        try:
+            epsilon = self.privacy_engine.get_epsilon(
+                self.dp_config.delta
+            )
+            return float(epsilon)
+        except Exception:
+            return float('inf')
+
+    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
+        """Train for one epoch."""
         self.model.train()
         total_loss = 0.0
-        total_correct = 0
-        total_samples = 0
+        correct = 0
+        total = 0
 
-        for batch_x, batch_y in train_loader:
-            batch_x = batch_x.to(self.device)
-            batch_y = batch_y.to(self.device)
+        loader = (self.dp_train_loader if self.dp_train_loader
+                 else train_loader)
 
-            self.optimizer.zero_grad()
+        for batch_x, batch_y in loader:
+            batch_x = batch_x.to(self.device, non_blocking=True)
+            batch_y = batch_y.to(self.device, non_blocking=True)
+
+            self.optimizer.zero_grad(set_to_none=True)
 
             outputs = self.model(batch_x)
-            loss = criterion(outputs, batch_y)
+            loss = self.criterion(outputs, batch_y)
 
             loss.backward()
             self.optimizer.step()
 
-            total_loss += loss.item() * batch_x.size(0)
-            predictions = outputs.argmax(dim=1)
-            total_correct += (predictions == batch_y).sum().item()
-            total_samples += batch_x.size(0)
+            total_loss += loss.detach().item() * batch_x.size(0)
 
-        avg_loss = total_loss / total_samples
-        accuracy = total_correct / total_samples
+            with torch.no_grad():
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == batch_y).sum().item()
+                total += batch_y.size(0)
 
-        return {
-            'loss': avg_loss,
-            'accuracy': accuracy
-        }
+        self.cleanup_memory()
 
-    def _validate_epoch(self, val_loader: DataLoader,
-                       criterion: nn.Module) -> Dict[str, float]:
-        """
-        Validate for one epoch.
+        if (self.scheduler is not None and
+                not isinstance(
+                    self.scheduler,
+                    torch.optim.lr_scheduler.ReduceLROnPlateau
+                )):
+            self.scheduler.step()
 
-        Args:
-            val_loader: Validation data loader
-            criterion: Loss function
-
-        Returns:
-            Dictionary with validation metrics
-        """
-        self.model.eval()
-        total_loss = 0.0
-        total_correct = 0
-        total_samples = 0
-
-        with torch.no_grad():
-            for batch_x, batch_y in val_loader:
-                batch_x = batch_x.to(self.device)
-                batch_y = batch_y.to(self.device)
-
-                outputs = self.model(batch_x)
-                loss = criterion(outputs, batch_y)
-
-                total_loss += loss.item() * batch_x.size(0)
-                predictions = outputs.argmax(dim=1)
-                total_correct += (predictions == batch_y).sum().item()
-                total_samples += batch_x.size(0)
-
-        avg_loss = total_loss / total_samples
-        accuracy = total_correct / total_samples
-
-        return {
-            'loss': avg_loss,
-            'accuracy': accuracy
-        }
-
-    def _get_privacy_spent(self) -> Dict[str, float]:
-        """
-        Get privacy spent (epsilon).
-
-        Returns:
-            Dictionary with epsilon and delta
-        """
-        if (self.privacy_engine is None or
-                not hasattr(self.privacy_engine, 'get_epsilon_spent')):
-            return {'epsilon': float('inf'), 'delta': self.delta}
-
-        try:
-            epsilon = self.privacy_engine.get_epsilon_spent()
-            return {'epsilon': float(epsilon), 'delta': self.delta}
-        except Exception as e:
-            self.logger.warning(
-                f"Could not compute epsilon: {e}. "
-                f"Using dummy value."
-            )
-            return {'epsilon': float('inf'), 'delta': self.delta}
+        return total_loss / total, correct / total
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader,
-            epochs: int = 40, patience: int = 10,
-            output_dir: str = './results') -> Dict[str, Any]:
+            epochs: int = 20, patience: int = 8,
+            output_dir: Optional[str] = None) -> Dict[str, Any]:
         """
-        Train model with differential privacy.
+        Main training loop with DP.
 
         Args:
             train_loader: Training data loader
             val_loader: Validation data loader
             epochs: Maximum number of epochs
             patience: Early stopping patience
-            output_dir: Directory to save results
+            output_dir: Directory to save checkpoints
 
         Returns:
             Dictionary with training results
         """
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        output_path = None
+        if output_dir is not None:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
 
-        criterion = nn.CrossEntropyLoss()
-        self.optimizer = self._create_optimizer()
+        self._reset_training_state()
+        self.setup_optimizer_and_loss()
+        self.setup_privacy_engine(train_loader)
 
-        self.privacy_engine, train_loader = self._setup_privacy_engine(
-            train_loader
-        )
-
-        best_val_acc = 0.0
-        best_epoch = 0
-        epochs_without_improvement = 0
+        validation_frequency = max(1, epochs // 5)
         start_time = time.time()
 
-        self.logger.info(
-            f"Starting DP training with "
-            f"noise_multiplier={self.noise_multiplier}, "
-            f"max_grad_norm={self.max_grad_norm}"
-        )
+        print(f"\nDP Training")
+        print(f"  Noise multiplier: {self.dp_config.noise_multiplier}")
+        print(f"  Max grad norm: {self.dp_config.max_grad_norm}")
+        print(f"  Epochs: {epochs}")
+        print(f"  Batch size: {train_loader.batch_size}")
+        print(f"  Validation frequency: every {validation_frequency} epochs")
+        print(f"  Early stopping patience: {patience}\n")
 
-        for epoch in range(epochs):
-            train_metrics = self._train_epoch(train_loader, criterion)
-            val_metrics = self._validate_epoch(val_loader, criterion)
+        for epoch in range(1, epochs + 1):
+            train_loss, train_acc = self.train_epoch(train_loader)
 
-            privacy = self._get_privacy_spent()
-            epsilon = privacy.get('epsilon', float('inf'))
-
-            self.train_history.append(train_metrics)
-            self.val_history.append(val_metrics)
-
-            self.logger.info(
-                f"Epoch {epoch+1}/{epochs} | "
-                f"Train Loss: {train_metrics['loss']:.4f} | "
-                f"Train Acc: {train_metrics['accuracy']:.4f} | "
-                f"Val Loss: {val_metrics['loss']:.4f} | "
-                f"Val Acc: {val_metrics['accuracy']:.4f} | "
-                f"Epsilon: {epsilon:.4f}"
+            should_validate = (
+                (epoch % validation_frequency == 0) or (epoch == epochs)
             )
 
-            if val_metrics['accuracy'] > best_val_acc:
-                best_val_acc = val_metrics['accuracy']
-                best_epoch = epoch
-                epochs_without_improvement = 0
+            if should_validate:
+                val_loss, val_acc = self.validate(val_loader)
+                epsilon = self._get_epsilon()
 
-                checkpoint_path = Path(output_dir) / 'best_model.pt'
-                torch.save(self.model.state_dict(), checkpoint_path)
-                self.logger.info(
-                    f"Model saved with val_acc={best_val_acc:.4f}"
+                self.history['epoch'].append(epoch)
+                self.history['train_loss'].append(train_loss)
+                self.history['train_acc'].append(train_acc)
+                self.history['val_loss'].append(val_loss)
+                self.history['val_acc'].append(val_acc)
+
+                eps_str = (f"{epsilon:.4f}"
+                          if epsilon != float('inf') else "N/A")
+
+                print(
+                    f"Epoch {epoch:2d}: "
+                    f"loss={train_loss:.4f} acc={train_acc:.4f} | "
+                    f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
+                    f"eps={eps_str}",
+                    flush=True
                 )
-            else:
-                epochs_without_improvement += 1
 
-            if self.target_epsilon is not None:
-                if epsilon >= self.target_epsilon:
-                    self.logger.info(
-                        f"Target epsilon {self.target_epsilon} reached "
-                        f"(current: {epsilon:.4f}). Stopping."
+                if val_acc > self.best_val_acc:
+                    self.best_val_acc = val_acc
+                    self.epochs_no_improve = 0
+                    self.best_model_state = deepcopy(
+                        self.model.state_dict()
                     )
-                    break
 
-            if epochs_without_improvement >= patience:
-                self.logger.info(
-                    f"Early stopping at epoch {epoch+1} "
-                    f"(no improvement for {patience} epochs)"
-                )
-                break
+                    if output_path is not None:
+                        self.save_checkpoint(
+                            output_path / 'best_model.pth'
+                        )
+                else:
+                    self.epochs_no_improve += 1
+                    if self.epochs_no_improve >= patience:
+                        print(
+                            f"\nEarly stopping at epoch {epoch} "
+                            f"(no improvement for {patience} checks)",
+                            flush=True
+                        )
+                        break
+
+                if isinstance(
+                    self.scheduler,
+                    torch.optim.lr_scheduler.ReduceLROnPlateau
+                ):
+                    self.scheduler.step(val_acc)
 
         elapsed = time.time() - start_time
+        final_epsilon = self._get_epsilon()
 
-        checkpoint_path = Path(output_dir) / 'best_model.pt'
-        if checkpoint_path.exists():
-            self.model.load_state_dict(
-                torch.load(checkpoint_path, map_location=self.device)
-            )
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
+        elif (output_path is not None and
+              (output_path / 'best_model.pth').exists()):
+            self.load_checkpoint(output_path / 'best_model.pth')
 
-        privacy_final = self._get_privacy_spent()
+        print(f"\n{'='*60}")
+        print(f"Training completed: {epoch} epochs in {elapsed:.1f}s")
+        print(f"  Best val acc: {self.best_val_acc:.4f}")
+        if final_epsilon != float('inf'):
+            print(f"  Final epsilon: {final_epsilon:.4f}")
+        print(f"{'='*60}\n")
 
-        results = {
-            'total_epochs': epoch + 1,
-            'best_epoch': best_epoch + 1,
-            'best_val_acc': float(best_val_acc),
-            'final_train_loss': float(train_metrics['loss']),
-            'final_train_acc': float(train_metrics['accuracy']),
-            'final_val_loss': float(val_metrics['loss']),
-            'final_val_acc': float(val_metrics['accuracy']),
+        return {
+            'total_epochs': epoch,
             'training_time_seconds': elapsed,
-            'final_epsilon': float(privacy_final.get('epsilon', float('inf'))),
-            'delta': float(privacy_final.get('delta', self.delta)),
-            'noise_multiplier': self.noise_multiplier,
-            'max_grad_norm': self.max_grad_norm
+            'best_val_acc': self.best_val_acc,
+            'final_train_loss': train_loss,
+            'final_train_acc': train_acc,
+            'final_val_loss': val_loss,
+            'final_val_acc': val_acc,
+            'history': self.history,
+            'final_epsilon': final_epsilon if final_epsilon != float('inf') 
+                            else None
         }
 
-        results_file = Path(output_dir) / 'training_history.json'
-        with open(results_file, 'w') as f:
-            json.dump({
-                'train_history': self.train_history,
-                'val_history': self.val_history,
-                'final_results': results
-            }, f, indent=2)
-
-        self.logger.info(
-            f"Training completed in {elapsed:.1f}s\n"
-            f"  Final epsilon: {results['final_epsilon']:.4f}\n"
-            f"  Best val accuracy: {results['best_val_acc']:.4f}"
-        )
-
-        return results
-
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
-        """
-        Evaluate model on test set.
-
-        Args:
-            test_loader: Test data loader
-
-        Returns:
-            Dictionary with evaluation metrics
-        """
+        """Full evaluation with all metrics."""
         self.model.eval()
-
-        all_predictions = []
-        all_targets = []
-        total_correct = 0
-        total_samples = 0
+        y_true = []
+        y_pred = []
 
         with torch.no_grad():
             for batch_x, batch_y in test_loader:
-                batch_x = batch_x.to(self.device)
-                batch_y = batch_y.to(self.device)
+                batch_x = batch_x.to(self.device, non_blocking=True)
+                batch_y = batch_y.to(self.device, non_blocking=True)
 
                 outputs = self.model(batch_x)
-                predictions = outputs.argmax(dim=1)
+                _, predicted = torch.max(outputs, 1)
 
-                all_predictions.extend(predictions.cpu().numpy())
-                all_targets.extend(batch_y.cpu().numpy())
+                y_true.extend(batch_y.cpu().numpy())
+                y_pred.extend(predicted.cpu().numpy())
 
-                total_correct += (predictions == batch_y).sum().item()
-                total_samples += batch_x.size(0)
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        unique_labels = np.unique(y_true)
 
-        accuracy = total_correct / total_samples
-
-        all_predictions = np.array(all_predictions)
-        all_targets = np.array(all_targets)
-
-        from sklearn.metrics import (
-            precision_score, recall_score, f1_score, confusion_matrix
+        (precision_per_class, recall_per_class, f1_per_class, _) = (
+            precision_recall_fscore_support(
+                y_true, y_pred, labels=unique_labels, zero_division=0
+            )
         )
 
-        n_classes = len(np.unique(all_targets))
-        average_type = 'binary' if n_classes == 2 else 'weighted'
+        cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
+        final_epsilon = self._get_epsilon()
 
-        precision = precision_score(
-            all_targets, all_predictions, average=average_type, zero_division=0
-        )
-        recall = recall_score(
-            all_targets, all_predictions, average=average_type, zero_division=0
-        )
-        f1 = f1_score(
-            all_targets, all_predictions, average=average_type, zero_division=0
-        )
-
-        conf_matrix = confusion_matrix(all_targets, all_predictions)
-        class_names = [f"class_{i}" for i in range(n_classes)]
-
-        results = {
-            'accuracy': float(accuracy),
-            'precision': float(precision),
-            'recall': float(recall),
-            'f1_score': float(f1),
-            'confusion_matrix': conf_matrix.tolist(),
-            'class_names': class_names,
+        metrics = {
+            'accuracy': float(accuracy_score(y_true, y_pred)),
+            'precision': float(
+                precision_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'recall': float(
+                recall_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'f1_score': float(
+                f1_score(
+                    y_true, y_pred, average='weighted',
+                    zero_division=0, labels=unique_labels
+                )
+            ),
+            'precision_per_class': precision_per_class.tolist(),
+            'recall_per_class': recall_per_class.tolist(),
+            'f1_per_class': f1_per_class.tolist(),
+            'confusion_matrix': cm.tolist(),
+            'class_names': (
+                self.config['dataset'].get('class_names', [])
+            ),
+            'final_epsilon': final_epsilon if final_epsilon != float('inf') 
+                            else None
         }
 
-        if self.privacy_engine is not None:
-            privacy = self._get_privacy_spent()
-            results['final_epsilon'] = float(
-                privacy.get('epsilon', float('inf'))
-            )
-            results['delta'] = float(privacy.get('delta', self.delta))
-
-        return results
+        return metrics
 
 
 if __name__ == "__main__":
-    print("DP Trainer module (requires Opacus)")
-    print("Install with: pip install opacus")
+    print("DP Trainer utility module")
+    print("Install Opacus with: pip install opacus")
