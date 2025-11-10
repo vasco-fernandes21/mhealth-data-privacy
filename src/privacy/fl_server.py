@@ -7,25 +7,21 @@ Manages global model and coordinates client training.
 
 import torch
 import torch.nn as nn
-from typing import List, Dict, Tuple, Any, Optional
+from typing import List, Dict, Any
 import copy
 
 from src.privacy.fl_client import FLClient
 from src.privacy.fl_aggregators import create_aggregator
-from src.utils.logging_utils import get_logger
 
 
-logger = get_logger(__name__)
-
-
-class FLServer:
-    """Federated Learning Server."""
+class FLServer: 
+    """Federated Learning Server - coordinates FL training."""
     
     def __init__(self,
                  model: nn.Module,
                  clients: List[FLClient],
                  config: Dict[str, Any],
-                 device: str = 'cuda'):
+                 device: str = 'cpu'):
         """
         Initialize FL server.
         
@@ -33,7 +29,7 @@ class FLServer:
             model: Global model
             clients: List of FL clients
             config: Configuration dictionary
-            device: Device to use
+            device: Device to use (cpu/cuda)
         """
         self.model = model.to(device)
         self.clients = clients
@@ -42,32 +38,21 @@ class FLServer:
         
         # FL config
         fl_cfg = config.get('federated_learning', {})
-        self.global_rounds = fl_cfg.get('global_rounds', 30)
-        self.local_epochs = fl_cfg.get('local_epochs', 1)
         self.aggregation_method = fl_cfg.get('aggregation_method', 'fedavg')
-        self.validation_frequency = fl_cfg.get('validation_frequency', 5)
         
         # Aggregator
         self.aggregator = create_aggregator(self.aggregation_method)
         
-        # History
-        self.round_history = {
-            'global_round': [],
-            'avg_client_accuracy': [],
-            'avg_client_loss': [],
-            'aggregation_time': []
-        }
-        
-        logger.info(
-            f"FL Server initialized: "
-            f"rounds={self.global_rounds}, "
-            f"local_epochs={self.local_epochs}, "
-            f"validation_freq={self.validation_frequency}, "
-            f"aggregation={self.aggregation_method}"
+        # Loss function
+        label_smoothing = float(
+            config['training'].get('label_smoothing', 0.0)
+        )
+        self.criterion = nn.CrossEntropyLoss(
+            label_smoothing=label_smoothing
         )
     
     def broadcast_model(self) -> None:
-        """Send global model to all clients."""
+        """Send global model weights to all clients."""
         global_weights = {
             name: param.data.clone()
             for name, param in self.model.named_parameters()
@@ -76,42 +61,41 @@ class FLServer:
         for client in self.clients:
             client.set_weights(global_weights)
     
-    def aggregate_updates(self,
-                         initial_weights: Dict[str, torch.Tensor]) -> None:
+    def aggregate_updates(
+        self, initial_weights: Dict[str, torch.Tensor]
+    ) -> None:
         """
-        Aggregate client updates using initial weights.
+        Aggregate client updates and update global model.
         
         Args:
-            initial_weights: Global weights BEFORE local training
+            initial_weights: Global weights before local training
         """
         # Collect updates from all clients
         client_updates = []
-        client_sizes = []
+        client_weights = []
         
         for client in self.clients:
-            # Calculate updates: trained_weights - initial_weights
             updates = client.get_weight_updates(initial_weights)
             client_updates.append(updates)
-            client_sizes.append(1.0)
+            client_weights.append(1.0)  # Equal weight for all clients
         
-        # Aggregate updates
+        # Aggregate
         aggregated_updates = self.aggregator.aggregate(
-            client_updates,
-            client_sizes
+            client_updates, client_weights
         )
         
-        # Apply aggregated updates to global model
-        # w_global = w_initial + aggregated_updates
+        # Apply to global model: w_new = w_old + delta_w
         for name, param in self.model.named_parameters():
             if name in aggregated_updates:
                 param.data = (
                     initial_weights[name] + aggregated_updates[name]
                 )
     
-    def evaluate_on_clients(self,
-                            val_loaders: List) -> Dict[str, float]:
+    def evaluate_on_clients(
+        self, val_loaders: List
+    ) -> Dict[str, float]:
         """
-        Evaluate global model on all clients.
+        Evaluate global model on all clients' validation data.
         
         Args:
             val_loaders: List of validation loaders (one per client)
@@ -122,108 +106,71 @@ class FLServer:
         accuracies = []
         losses = []
         
-        # Setup loss function - use same as training!
-        training_cfg = self.config['training']
-        loss_name = training_cfg.get('loss', 'cross_entropy').lower()
-        label_smoothing = float(training_cfg.get('label_smoothing', 0.0))
-        
-        if loss_name == 'focal_loss':
-            try:
-                from src.losses.focal_loss import FocalLoss
-                focal_alpha = float(training_cfg.get('focal_alpha', 0.25))
-                focal_gamma = float(training_cfg.get('focal_gamma', 2.0))
-                
-                criterion = FocalLoss(
-                    alpha=focal_alpha,
-                    gamma=focal_gamma,
-                    reduction='mean'
-                )
-            except ImportError:
-                logger.warning("FocalLoss not available, using CrossEntropyLoss")
-                criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
-        else:
-            criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
-        
+        self.model.eval()
         with torch.no_grad():
-            for client_id, val_loader in enumerate(val_loaders):
+            for val_loader in val_loaders:
                 correct = 0
                 total = 0
-                batch_loss = 0
+                batch_loss = 0.0
                 
                 for batch_x, batch_y in val_loader:
                     batch_x = batch_x.to(self.device)
                     batch_y = batch_y.to(self.device)
                     
                     outputs = self.model(batch_x)
-                    loss = criterion(outputs, batch_y)
+                    loss = self.criterion(outputs, batch_y)
                     
                     batch_loss += loss.item() * batch_x.size(0)
                     _, predicted = torch.max(outputs, 1)
                     correct += (predicted == batch_y).sum().item()
-                    total += batch_y.size(0)
+                    total += batch_x.size(0)
                 
-                accuracy = correct / total if total > 0 else 0
-                loss_val = batch_loss / total if total > 0 else 0
+                acc = correct / total if total > 0 else 0.0
+                loss = batch_loss / total if total > 0 else 0.0
                 
-                accuracies.append(accuracy)
-                losses.append(loss_val)
+                accuracies.append(acc)
+                losses.append(loss)
         
         return {
-            'avg_accuracy': (
-                sum(accuracies) / len(accuracies) if accuracies else 0
+            'accuracy': (
+                sum(accuracies) / len(accuracies) if accuracies else 0.0
             ),
-            'avg_loss': sum(losses) / len(losses) if losses else 0,
-            'min_accuracy': min(accuracies) if accuracies else 0,
-            'max_accuracy': max(accuracies) if accuracies else 0
+            'loss': sum(losses) / len(losses) if losses else 0.0,
         }
     
-    def train_round(self, global_round: int = 0) -> Dict[str, Any]:
+    def train_round(self) -> Dict[str, float]:
         """
         Execute one federated learning round.
-        
-        Args:
-            global_round: Current global round number
         
         Returns:
             Metrics for this round
         """
-        # STEP 1: Save global weights BEFORE training
-        initial_global_weights = {
+        # Save initial weights
+        initial_weights = {
             name: param.data.clone()
             for name, param in self.model.named_parameters()
         }
         
-        # STEP 2: Broadcast model
+        # Broadcast and train locally
         self.broadcast_model()
         
-        # STEP 3: Train on clients
         client_metrics = []
         for client in self.clients:
             metrics = client.train_local()
             client_metrics.append(metrics)
         
-        # STEP 4: Aggregate updates using initial weights
-        self.aggregate_updates(initial_global_weights)
+        # Aggregate updates
+        self.aggregate_updates(initial_weights)
         
-        # Compute averages
+        # Average metrics
         avg_loss = (
-            sum(m['local_loss'] for m in client_metrics) /
-            len(client_metrics)
+            sum(m['loss'] for m in client_metrics) / len(client_metrics)
         )
         avg_acc = (
-            sum(m['local_accuracy'] for m in client_metrics) /
-            len(client_metrics)
+            sum(m['accuracy'] for m in client_metrics) / len(client_metrics)
         )
         
         return {
-            'avg_loss': avg_loss,
-            'avg_accuracy': avg_acc,
-            'n_clients': len(self.clients)
+            'loss': avg_loss,
+            'accuracy': avg_acc,
         }
-    
-    def __repr__(self) -> str:
-        return (f"FLServer(n_clients={len(self.clients)}, "
-                f"global_rounds={self.global_rounds}, "
-                f"local_epochs={self.local_epochs}, "
-                f"validation_freq={self.validation_frequency}, "
-                f"aggregation={self.aggregation_method})")

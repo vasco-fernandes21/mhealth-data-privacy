@@ -14,12 +14,12 @@ model:
 
 training:
   batch_size: 256             # ← DP tem isto
-  epochs: 60
-  learning_rate: 0.0005
-  weight_decay: 0.0005        # ← DP tem isto
+  epochs: 40
+  learning_rate: 0.001
+  weight_decay: 0.001        # ← DP tem isto
   optimizer: adamw            # ← DP tem isto
   momentum: 0.9
-  scheduler: plateau
+  scheduler: cosine
   gradient_clipping: false
   early_stopping_patience: 15
   num_workers: 0

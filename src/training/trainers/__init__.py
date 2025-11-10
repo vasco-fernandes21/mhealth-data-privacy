@@ -13,7 +13,7 @@ from .dp_trainer import DPTrainer
 from .fl_trainer import FLTrainer
 
 try:
-    from .fl_dp_trainer import FLDPTrainer
+    from .dp_fl import FLDPTrainer
 except ImportError:
     FLDPTrainer = None
 

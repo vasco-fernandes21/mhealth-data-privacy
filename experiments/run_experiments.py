@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Experiment Runner - Optimized for MLP + Features
-Fixed: Seed control, config normalization, better logging
+With integrated data caching for faster experiment runs
 """
 
 import sys
@@ -29,6 +29,61 @@ from src.training.trainers.fl_trainer import FLTrainer
 from src.preprocessing.sleep_edf import load_windowed_sleep_edf
 from src.preprocessing.wesad import load_processed_wesad
 
+
+# ================================================================
+# DATA CACHE - Evita carregar dados a cada run
+# ================================================================
+class DataCache:
+    """Global data cache - carrega dados uma vez, reutiliza N vezes."""
+    
+    _cache: Dict[str, Tuple] = {}
+    
+    @classmethod
+    def load_data(cls, dataset: str, data_dir: Path) -> Tuple:
+        """Load dataset with caching."""
+        if dataset in cls._cache:
+            print(f"✓ Using cached {dataset}", flush=True)
+            return cls._cache[dataset]
+        
+        print(f"Loading {dataset}...", flush=True)
+        data_path = data_dir / dataset
+        
+        try:
+            if dataset == 'sleep-edf':
+                data = load_windowed_sleep_edf(str(data_path))
+            elif dataset == 'wesad':
+                data = load_processed_wesad(str(data_path))
+            else:
+                raise ValueError(f"Unknown dataset: {dataset}")
+            
+            # Cacheia para futuras chamadas
+            cls._cache[dataset] = data
+            return data
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to load {dataset}: {e}")
+    
+    @classmethod
+    def clear(cls) -> None:
+        """Clear cache."""
+        cls._cache.clear()
+        print("✓ Cache cleared", flush=True)
+    
+    @classmethod
+    def get_stats(cls) -> Dict[str, str]:
+        """Get cache statistics."""
+        stats = {}
+        for dataset, data in cls._cache.items():
+            if isinstance(data, tuple) and len(data) >= 6:
+                X_train, X_val, X_test = data[0], data[1], data[2]
+                size_mb = (X_train.nbytes + X_val.nbytes + X_test.nbytes) / 1e6
+                stats[dataset] = f"{size_mb:.1f} MB"
+        return stats
+
+
+# ================================================================
+# UTILITY FUNCTIONS
+# ================================================================
 
 def get_device() -> str:
     """Get best available device."""
@@ -130,8 +185,12 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
     return train_loaders, val_loaders, test_loader
 
 
+# ================================================================
+# EXPERIMENT RUNNER
+# ================================================================
+
 class ExperimentRunner:
-    """Experiment runner for MLP + Features."""
+    """Experiment runner for MLP + Features with data caching."""
 
     def __init__(self, scenarios_dir='experiments/scenarios',
                  data_dir='./data/processed',
@@ -143,6 +202,7 @@ class ExperimentRunner:
         self.results_dir = Path(results_dir)
         self.results = []
         self.logger = get_logger(__name__)
+        self.data_cache = DataCache()
 
     def _load_config(self, config_path: str) -> dict:
         """Load YAML config."""
@@ -204,18 +264,8 @@ class ExperimentRunner:
             return yaml.safe_load(f)
 
     def _load_data(self, dataset: str) -> Tuple:
-        """Load dataset (deterministic - no seed needed)."""
-        print(f"Loading {dataset}...", flush=True)
-        data_path = self.data_dir / dataset
-
-        if dataset == 'sleep-edf':
-            data = load_windowed_sleep_edf(str(data_path))
-        elif dataset == 'wesad':
-            data = load_processed_wesad(str(data_path))
-        else:
-            raise ValueError(f"Unknown dataset: {dataset}")
-
-        return data
+        """Load dataset using cache."""
+        return self.data_cache.load_data(dataset, self.data_dir)
 
     def run_experiment(self, exp_name: str, exp_config: Dict,
                       device: str) -> Dict:
@@ -231,7 +281,7 @@ class ExperimentRunner:
         start_time = time.time()
 
         try:
-            # SET SEED FIRST - before any random operation
+            # SET SEED FIRST
             set_seed_everywhere(seed=seed, device=device)
             
             config = self._get_config(
@@ -419,6 +469,13 @@ class ExperimentRunner:
         print(f"Avg F1: {summary['average_f1']:.4f}")
         print(f"Time: {summary['total_time_hours']:.2f}h")
         print(f"Saved: {output_file}\n")
+        
+        # Show cache stats
+        cache_stats = self.data_cache.get_stats()
+        if cache_stats:
+            print("Cache Statistics:")
+            for dataset, size in cache_stats.items():
+                print(f"  {dataset}: {size}")
 
 
 def main():
@@ -505,7 +562,12 @@ Examples:
             return 0
 
     start_time = time.time()
-    runner.run_all(all_experiments, device)
+    try:
+        runner.run_all(all_experiments, device)
+    finally:
+        # Always clear cache at the end
+        runner.data_cache.clear()
+    
     elapsed = time.time() - start_time
 
     runner.save_results(args.output_file)

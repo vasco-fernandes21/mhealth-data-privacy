@@ -191,9 +191,9 @@ class FLTrainer(BaseTrainer):
         validation_count = 0
 
         for round_num in range(1, epochs + 1):
-            train_metrics = server.train_round(global_round=round_num)
-            train_loss = train_metrics['avg_loss']
-            train_acc = train_metrics['avg_accuracy']
+            train_metrics = server.train_round()
+            train_loss = train_metrics['loss']
+            train_acc = train_metrics['accuracy']
 
             should_validate = (
                 (round_num % validation_frequency == 0) or
@@ -202,8 +202,8 @@ class FLTrainer(BaseTrainer):
 
             if should_validate:
                 val_metrics = server.evaluate_on_clients(val_loaders)
-                val_loss = val_metrics['avg_loss']
-                val_acc = val_metrics['avg_accuracy']
+                val_loss = val_metrics['loss']
+                val_acc = val_metrics['accuracy']
 
                 self._update_history(
                     round_num, train_loss, train_acc,

@@ -228,6 +228,10 @@ class DPTrainer(BaseTrainer):
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
                 self.epochs_no_improve = 0
+                # store best model state in memory so we can restore it even without output_dir
+                self.best_model_state = {
+                    k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()
+                }
                 if output_path:
                     self.save_checkpoint(output_path / 'best_model.pth')
             else:
