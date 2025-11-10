@@ -1,0 +1,721 @@
+
+======================================================================
+🚀 RUNNING EXPERIMENTS
+======================================================================
+
+Command: python -u experiments/run_experiments.py --scenario dp --device cuda --auto
+
+📊 LIVE OUTPUT:
+======================================================================
+
+
+Device: cuda
+CUDA Device: Tesla T4
+CUDA Memory: 15.8GB
+
+
+============================================================
+Will run 18 experiments:
+  - dp_sleep_edf_noise0_6_run1: sleep-edf / dp
+  - dp_sleep_edf_noise0_6_run2: sleep-edf / dp
+  - dp_sleep_edf_noise0_6_run3: sleep-edf / dp
+  - dp_sleep_edf_noise1_0_run1: sleep-edf / dp
+  - dp_sleep_edf_noise1_0_run2: sleep-edf / dp
+  ... and 13 more
+============================================================
+
+============================================================
+Running 18 experiments
+============================================================
+
+[1/18]
+
+============================================================
+Running: dp_sleep_edf_noise0_6_run1
+Dataset: sleep-edf | Method: dp | Seed: 42
+============================================================
+
+Loading sleep-edf...
+Loading Sleep-EDF features from data/processed/sleep-edf...
+Loaded Sleep-EDF features:
+  Train: (313922, 24) (24 features per 30s epoch)
+  Val:   (66753, 24)
+  Test:  (72330, 24)
+  Classes: 5 (['W', 'N1', 'N2', 'N3', 'R'])
+  Total size: 82.94769287109375 MB
+
+Loaded sleep-edf and cached
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.6855 acc=0.8462 | val_loss=0.7090 val_acc=0.8499 | eps=1.7666
+Epoch  8: loss=0.6691 acc=0.8540 | val_loss=0.7216 val_acc=0.8554 | eps=2.0956
+Epoch 12: loss=0.6697 acc=0.8558 | val_loss=0.7189 val_acc=0.8569 | eps=2.3417
+Epoch 16: loss=0.6620 acc=0.8585 | val_loss=0.7019 val_acc=0.8578 | eps=2.5531
+Epoch 20: loss=0.6598 acc=0.8587 | val_loss=0.7104 val_acc=0.8591 | eps=2.7449
+
+============================================================
+Training completed: 20 epochs in 409.9s
+  Best val acc: 0.8591
+  Final epsilon: 2.7449
+============================================================
+
+
+Completed in 414.2s
+  Accuracy: 0.8723
+  F1-Score: 0.8544
+  Best Val Acc: 0.8591
+  Final epsilon: 2.7449
+
+[2/18]
+
+============================================================
+Running: dp_sleep_edf_noise0_6_run2
+Dataset: sleep-edf | Method: dp | Seed: 123
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.6974 acc=0.8448 | val_loss=0.6957 val_acc=0.8518 | eps=1.7666
+Epoch  8: loss=0.6776 acc=0.8512 | val_loss=0.7019 val_acc=0.8557 | eps=2.0956
+Epoch 12: loss=0.6689 acc=0.8549 | val_loss=0.7225 val_acc=0.8567 | eps=2.3417
+Epoch 16: loss=0.6603 acc=0.8574 | val_loss=0.7104 val_acc=0.8586 | eps=2.5531
+Epoch 20: loss=0.6614 acc=0.8578 | val_loss=0.7130 val_acc=0.8602 | eps=2.7449
+
+============================================================
+Training completed: 20 epochs in 403.6s
+  Best val acc: 0.8602
+  Final epsilon: 2.7449
+============================================================
+
+
+Completed in 405.8s
+  Accuracy: 0.8727
+  F1-Score: 0.8560
+  Best Val Acc: 0.8602
+  Final epsilon: 2.7449
+
+[3/18]
+
+============================================================
+Running: dp_sleep_edf_noise0_6_run3
+Dataset: sleep-edf | Method: dp | Seed: 456
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.6932 acc=0.8461 | val_loss=0.7008 val_acc=0.8513 | eps=1.7666
+Epoch  8: loss=0.6695 acc=0.8528 | val_loss=0.7131 val_acc=0.8537 | eps=2.0956
+Epoch 12: loss=0.6652 acc=0.8553 | val_loss=0.7195 val_acc=0.8565 | eps=2.3417
+Epoch 16: loss=0.6594 acc=0.8575 | val_loss=0.7125 val_acc=0.8577 | eps=2.5531
+Epoch 20: loss=0.6556 acc=0.8583 | val_loss=0.7122 val_acc=0.8568 | eps=2.7449
+
+============================================================
+Training completed: 20 epochs in 406.4s
+  Best val acc: 0.8577
+  Final epsilon: 2.7449
+============================================================
+
+
+Completed in 408.6s
+  Accuracy: 0.8722
+  F1-Score: 0.8559
+  Best Val Acc: 0.8577
+  Final epsilon: 2.7449
+
+[4/18]
+
+============================================================
+Running: dp_sleep_edf_noise1_0_run1
+Dataset: sleep-edf | Method: dp | Seed: 42
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7029 acc=0.8401 | val_loss=0.7076 val_acc=0.8464 | eps=0.2729
+Epoch  8: loss=0.6842 acc=0.8486 | val_loss=0.7049 val_acc=0.8520 | eps=0.3870
+Epoch 12: loss=0.6823 acc=0.8513 | val_loss=0.7087 val_acc=0.8546 | eps=0.4767
+Epoch 16: loss=0.6757 acc=0.8537 | val_loss=0.6961 val_acc=0.8558 | eps=0.5536
+Epoch 20: loss=0.6730 acc=0.8541 | val_loss=0.7025 val_acc=0.8568 | eps=0.6221
+
+============================================================
+Training completed: 20 epochs in 401.7s
+  Best val acc: 0.8568
+  Final epsilon: 0.6221
+============================================================
+
+
+Completed in 403.3s
+  Accuracy: 0.8677
+  F1-Score: 0.8486
+  Best Val Acc: 0.8568
+  Final epsilon: 0.6221
+
+[5/18]
+
+============================================================
+Running: dp_sleep_edf_noise1_0_run2
+Dataset: sleep-edf | Method: dp | Seed: 123
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7168 acc=0.8389 | val_loss=0.7023 val_acc=0.8467 | eps=0.2729
+Epoch  8: loss=0.6969 acc=0.8462 | val_loss=0.7102 val_acc=0.8502 | eps=0.3870
+Epoch 12: loss=0.6869 acc=0.8495 | val_loss=0.7175 val_acc=0.8530 | eps=0.4767
+Epoch 16: loss=0.6775 acc=0.8519 | val_loss=0.7119 val_acc=0.8540 | eps=0.5536
+Epoch 20: loss=0.6802 acc=0.8518 | val_loss=0.7149 val_acc=0.8556 | eps=0.6221
+
+============================================================
+Training completed: 20 epochs in 404.8s
+  Best val acc: 0.8556
+  Final epsilon: 0.6221
+============================================================
+
+
+Completed in 406.9s
+  Accuracy: 0.8678
+  F1-Score: 0.8502
+  Best Val Acc: 0.8556
+  Final epsilon: 0.6221
+
+[6/18]
+
+============================================================
+Running: dp_sleep_edf_noise1_0_run3
+Dataset: sleep-edf | Method: dp | Seed: 456
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7063 acc=0.8404 | val_loss=0.6947 val_acc=0.8473 | eps=0.2729
+Epoch  8: loss=0.6833 acc=0.8470 | val_loss=0.7191 val_acc=0.8498 | eps=0.3870
+Epoch 12: loss=0.6797 acc=0.8501 | val_loss=0.7200 val_acc=0.8526 | eps=0.4767
+Epoch 16: loss=0.6724 acc=0.8520 | val_loss=0.7133 val_acc=0.8532 | eps=0.5536
+Epoch 20: loss=0.6724 acc=0.8530 | val_loss=0.7132 val_acc=0.8534 | eps=0.6221
+
+============================================================
+Training completed: 20 epochs in 401.4s
+  Best val acc: 0.8534
+  Final epsilon: 0.6221
+============================================================
+
+
+Completed in 403.7s
+  Accuracy: 0.8681
+  F1-Score: 0.8513
+  Best Val Acc: 0.8534
+  Final epsilon: 0.6221
+
+[7/18]
+
+============================================================
+Running: dp_sleep_edf_noise2_0_run1
+Dataset: sleep-edf | Method: dp | Seed: 42
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7300 acc=0.8303 | val_loss=0.7190 val_acc=0.8372 | eps=0.1043
+Epoch  8: loss=0.7153 acc=0.8391 | val_loss=0.7051 val_acc=0.8466 | eps=0.1473
+Epoch 12: loss=0.7049 acc=0.8428 | val_loss=0.7079 val_acc=0.8493 | eps=0.1810
+Epoch 16: loss=0.6991 acc=0.8452 | val_loss=0.6932 val_acc=0.8513 | eps=0.2098
+Epoch 20: loss=0.6958 acc=0.8454 | val_loss=0.6991 val_acc=0.8516 | eps=0.2354
+
+============================================================
+Training completed: 20 epochs in 397.2s
+  Best val acc: 0.8516
+  Final epsilon: 0.2354
+============================================================
+
+
+Completed in 398.6s
+  Accuracy: 0.8615
+  F1-Score: 0.8419
+  Best Val Acc: 0.8516
+  Final epsilon: 0.2354
+
+[8/18]
+
+============================================================
+Running: dp_sleep_edf_noise2_0_run2
+Dataset: sleep-edf | Method: dp | Seed: 123
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7449 acc=0.8287 | val_loss=0.7341 val_acc=0.8384 | eps=0.1043
+Epoch  8: loss=0.7243 acc=0.8380 | val_loss=0.7263 val_acc=0.8431 | eps=0.1473
+Epoch 12: loss=0.7156 acc=0.8409 | val_loss=0.7253 val_acc=0.8466 | eps=0.1810
+Epoch 16: loss=0.7059 acc=0.8432 | val_loss=0.7191 val_acc=0.8480 | eps=0.2098
+Epoch 20: loss=0.7081 acc=0.8426 | val_loss=0.7210 val_acc=0.8490 | eps=0.2354
+
+============================================================
+Training completed: 20 epochs in 397.1s
+  Best val acc: 0.8490
+  Final epsilon: 0.2354
+============================================================
+
+
+Completed in 398.5s
+  Accuracy: 0.8605
+  F1-Score: 0.8402
+  Best Val Acc: 0.8490
+  Final epsilon: 0.2354
+
+[9/18]
+
+============================================================
+Running: dp_sleep_edf_noise2_0_run3
+Dataset: sleep-edf | Method: dp | Seed: 456
+============================================================
+Loaded: train=(313922, 24) val=(66753, 24) test=(72330, 24)
+Model: 29,189 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.7284 acc=0.8312 | val_loss=0.6988 val_acc=0.8419 | eps=0.1043
+Epoch  8: loss=0.7068 acc=0.8386 | val_loss=0.7222 val_acc=0.8446 | eps=0.1473
+Epoch 12: loss=0.7020 acc=0.8416 | val_loss=0.7124 val_acc=0.8474 | eps=0.1810
+Epoch 16: loss=0.6941 acc=0.8439 | val_loss=0.7134 val_acc=0.8470 | eps=0.2098
+Epoch 20: loss=0.6953 acc=0.8449 | val_loss=0.7126 val_acc=0.8482 | eps=0.2354
+
+============================================================
+Training completed: 20 epochs in 398.0s
+  Best val acc: 0.8482
+  Final epsilon: 0.2354
+============================================================
+
+
+Completed in 399.8s
+  Accuracy: 0.8614
+  F1-Score: 0.8429
+  Best Val Acc: 0.8482
+  Final epsilon: 0.2354
+
+[10/18]
+
+============================================================
+Running: dp_wesad_noise0_6_run1
+Dataset: wesad | Method: dp | Seed: 42
+============================================================
+
+Loading wesad...
+Loading WESAD from data/processed/wesad...
+Loaded:
+   Train: (2437, 14, 1024)
+   Val:   (816, 14, 1024)
+   Test:  (817, 14, 1024)
+   Classes: ['non-stress', 'stress']
+   Window: 32s, Overlap: 75%
+
+Loaded wesad and cached
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2184 acc=0.9146 | val_loss=0.3419 val_acc=0.8799 | eps=13.6878
+Epoch  8: loss=0.2277 acc=0.9328 | val_loss=0.4764 val_acc=0.8811 | eps=18.5189
+Epoch 12: loss=0.2163 acc=0.9409 | val_loss=0.4977 val_acc=0.8946 | eps=22.5134
+Epoch 16: loss=0.1979 acc=0.9432 | val_loss=0.5041 val_acc=0.8958 | eps=26.0802
+Epoch 20: loss=0.2351 acc=0.9342 | val_loss=0.5046 val_acc=0.8983 | eps=29.3750
+
+============================================================
+Training completed: 20 epochs in 685.6s
+  Best val acc: 0.8983
+  Final epsilon: 29.3750
+============================================================
+
+
+Completed in 689.0s
+  Accuracy: 0.9694
+  F1-Score: 0.9698
+  Best Val Acc: 0.8983
+  Final epsilon: 29.3750
+
+[11/18]
+
+============================================================
+Running: dp_wesad_noise0_6_run2
+Dataset: wesad | Method: dp | Seed: 123
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2185 acc=0.9160 | val_loss=0.3131 val_acc=0.8885 | eps=13.6878
+Epoch  8: loss=0.2252 acc=0.9317 | val_loss=0.4476 val_acc=0.8897 | eps=18.5189
+Epoch 12: loss=0.2120 acc=0.9383 | val_loss=0.4663 val_acc=0.9069 | eps=22.5134
+Epoch 16: loss=0.2049 acc=0.9403 | val_loss=0.4693 val_acc=0.9081 | eps=26.0802
+Epoch 20: loss=0.2247 acc=0.9399 | val_loss=0.4697 val_acc=0.9093 | eps=29.3750
+
+============================================================
+Training completed: 20 epochs in 682.3s
+  Best val acc: 0.9093
+  Final epsilon: 29.3750
+============================================================
+
+
+Completed in 685.4s
+  Accuracy: 0.9743
+  F1-Score: 0.9746
+  Best Val Acc: 0.9093
+  Final epsilon: 29.3750
+
+[12/18]
+
+============================================================
+Running: dp_wesad_noise0_6_run3
+Dataset: wesad | Method: dp | Seed: 456
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2012 acc=0.9344 | val_loss=0.3737 val_acc=0.8934 | eps=13.6878
+Epoch  8: loss=0.2231 acc=0.9375 | val_loss=0.4778 val_acc=0.8971 | eps=18.5189
+Epoch 12: loss=0.2094 acc=0.9516 | val_loss=0.5058 val_acc=0.8995 | eps=22.5134
+Epoch 16: loss=0.2352 acc=0.9416 | val_loss=0.5133 val_acc=0.8995 | eps=26.0802
+Epoch 20: loss=0.2384 acc=0.9439 | val_loss=0.5144 val_acc=0.8995 | eps=29.3750
+
+============================================================
+Training completed: 20 epochs in 685.6s
+  Best val acc: 0.8995
+  Final epsilon: 29.3750
+============================================================
+
+
+Completed in 689.7s
+  Accuracy: 0.9621
+  F1-Score: 0.9626
+  Best Val Acc: 0.8995
+  Final epsilon: 29.3750
+
+[13/18]
+
+============================================================
+Running: dp_wesad_noise1_0_run1
+Dataset: wesad | Method: dp | Seed: 42
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2398 acc=0.9019 | val_loss=0.3276 val_acc=0.8762 | eps=4.6985
+Epoch  8: loss=0.2212 acc=0.9312 | val_loss=0.4323 val_acc=0.8811 | eps=6.3560
+Epoch 12: loss=0.2159 acc=0.9369 | val_loss=0.4759 val_acc=0.8836 | eps=7.7066
+Epoch 16: loss=0.2096 acc=0.9397 | val_loss=0.4882 val_acc=0.8848 | eps=8.8961
+Epoch 20: loss=0.2447 acc=0.9301 | val_loss=0.4899 val_acc=0.8873 | eps=9.9818
+
+============================================================
+Training completed: 20 epochs in 685.3s
+  Best val acc: 0.8873
+  Final epsilon: 9.9818
+============================================================
+
+
+Completed in 688.2s
+  Accuracy: 0.9645
+  F1-Score: 0.9650
+  Best Val Acc: 0.8873
+  Final epsilon: 9.9818
+
+[14/18]
+
+============================================================
+Running: dp_wesad_noise1_0_run2
+Dataset: wesad | Method: dp | Seed: 123
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2397 acc=0.9054 | val_loss=0.2998 val_acc=0.8885 | eps=4.6985
+Epoch  8: loss=0.2166 acc=0.9297 | val_loss=0.4206 val_acc=0.8860 | eps=6.3560
+Epoch 12: loss=0.2201 acc=0.9342 | val_loss=0.4589 val_acc=0.8885 | eps=7.7066
+Epoch 16: loss=0.2155 acc=0.9379 | val_loss=0.4674 val_acc=0.8971 | eps=8.8961
+Epoch 20: loss=0.2377 acc=0.9357 | val_loss=0.4689 val_acc=0.8971 | eps=9.9818
+
+============================================================
+Training completed: 20 epochs in 683.4s
+  Best val acc: 0.8971
+  Final epsilon: 9.9818
+============================================================
+
+
+Completed in 686.3s
+  Accuracy: 0.9718
+  F1-Score: 0.9722
+  Best Val Acc: 0.8971
+  Final epsilon: 9.9818
+
+[15/18]
+
+============================================================
+Running: dp_wesad_noise1_0_run3
+Dataset: wesad | Method: dp | Seed: 456
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2028 acc=0.9262 | val_loss=0.3492 val_acc=0.8824 | eps=4.6985
+Epoch  8: loss=0.2151 acc=0.9314 | val_loss=0.4414 val_acc=0.8934 | eps=6.3560
+Epoch 12: loss=0.2018 acc=0.9482 | val_loss=0.4810 val_acc=0.8971 | eps=7.7066
+Epoch 16: loss=0.2389 acc=0.9366 | val_loss=0.4938 val_acc=0.8971 | eps=8.8961
+Epoch 20: loss=0.2392 acc=0.9379 | val_loss=0.4961 val_acc=0.8971 | eps=9.9818
+
+============================================================
+Training completed: 20 epochs in 683.8s
+  Best val acc: 0.8971
+  Final epsilon: 9.9818
+============================================================
+
+
+Completed in 686.7s
+  Accuracy: 0.9633
+  F1-Score: 0.9638
+  Best Val Acc: 0.8971
+  Final epsilon: 9.9818
+
+[16/18]
+
+============================================================
+Running: dp_wesad_noise2_0_run1
+Dataset: wesad | Method: dp | Seed: 42
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.3038 acc=0.8602 | val_loss=0.3542 val_acc=0.8064 | eps=1.4936
+Epoch  8: loss=0.2054 acc=0.9248 | val_loss=0.3464 val_acc=0.8799 | eps=2.0968
+Epoch 12: loss=0.2027 acc=0.9333 | val_loss=0.4068 val_acc=0.8799 | eps=2.5778
+Epoch 16: loss=0.2029 acc=0.9361 | val_loss=0.4282 val_acc=0.8799 | eps=2.9945
+Epoch 20: loss=0.2296 acc=0.9243 | val_loss=0.4315 val_acc=0.8799 | eps=3.3699
+
+============================================================
+Training completed: 20 epochs in 679.6s
+  Best val acc: 0.8799
+  Final epsilon: 3.3699
+============================================================
+
+
+Completed in 682.6s
+  Accuracy: 0.9461
+  F1-Score: 0.9473
+  Best Val Acc: 0.8799
+  Final epsilon: 3.3699
+
+[17/18]
+
+============================================================
+Running: dp_wesad_noise2_0_run2
+Dataset: wesad | Method: dp | Seed: 123
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.3132 acc=0.8579 | val_loss=0.3350 val_acc=0.8248 | eps=1.4936
+Epoch  8: loss=0.2026 acc=0.9241 | val_loss=0.3386 val_acc=0.8848 | eps=2.0968
+Epoch 12: loss=0.2106 acc=0.9305 | val_loss=0.4019 val_acc=0.8860 | eps=2.5778
+Epoch 16: loss=0.2077 acc=0.9330 | val_loss=0.4189 val_acc=0.8860 | eps=2.9945
+Epoch 20: loss=0.2290 acc=0.9291 | val_loss=0.4217 val_acc=0.8860 | eps=3.3699
+
+============================================================
+Training completed: 20 epochs in 682.0s
+  Best val acc: 0.8860
+  Final epsilon: 3.3699
+============================================================
+
+
+Completed in 684.4s
+  Accuracy: 0.9670
+  F1-Score: 0.9674
+  Best Val Acc: 0.8860
+  Final epsilon: 3.3699
+
+[18/18]
+
+============================================================
+Running: dp_wesad_noise2_0_run3
+Dataset: wesad | Method: dp | Seed: 456
+============================================================
+Loaded: train=(2437, 14, 1024) val=(816, 14, 1024) test=(817, 14, 1024)
+Model: 28,450 parameters
+
+Training: Differential Privacy
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Epochs: 20
+  Batch size: 256
+  Validation frequency: every 4 epochs
+  Early stopping patience: 8
+
+Epoch  4: loss=0.2285 acc=0.9066 | val_loss=0.3294 val_acc=0.8603 | eps=1.4936
+Epoch  8: loss=0.2078 acc=0.9245 | val_loss=0.3733 val_acc=0.8934 | eps=2.0968
+Epoch 12: loss=0.1931 acc=0.9437 | val_loss=0.4154 val_acc=0.8934 | eps=2.5778
+Epoch 16: loss=0.2264 acc=0.9290 | val_loss=0.4309 val_acc=0.8909 | eps=2.9945

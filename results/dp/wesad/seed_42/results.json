@@ -1,0 +1,23 @@
+{
+  "experiment_info": {
+    "name": "dp_wesad_noise0_6_run1",
+    "dataset": "wesad",
+    "method": "dp",
+    "seed": 42,
+    "timestamp": "2025-11-10T16:43:51.661723"
+  },
+  "training_metrics": {
+    "total_epochs": 14,
+    "best_val_acc": 0.8553921568627451,
+    "training_time_seconds": 4.0545783042907715
+  },
+  "test_metrics": {
+    "accuracy": 0.799265605875153,
+    "precision": 0.7972834803528469,
+    "recall": 0.799265605875153,
+    "f1_score": 0.7813923682044438
+  },
+  "timing": {
+    "total_time_seconds": 5.120388984680176
+  }
+}

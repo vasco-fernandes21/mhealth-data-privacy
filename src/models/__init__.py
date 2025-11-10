@@ -8,11 +8,11 @@ Exports:
 """
 
 from .base_model import BaseModel
-from .unified_lstm_model import UnifiedLSTMModel
+from .unified_mlp_model import UnifiedMLPModel
 
 __all__ = [
     'BaseModel',
-    'UnifiedLSTMModel',
+    'UnifiedMLPModel',
 ]
 
 __version__ = '1.0.0'

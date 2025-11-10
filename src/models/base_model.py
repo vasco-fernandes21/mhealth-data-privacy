@@ -28,7 +28,7 @@ class BaseModel(ABC, nn.Module):
         
         Args:
             config: Model configuration dictionary
-            device: Device to use ('cuda', 'cpu', 'mps')
+            device: Device to use ('cuda', 'cpu')
         """
         super().__init__()
         self.config = config

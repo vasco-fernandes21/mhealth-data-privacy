@@ -1,6 +1,6 @@
 """
 Device utility functions for automatic hardware acceleration detection.
-Supports hierarchical device selection: CUDA > MPS > CPU
+Supports hierarchical device selection: CUDA > CPU
 """
 
 import torch
@@ -11,7 +11,7 @@ def get_optimal_device() -> torch.device:
     Automatically detect and return the best available device for PyTorch training.
 
     Returns:
-        torch.device: The optimal device (CUDA > MPS > CPU)
+        torch.device: The optimal device (CUDA > CPU)
     """
     # Prioritize CUDA if available
     if torch.cuda.is_available():
@@ -19,15 +19,8 @@ def get_optimal_device() -> torch.device:
         print(f"Using CUDA device: {torch.cuda.get_device_name()}")
         print(f"   CUDA Version: {torch.version.cuda}")
         print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-
-    # Fall back to MPS for Apple Silicon Macs if CUDA not available
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = torch.device("mps")
-        print("Using MPS (Metal Performance Shaders) for Apple Silicon")
-        print("   Note: MPS is optimized for M1/M2/M3 chips")
-
-    # Default to CPU
     else:
+        # Default to CPU
         device = torch.device("cpu")
         print("Using CPU device")
         print("   Note: No GPU acceleration available")
@@ -53,7 +46,6 @@ def get_device_info() -> dict:
 
     info = {
         'cuda_available': torch.cuda.is_available(),
-        'mps_available': hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
         'cpu_count': torch.get_num_threads(),
         'physical_cpu_cores': os.cpu_count(),
         'device_count': torch.cuda.device_count() if torch.cuda.is_available() else 0
@@ -82,7 +74,6 @@ def print_device_info():
     info = get_device_info()
 
     print(f"CUDA Available: {'Yes' if info['cuda_available'] else 'No'}")
-    print(f"MPS Available: {'Yes' if info['mps_available'] else 'No'}")
     print(f"CPU Threads (Active): {info['cpu_count']}")
     print(f"Physical CPU Cores: {info['physical_cpu_cores']}")
 

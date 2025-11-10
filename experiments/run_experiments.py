@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simplified experiment runner - OPTIMIZED
-Fast and clean execution with proper data handling
+Experiment Runner - Optimized for MLP + Features
+Fixed: Seed control, config normalization, better logging
 """
 
 import sys
@@ -10,106 +10,75 @@ import json
 import argparse
 import torch
 import numpy as np
+import random
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, Any, Tuple
 import time
 from copy import deepcopy
-import gc
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.seed_utils import set_reproducible
 from src.utils.logging_utils import get_logger
-from src.models import UnifiedLSTMModel
+from src.models import UnifiedMLPModel
 from src.training.trainers.baseline_trainer import BaselineTrainer
 from src.training.trainers.dp_trainer import DPTrainer
 from src.training.trainers.fl_trainer import FLTrainer
 
 from src.preprocessing.sleep_edf import load_windowed_sleep_edf
-from src.preprocessing.wesad import load_processed_wesad_temporal
+from src.preprocessing.wesad import load_processed_wesad
 
 
 def get_device() -> str:
-    """Simple device detection."""
+    """Get best available device."""
     if torch.cuda.is_available():
         return 'cuda'
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return 'mps'
     return 'cpu'
 
 
-def create_simple_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                             batch_size=128, num_workers=0, pin_memory=False):
-    """
-    Create simple, fast dataloaders.
+def set_seed_everywhere(seed: int, device: str) -> None:
+    """Set seed EVERYWHERE before any random operation."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
+    if device == 'cuda':
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-    Args:
-        X_train: Training features
-        y_train: Training labels
-        X_val: Validation features
-        y_val: Validation labels
-        X_test: Test features
-        y_test: Test labels
-        batch_size: Batch size for dataloaders
-        num_workers: Number of worker processes for data loading
-        pin_memory: Pin memory for faster GPU transfer
 
-    Returns:
-        tuple: (train_loader, val_loader, test_loader)
-    """
+def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
+                      batch_size=64, device='cpu'):
+    """Create dataloaders for standard training."""
     from torch.utils.data import TensorDataset, DataLoader
 
-    X_train_t = torch.from_numpy(X_train.astype(np.float32))
-    X_val_t = torch.from_numpy(X_val.astype(np.float32))
-    X_test_t = torch.from_numpy(X_test.astype(np.float32))
-    y_train_t = torch.from_numpy(y_train.astype(np.int64))
-    y_val_t = torch.from_numpy(y_val.astype(np.int64))
-    y_test_t = torch.from_numpy(y_test.astype(np.int64))
+    pin_memory = device == 'cuda'
 
-    train_dataset = TensorDataset(X_train_t, y_train_t)
-    val_dataset = TensorDataset(X_val_t, y_val_t)
-    test_dataset = TensorDataset(X_test_t, y_test_t)
+    def make_loader(X, y, shuffle):
+        X_t = torch.from_numpy(X.astype(np.float32))
+        y_t = torch.from_numpy(y.astype(np.int64))
+        dataset = TensorDataset(X_t, y_t)
+        return DataLoader(
+            dataset, batch_size=batch_size, shuffle=shuffle,
+            num_workers=0, pin_memory=pin_memory
+        )
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=pin_memory
+    return (
+        make_loader(X_train, y_train, True),
+        make_loader(X_val, y_val, False),
+        make_loader(X_test, y_test, False)
     )
-    val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=pin_memory
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=pin_memory
-    )
-
-    return train_loader, val_loader, test_loader
 
 
 def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                         n_clients, batch_size=128, num_workers=0,
-                         pin_memory=False):
-    """
-    Create FL dataloaders with proper train/val/test separation.
-
-    Args:
-        X_train: Training features
-        y_train: Training labels
-        X_val: Validation features
-        y_val: Validation labels
-        X_test: Test features
-        y_test: Test labels
-        n_clients: Number of clients
-        batch_size: Batch size
-        num_workers: Number of worker processes
-        pin_memory: Pin memory for faster GPU transfer
-
-    Returns:
-        tuple: (train_loaders, val_loaders, test_loader)
-    """
+                         n_clients, batch_size=64, device='cpu'):
+    """Create dataloaders for federated learning."""
     from torch.utils.data import TensorDataset, DataLoader
 
+    pin_memory = device == 'cuda'
     train_loaders = []
     val_loaders = []
 
@@ -119,45 +88,50 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
     val_per_client = n_val // n_clients
 
     for i in range(n_clients):
-        start = i * train_per_client
-        end = start + train_per_client if i < n_clients - 1 else n_train
+        start_train = i * train_per_client
+        end_train = (start_train + train_per_client 
+                    if i < n_clients - 1 else n_train)
 
-        X_client_t = torch.from_numpy(X_train[start:end].astype(np.float32))
-        y_client_t = torch.from_numpy(y_train[start:end].astype(np.int64))
-
-        train_dataset = TensorDataset(X_client_t, y_client_t)
-        train_loader = DataLoader(
+        X_client = torch.from_numpy(
+            X_train[start_train:end_train].astype(np.float32)
+        )
+        y_client = torch.from_numpy(
+            y_train[start_train:end_train].astype(np.int64)
+        )
+        train_dataset = TensorDataset(X_client, y_client)
+        train_loaders.append(DataLoader(
             train_dataset, batch_size=batch_size, shuffle=True,
-            num_workers=num_workers, pin_memory=pin_memory
+            num_workers=0, pin_memory=pin_memory
+        ))
+
+        start_val = i * val_per_client
+        end_val = start_val + val_per_client if i < n_clients - 1 else n_val
+
+        X_val_client = torch.from_numpy(
+            X_val[start_val:end_val].astype(np.float32)
         )
-        train_loaders.append(train_loader)
-
-        val_start = i * val_per_client
-        val_end = val_start + val_per_client if i < n_clients - 1 else n_val
-
-        X_val_client_t = torch.from_numpy(X_val[val_start:val_end].astype(np.float32))
-        y_val_client_t = torch.from_numpy(y_val[val_start:val_end].astype(np.int64))
-
-        val_dataset = TensorDataset(X_val_client_t, y_val_client_t)
-        val_loader = DataLoader(
+        y_val_client = torch.from_numpy(
+            y_val[start_val:end_val].astype(np.int64)
+        )
+        val_dataset = TensorDataset(X_val_client, y_val_client)
+        val_loaders.append(DataLoader(
             val_dataset, batch_size=batch_size, shuffle=False,
-            num_workers=num_workers, pin_memory=pin_memory
-        )
-        val_loaders.append(val_loader)
+            num_workers=0, pin_memory=pin_memory
+        ))
 
     X_test_t = torch.from_numpy(X_test.astype(np.float32))
     y_test_t = torch.from_numpy(y_test.astype(np.int64))
     test_dataset = TensorDataset(X_test_t, y_test_t)
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=pin_memory
+        num_workers=0, pin_memory=pin_memory
     )
 
     return train_loaders, val_loaders, test_loader
 
 
-class SimpleExperimentRunner:
-    """Simple, fast experiment runner - OPTIMIZED."""
+class ExperimentRunner:
+    """Experiment runner for MLP + Features."""
 
     def __init__(self, scenarios_dir='experiments/scenarios',
                  data_dir='./data/processed',
@@ -168,7 +142,6 @@ class SimpleExperimentRunner:
         self.config_dir = Path(config_dir)
         self.results_dir = Path(results_dir)
         self.results = []
-        self._data_cache = {}
         self.logger = get_logger(__name__)
 
     def _load_config(self, config_path: str) -> dict:
@@ -176,15 +149,17 @@ class SimpleExperimentRunner:
         try:
             with open(config_path, 'r') as f:
                 return yaml.safe_load(f)
-        except FileNotFoundError as e:
-            self.logger.error(f"Config file not found: {config_path}")
-            raise
-        except yaml.YAMLError as e:
-            self.logger.error(f"YAML parsing error in {config_path}: {e}")
+        except FileNotFoundError:
+            self.logger.error(f"Config not found: {config_path}")
             raise
 
     def _merge_configs(self, base: dict, override: dict) -> dict:
         """Deep merge configs."""
+        if override is None:
+            return deepcopy(base) if base else {}
+        if base is None:
+            return deepcopy(override) if override else {}
+        
         result = deepcopy(base)
         for key, value in override.items():
             if (key in result and isinstance(result[key], dict) and
@@ -194,54 +169,53 @@ class SimpleExperimentRunner:
                 result[key] = deepcopy(value)
         return result
 
-    def _get_config(self, dataset: str, method: str, exp_hyperparams=None):
-        """Get merged config."""
+    def _get_config(self, dataset: str, method: str, hyperparams=None):
+        """Get merged config with proper defaults."""
         dataset_cfg = self._load_config(
             self.config_dir / 'datasets' / f'{dataset}.yaml'
         )
         method_cfg = self._load_config(
             self.config_dir / 'methods' / f'{method}.yaml'
         )
+        
+        if dataset_cfg is None:
+            raise ValueError(f"Dataset config not found: {dataset}")
+        if method_cfg is None:
+            raise ValueError(f"Method config not found: {method}")
+        
+        # Baseline uses dataset training config
+        if method == 'baseline':
+            config = deepcopy(dataset_cfg)
+        else:
+            config = self._merge_configs(dataset_cfg, method_cfg)
 
-        config = self._merge_configs(dataset_cfg, method_cfg)
-
-        if exp_hyperparams:
-            for section, params in exp_hyperparams.items():
+        # Apply hyperparameter overrides
+        if hyperparams:
+            for section, params in hyperparams.items():
                 config[section] = self._merge_configs(
                     config.get(section, {}), params
                 )
-
+        
         return config
 
     def load_scenario(self, scenario_name: str) -> Dict:
         """Load scenario YAML."""
-        scenario_file = self.scenarios_dir / f'{scenario_name}.yaml'
-        with open(scenario_file, 'r') as f:
+        with open(self.scenarios_dir / f'{scenario_name}.yaml', 'r') as f:
             return yaml.safe_load(f)
 
     def _load_data(self, dataset: str) -> Tuple:
-        """Load dataset with caching."""
-        if dataset in self._data_cache:
-            return self._data_cache[dataset]
-
-        print(f"\nLoading {dataset}...", flush=True)
+        """Load dataset (deterministic - no seed needed)."""
+        print(f"Loading {dataset}...", flush=True)
         data_path = self.data_dir / dataset
 
-        try:
-            if dataset == 'sleep-edf':
-                data = load_windowed_sleep_edf(str(data_path))
-            elif dataset == 'wesad':
-                data = load_processed_wesad_temporal(str(data_path))
-            else:
-                raise ValueError(f"Unknown dataset: {dataset}")
+        if dataset == 'sleep-edf':
+            data = load_windowed_sleep_edf(str(data_path))
+        elif dataset == 'wesad':
+            data = load_processed_wesad(str(data_path))
+        else:
+            raise ValueError(f"Unknown dataset: {dataset}")
 
-            self._data_cache[dataset] = data
-            print(f"Loaded {dataset} and cached", flush=True)
-            return data
-
-        except Exception as e:
-            print(f"Failed to load {dataset}: {e}", flush=True)
-            raise
+        return data
 
     def run_experiment(self, exp_name: str, exp_config: Dict,
                       device: str) -> Dict:
@@ -251,108 +225,83 @@ class SimpleExperimentRunner:
         seed = exp_config['seed']
 
         print(f"\n{'='*60}")
-        print(f"Running: {exp_name}")
-        print(f"Dataset: {dataset} | Method: {method} | Seed: {seed}")
+        print(f"{exp_name} | {dataset} | {method} | seed={seed}")
         print(f"{'='*60}")
 
         start_time = time.time()
 
         try:
-            set_reproducible(seed=seed, device=device, verbose=False)
+            # SET SEED FIRST - before any random operation
+            set_seed_everywhere(seed=seed, device=device)
+            
             config = self._get_config(
                 dataset, method, exp_config.get('hyperparameters')
             )
 
-            data = self._load_data(dataset)
-            X_train, X_val, X_test = data[0], data[1], data[2]
-            y_train, y_val, y_test = data[3], data[4], data[5]
+            X_train, X_val, X_test, y_train, y_val, y_test = (
+                self._load_data(dataset)[:6]
+            )
 
-            print(f"Loaded: train={X_train.shape} val={X_val.shape} "
+            print(f"Data: train={X_train.shape} val={X_val.shape} "
                   f"test={X_test.shape}")
 
             config['dataset']['input_dim'] = X_train.shape[1]
 
-            model = UnifiedLSTMModel(config, device=device)
+            model = UnifiedMLPModel(config, device=device)
             n_params = sum(p.numel() for p in model.parameters())
-            print(f"Model: {n_params:,} parameters")
+            print(f"Model: {n_params:,} params")
 
             output_dir = (self.results_dir / method / dataset /
                          f'seed_{seed}')
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            batch_size = config['training'].get('batch_size', 32)
+            batch_size = config['training'].get('batch_size', 64)
             epochs = config['training'].get('epochs', 40)
             patience = config['training'].get('early_stopping_patience', 10)
-            num_workers = config['training'].get('num_workers', 0)
-            pin_memory = device == 'cuda'
 
-            self.logger.info(
-                f"Training config:\n"
-                f"  batch_size={batch_size}\n"
-                f"  num_workers={num_workers}\n"
-                f"  epochs={epochs}\n"
-                f"  patience={patience}"
-            )
-
+            # Train
             if method == 'baseline':
-                print("\nTraining: Baseline")
-                train_loader, val_loader, test_loader = (
-                    create_simple_dataloaders(
-                        X_train, y_train, X_val, y_val, X_test, y_test,
-                        batch_size, num_workers=num_workers,
-                        pin_memory=pin_memory
-                    )
+                train_loader, val_loader, test_loader = create_dataloaders(
+                    X_train, y_train, X_val, y_val, X_test, y_test,
+                    batch_size, device
                 )
                 trainer = BaselineTrainer(model, config, device=device)
                 training_results = trainer.fit(
-                    train_loader, val_loader,
-                    epochs=epochs, patience=patience,
-                    output_dir=str(output_dir)
+                    train_loader, val_loader, epochs=epochs,
+                    patience=patience, output_dir=str(output_dir)
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
             elif method == 'dp':
-                print("\nTraining: Differential Privacy")
-                train_loader, val_loader, test_loader = (
-                    create_simple_dataloaders(
-                        X_train, y_train, X_val, y_val, X_test, y_test,
-                        batch_size, num_workers=num_workers,
-                        pin_memory=pin_memory
-                    )
+                train_loader, val_loader, test_loader = create_dataloaders(
+                    X_train, y_train, X_val, y_val, X_test, y_test,
+                    batch_size, device
                 )
                 trainer = DPTrainer(model, config, device=device)
                 training_results = trainer.fit(
-                    train_loader, val_loader,
-                    epochs=epochs, patience=patience,
-                    output_dir=str(output_dir)
+                    train_loader, val_loader, epochs=epochs,
+                    patience=patience, output_dir=str(output_dir)
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
             elif method == 'fl':
-                print("\nTraining: Federated Learning")
-                n_clients = (
-                    config['federated_learning'].get('n_clients', 5)
+                n_clients = config['federated_learning'].get(
+                    'n_clients', 5
                 )
-                print(f"Clients: {n_clients}")
-
                 train_loaders, val_loaders, test_loader = (
                     create_fl_dataloaders(
                         X_train, y_train, X_val, y_val, X_test, y_test,
-                        n_clients, batch_size, num_workers=num_workers,
-                        pin_memory=pin_memory
+                        n_clients, batch_size, device
                     )
                 )
-
                 client_ids = [f"client_{i:02d}" for i in range(n_clients)]
                 trainer = FLTrainer(model, config, device=device)
                 training_results = trainer.fit(
-                    train_loaders, val_loaders,
-                    client_ids=client_ids,
+                    train_loaders, val_loaders, client_ids=client_ids,
                     epochs=config['federated_learning'].get(
-                        'global_rounds', 100
+                        'global_rounds', 40
                     ),
-                    patience=patience,
-                    output_dir=str(output_dir)
+                    patience=patience, output_dir=str(output_dir)
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -368,25 +317,12 @@ class SimpleExperimentRunner:
                     'method': method,
                     'seed': seed,
                     'timestamp': datetime.now().isoformat(),
-                    'hyperparameters': exp_config.get('hyperparameters', {})
                 },
                 'training_metrics': {
                     'total_epochs': training_results.get('total_epochs', 0),
                     'best_val_acc': training_results.get('best_val_acc', 0),
-                    'training_time_seconds': (
-                        training_results.get('training_time_seconds', 0)
-                    ),
-                    'final_train_loss': (
-                        training_results.get('final_train_loss', 0)
-                    ),
-                    'final_train_acc': (
-                        training_results.get('final_train_acc', 0)
-                    ),
-                    'final_val_loss': training_results.get(
-                        'final_val_loss', 0
-                    ),
-                    'final_val_acc': training_results.get(
-                        'final_val_acc', 0
+                    'training_time_seconds': training_results.get(
+                        'training_time_seconds', 0
                     ),
                 },
                 'test_metrics': {
@@ -394,32 +330,18 @@ class SimpleExperimentRunner:
                     'precision': test_metrics.get('precision', 0),
                     'recall': test_metrics.get('recall', 0),
                     'f1_score': test_metrics.get('f1_score', 0),
-                    'confusion_matrix': test_metrics.get('confusion_matrix', []),
-                    'class_names': test_metrics.get('class_names', [])
                 },
                 'timing': {
                     'total_time_seconds': elapsed,
-                    'training_time_seconds': (
-                        training_results.get('training_time_seconds', 0)
-                    ),
-                    'evaluation_time_seconds': (
-                        elapsed - training_results.get(
-                            'training_time_seconds', 0
-                        )
-                    )
                 }
             }
 
             with open(output_dir / 'results.json', 'w') as f:
                 json.dump(results_data, f, indent=2)
 
-            print(f"\nCompleted in {elapsed:.1f}s")
-            print(f"  Accuracy: {test_metrics.get('accuracy', 0):.4f}")
-            print(f"  F1-Score: {test_metrics.get('f1_score', 0):.4f}")
-            print(f"  Best Val Acc: {training_results.get('best_val_acc', 0):.4f}")
-
-            if method == 'dp' and 'final_epsilon' in test_metrics:
-                print(f"  Final epsilon: {test_metrics['final_epsilon']:.4f}")
+            print(f"✓ {test_metrics.get('accuracy', 0):.4f} acc "
+                  f"| {test_metrics.get('f1_score', 0):.4f} f1 "
+                  f"| {elapsed:.1f}s")
 
             result = {
                 'name': exp_name,
@@ -427,17 +349,14 @@ class SimpleExperimentRunner:
                 'method': method,
                 'seed': seed,
                 'success': True,
-                'time_seconds': elapsed,
                 'accuracy': test_metrics.get('accuracy', 0),
                 'f1_score': test_metrics.get('f1_score', 0),
-                'timestamp': datetime.now().isoformat()
+                'time_seconds': elapsed,
             }
 
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"\nFailed: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"✗ Failed: {e}")
             self.logger.error(f"{exp_name} failed: {e}", exc_info=True)
 
             result = {
@@ -448,197 +367,23 @@ class SimpleExperimentRunner:
                 'success': False,
                 'error': str(e),
                 'time_seconds': elapsed,
-                'timestamp': datetime.now().isoformat()
             }
 
         self.results.append(result)
         return result
 
-    def run_all(self, experiments: Dict, device: str) -> List[Dict]:
+    def run_all(self, experiments: Dict, device: str):
         """Run all experiments."""
         total = len(experiments)
         print(f"\n{'='*60}")
-        print(f"Running {total} experiments")
+        print(f"Running {total} experiments on {device.upper()}")
         print(f"{'='*60}")
 
         for idx, (exp_name, exp_config) in enumerate(experiments.items(), 1):
             print(f"\n[{idx}/{total}]", flush=True)
             self.run_experiment(exp_name, exp_config, device)
 
-            if idx % 3 == 0:
-                gc.collect()
-                if device == 'cuda':
-                    torch.cuda.empty_cache()
-
         return self.results
-
-    def _create_case_key(self, result: Dict) -> str:
-        """Create unique key for grouping experiments by case."""
-        dataset = result.get('dataset', 'unknown')
-        method = result.get('method', 'unknown')
-
-        exp_name = result.get('name', '')
-        hyperparams_str = ''
-
-        seed = result.get('seed', 'unknown')
-        if result.get('success', False):
-            results_file = (self.results_dir / method / dataset /
-                           f'seed_{seed}' / 'results.json')
-            if results_file.exists():
-                try:
-                    with open(results_file, 'r') as f:
-                        detailed = json.load(f)
-                    hyperparams = detailed.get('experiment_info', {}).get(
-                        'hyperparameters', {}
-                    )
-                    hyperparams_str = json.dumps(
-                        hyperparams, sort_keys=True
-                    )
-                except Exception:
-                    pass
-
-        return f"{dataset}::{method}::{hyperparams_str}"
-
-    def _load_detailed_results(self, method: str, dataset: str,
-                              seed: int) -> Optional[Dict]:
-        """Load detailed results from JSON file."""
-        results_file = (self.results_dir / method / dataset /
-                       f'seed_{seed}' / 'results.json')
-        if not results_file.exists():
-            return None
-
-        try:
-            with open(results_file, 'r') as f:
-                return json.load(f)
-        except Exception:
-            return None
-
-    def _calculate_aggregated_metrics(
-            self, results_group: List[Dict]) -> Dict[str, Any]:
-        """Calculate aggregated metrics for a group of runs."""
-        if not results_group:
-            return {}
-
-        detailed_results = []
-        for result in results_group:
-            if not result.get('success', False):
-                continue
-
-            dataset = result.get('dataset')
-            method = result.get('method')
-            seed = result.get('seed')
-
-            detailed = self._load_detailed_results(method, dataset, seed)
-            if detailed:
-                detailed_results.append(detailed)
-
-        if not detailed_results:
-            return {}
-
-        metrics_to_aggregate = {
-            'test_accuracy': [],
-            'test_f1_score': [],
-            'test_precision': [],
-            'test_recall': [],
-            'best_val_acc': [],
-            'training_time_seconds': [],
-            'total_epochs': []
-        }
-
-        for detailed in detailed_results:
-            test_metrics = detailed.get('test_metrics', {})
-            training_metrics = detailed.get('training_metrics', {})
-
-            if 'accuracy' in test_metrics:
-                metrics_to_aggregate['test_accuracy'].append(
-                    test_metrics['accuracy']
-                )
-            if 'f1_score' in test_metrics:
-                metrics_to_aggregate['test_f1_score'].append(
-                    test_metrics['f1_score']
-                )
-            if 'precision' in test_metrics:
-                metrics_to_aggregate['test_precision'].append(
-                    test_metrics['precision']
-                )
-            if 'recall' in test_metrics:
-                metrics_to_aggregate['test_recall'].append(
-                    test_metrics['recall']
-                )
-            if 'best_val_acc' in training_metrics:
-                metrics_to_aggregate['best_val_acc'].append(
-                    training_metrics['best_val_acc']
-                )
-            if 'training_time_seconds' in training_metrics:
-                metrics_to_aggregate['training_time_seconds'].append(
-                    training_metrics['training_time_seconds']
-                )
-            if 'total_epochs' in training_metrics:
-                metrics_to_aggregate['total_epochs'].append(
-                    training_metrics['total_epochs']
-                )
-
-        aggregated = {}
-        for metric_name, values in metrics_to_aggregate.items():
-            if not values:
-                continue
-
-            values_array = np.array(values)
-            aggregated[metric_name] = {
-                'mean': float(np.mean(values_array)),
-                'std': float(np.std(values_array)),
-                'min': float(np.min(values_array)),
-                'max': float(np.max(values_array)),
-                'n_runs': len(values)
-            }
-
-        return aggregated
-
-    def calculate_aggregated_results(self) -> Dict[str, Any]:
-        """Calculate aggregated metrics across multiple runs."""
-        if not self.results:
-            return {}
-
-        successful_results = [r for r in self.results
-                             if r.get('success', False)]
-        if not successful_results:
-            return {}
-
-        grouped_results = {}
-        for result in successful_results:
-            case_key = self._create_case_key(result)
-            if case_key not in grouped_results:
-                grouped_results[case_key] = []
-            grouped_results[case_key].append(result)
-
-        aggregated_results = {}
-        for case_key, results_group in grouped_results.items():
-            first_result = results_group[0]
-            dataset = first_result.get('dataset', 'unknown')
-            method = first_result.get('method', 'unknown')
-
-            seed = first_result.get('seed')
-            detailed = self._load_detailed_results(method, dataset, seed)
-            hyperparams = {}
-            if detailed:
-                hyperparams = detailed.get('experiment_info', {}).get(
-                    'hyperparameters', {}
-                )
-
-            aggregated_metrics = self._calculate_aggregated_metrics(
-                results_group
-            )
-
-            aggregated_results[case_key] = {
-                'dataset': dataset,
-                'method': method,
-                'hyperparameters': hyperparams,
-                'n_runs': len(results_group),
-                'seeds': [r.get('seed') for r in results_group],
-                'metrics': aggregated_metrics
-            }
-
-        return aggregated_results
 
     def save_results(self, output_file='experiments/results_log.json'):
         """Save results summary."""
@@ -646,25 +391,20 @@ class SimpleExperimentRunner:
             print("No results to save")
             return
 
-        successful_results = [r for r in self.results if r['success']]
-
-        aggregated_results = self.calculate_aggregated_results()
+        successful = [r for r in self.results if r['success']]
 
         summary = {
             'timestamp': datetime.now().isoformat(),
             'total_experiments': len(self.results),
-            'successful': len(successful_results),
-            'failed': len(self.results) - len(successful_results),
-            'average_accuracy': (np.mean([r['accuracy']
-                                         for r in successful_results])
-                                if successful_results else 0),
-            'average_f1': (np.mean([r['f1_score']
-                                   for r in successful_results])
-                          if successful_results else 0),
+            'successful': len(successful),
+            'failed': len(self.results) - len(successful),
+            'average_accuracy': (np.mean([r['accuracy'] for r in successful])
+                                if successful else 0),
+            'average_f1': (np.mean([r['f1_score'] for r in successful])
+                          if successful else 0),
             'total_time_hours': sum(r['time_seconds']
                                    for r in self.results) / 3600,
-            'results': self.results,
-            'aggregated_results': aggregated_results
+            'results': self.results
         }
 
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -672,146 +412,68 @@ class SimpleExperimentRunner:
             json.dump(summary, f, indent=2)
 
         print(f"\n{'='*60}")
-        print(f"RESULTS SUMMARY")
+        print(f"RESULTS")
         print(f"{'='*60}")
-        print(f"Successful: {summary['successful']}/{summary['total_experiments']}")
-        print(f"Failed: {summary['failed']}/{summary['total_experiments']}")
-        if successful_results:
-            print(f"Avg Accuracy: {summary['average_accuracy']:.4f}")
-            print(f"Avg F1-Score: {summary['average_f1']:.4f}")
-        print(f"Total time: {summary['total_time_hours']:.2f} hours")
-        print(f"Saved to: {output_file}")
-
-        if aggregated_results:
-            print(f"\n{'='*60}")
-            print(f"AGGREGATED METRICS (across multiple runs)")
-            print(f"{'='*60}")
-            for case_key, case_data in aggregated_results.items():
-                dataset = case_data['dataset']
-                method = case_data['method']
-                n_runs = case_data['n_runs']
-                metrics = case_data.get('metrics', {})
-
-                print(f"\n{method.upper()} - {dataset} ({n_runs} runs)")
-                if metrics:
-                    if 'test_accuracy' in metrics:
-                        acc = metrics['test_accuracy']
-                        print(f"  Accuracy: {acc['mean']:.4f} +/- "
-                              f"{acc['std']:.4f} "
-                              f"(min: {acc['min']:.4f}, "
-                              f"max: {acc['max']:.4f})")
-                    if 'test_f1_score' in metrics:
-                        f1 = metrics['test_f1_score']
-                        print(f"  F1-Score: {f1['mean']:.4f} +/- "
-                              f"{f1['std']:.4f} "
-                              f"(min: {f1['min']:.4f}, "
-                              f"max: {f1['max']:.4f})")
-
-        print(f"{'='*60}\n")
+        print(f"Success: {summary['successful']}/{summary['total_experiments']}")
+        print(f"Avg Accuracy: {summary['average_accuracy']:.4f}")
+        print(f"Avg F1: {summary['average_f1']:.4f}")
+        print(f"Time: {summary['total_time_hours']:.2f}h")
+        print(f"Saved: {output_file}\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Simple experiment runner - OPTIMIZED',
+        description='Experiment runner for MLP + Features',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python experiments/run_experiments.py --scenario baseline
-  python experiments/run_experiments.py --scenario fl --datasets wesad
-  python experiments/run_experiments.py --scenario dp --n_experiments 3
+  python experiments/run_experiments.py --scenario baseline \\
+    --n_experiments 3 --auto
+  python experiments/run_experiments.py --scenario all --datasets wesad \\
+    --auto
         """
     )
 
-    parser.add_argument(
-        '--scenario',
-        choices=['baseline', 'dp', 'fl', 'dp_fl', 'all'],
-        default='baseline',
-        help='Scenario to run'
-    )
-    parser.add_argument(
-        '--device',
-        default='auto',
-        help='Device (cuda/mps/cpu/auto)'
-    )
-    parser.add_argument(
-        '--datasets',
-        help='Filter datasets (comma-separated: sleep-edf,wesad)'
-    )
-    parser.add_argument(
-        '--n_experiments',
-        type=int,
-        help='Limit number of experiments'
-    )
-    parser.add_argument(
-        '--auto',
-        action='store_true',
-        help='Skip confirmation'
-    )
-    parser.add_argument(
-        '--output_file',
-        default='experiments/results_log.json',
-        help='Output results file'
-    )
+    parser.add_argument('--scenario', 
+                       choices=['baseline', 'dp', 'fl', 'all'],
+                       default='baseline', help='Scenario to run')
+    parser.add_argument('--device', default='auto',
+                       help='Device (cuda/cpu/auto)')
+    parser.add_argument('--datasets',
+                       help='Datasets (comma-separated: sleep-edf,wesad)')
+    parser.add_argument('--n_experiments', type=int,
+                       help='Limit number of experiments')
+    parser.add_argument('--auto', action='store_true', 
+                       help='Skip confirmation')
+    parser.add_argument('--output_file', 
+                       default='experiments/results_log.json')
 
     args = parser.parse_args()
 
     device = get_device() if args.device == 'auto' else args.device
-    print(f"\nDevice: {device}")
+    print(f"\nDevice: {device}\n")
 
     if device == 'cuda':
         torch.cuda.empty_cache()
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
 
-        gpu_name = torch.cuda.get_device_name(0)
-        gpu_memory = (torch.cuda.get_device_properties(0).total_memory
-                     / 1e9)
-        print(f"CUDA Device: {gpu_name}")
-        print(f"CUDA Memory: {gpu_memory:.1f}GB\n")
-
-    runner = SimpleExperimentRunner()
-
-    if args.scenario == 'all':
-        scenarios = ['baseline', 'dp', 'fl']
-    else:
-        scenarios = [args.scenario]
+    runner = ExperimentRunner()
+    scenarios = ['baseline', 'dp', 'fl'] if args.scenario == 'all' else [
+        args.scenario
+    ]
 
     all_experiments = {}
     for scenario in scenarios:
         try:
             scenario_data = runner.load_scenario(scenario)
-
-            if scenario_data is None:
-                print(f"Warning: Scenario {scenario} returned None")
-                continue
-
-            experiments = scenario_data.get('experiments')
-            if experiments is None:
-                print(f"Warning: Scenario {scenario} has no 'experiments' key")
-                continue
-
-            if not isinstance(experiments, dict):
-                print(f"Warning: Scenario {scenario} 'experiments' is not a "
-                      f"dict: {type(experiments)}")
-                continue
-
-            enabled_experiments = {
+            experiments = scenario_data.get('experiments', {})
+            enabled = {
                 name: config for name, config in experiments.items()
                 if isinstance(config, dict) and config.get('enabled', True)
             }
-            all_experiments.update(enabled_experiments)
+            all_experiments.update(enabled)
         except FileNotFoundError:
-            print(f"Warning: Scenario not found: {scenario}")
-            continue
-        except Exception as e:
-            print(f"Warning: Error loading scenario {scenario}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
-
-    if not all_experiments:
-        print("Error: No experiments found")
-        return 1
+            print(f"Warning: Scenario {scenario} not found")
 
     if args.datasets:
         datasets = [d.strip() for d in args.datasets.split(',')]
@@ -821,18 +483,18 @@ Examples:
         }
 
     if args.n_experiments:
-        all_experiments = dict(list(all_experiments.items())
-                              [:args.n_experiments])
+        all_experiments = dict(
+            list(all_experiments.items())[:args.n_experiments]
+        )
 
     if not all_experiments:
-        print("Error: No experiments matched filters")
+        print("Error: No experiments found")
         return 1
 
-    print(f"\n{'='*60}")
+    print(f"{'='*60}")
     print(f"Will run {len(all_experiments)} experiments:")
-    for exp_name, exp_config in list(all_experiments.items())[:5]:
-        print(f"  - {exp_name}: {exp_config['dataset']} / "
-              f"{exp_config['method']}")
+    for exp_name in list(all_experiments.keys())[:5]:
+        print(f"  - {exp_name}")
     if len(all_experiments) > 5:
         print(f"  ... and {len(all_experiments) - 5} more")
     print(f"{'='*60}")
@@ -840,7 +502,6 @@ Examples:
     if not args.auto:
         response = input("\nProceed? (y/n): ").lower().strip()
         if response != 'y':
-            print("Cancelled")
             return 0
 
     start_time = time.time()
@@ -848,8 +509,7 @@ Examples:
     elapsed = time.time() - start_time
 
     runner.save_results(args.output_file)
-
-    print(f"Total execution time: {elapsed/60:.1f} minutes")
+    print(f"Total time: {elapsed/60:.1f} minutes\n")
 
     return 0
 

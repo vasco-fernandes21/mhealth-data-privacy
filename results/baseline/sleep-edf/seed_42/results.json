@@ -1,0 +1,23 @@
+{
+  "experiment_info": {
+    "name": "baseline_sleep_edf_run1",
+    "dataset": "sleep-edf",
+    "method": "baseline",
+    "seed": 42,
+    "timestamp": "2025-11-10T17:05:31.278211"
+  },
+  "training_metrics": {
+    "total_epochs": 60,
+    "best_val_acc": 0.8760055727832456,
+    "training_time_seconds": 131.61812829971313
+  },
+  "test_metrics": {
+    "accuracy": 0.8860776994331536,
+    "precision": 0.8713535240058286,
+    "recall": 0.8860776994331536,
+    "f1_score": 0.8719869634767321
+  },
+  "timing": {
+    "total_time_seconds": 132.74554800987244
+  }
+}

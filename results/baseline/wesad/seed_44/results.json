@@ -1,0 +1,23 @@
+{
+  "experiment_info": {
+    "name": "baseline_wesad_run3",
+    "dataset": "wesad",
+    "method": "baseline",
+    "seed": 44,
+    "timestamp": "2025-11-10T16:51:47.568057"
+  },
+  "training_metrics": {
+    "total_epochs": 16,
+    "best_val_acc": 0.821078431372549,
+    "training_time_seconds": 0.29557204246520996
+  },
+  "test_metrics": {
+    "accuracy": 0.7870257037943696,
+    "precision": 0.8299852253340626,
+    "recall": 0.7870257037943696,
+    "f1_score": 0.7449717603276985
+  },
+  "timing": {
+    "total_time_seconds": 0.3534238338470459
+  }
+}

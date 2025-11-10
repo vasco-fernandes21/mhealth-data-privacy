@@ -1,31 +1,20 @@
+# src/configs/datasets/sleep-edf.yaml
 dataset:
   name: "sleep-edf"
-  path: "data/processed/sleep-edf"
   input_dim: 24
   n_classes: 5
   class_names: ["W", "N1", "N2", "N3", "R"]
 
 model:
-  input_projection: 64
-  lstm_units: 32
-  lstm_layers: 1
-  bidirectional: true
-  dropout: 0.1
-  dense_layers: [32]
+  hidden_dims: [128, 64]  # ← MESMO que WESAD
+  dropout: 0.5            # ← MESMO que WESAD
 
 training:
-  epochs: 40
-  batch_size: 256
-  learning_rate: 0.002
-  optimizer: "adamw"
-  weight_decay: 0.0001
-  loss: "cross_entropy"
-  label_smoothing: 0.1
-  scheduler: "cosine"
-  scheduler_T_max: 35
-  early_stopping_patience: 12
-  gradient_clipping: true
-  gradient_clip_norm: 1.0
+  batch_size: 256         # ← MESMO que WESAD
+  epochs: 60              # ← MESMO que WESAD
+  learning_rate: 0.0005   # ← MESMO que WESAD
+  weight_decay: 0.0005    # ← MESMO que WESAD
+  optimizer: adamw        # ← MESMO que WESAD
+  scheduler: plateau      # ← MESMO que WESAD
+  early_stopping_patience: 15  # ← MESMO que WESAD
   num_workers: 0
-  pin_memory: true
-  use_amp: true

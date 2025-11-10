@@ -1,0 +1,23 @@
+{
+  "experiment_info": {
+    "name": "fl_wesad_c10_run3",
+    "dataset": "wesad",
+    "method": "fl",
+    "seed": 456,
+    "timestamp": "2025-11-10T16:37:06.136881"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_val_acc": 0.778544061302682,
+    "training_time_seconds": 0.6727299690246582
+  },
+  "test_metrics": {
+    "accuracy": 0.7943696450428397,
+    "precision": 0.8001766222404846,
+    "recall": 0.7943696450428397,
+    "f1_score": 0.7693994124947886
+  },
+  "timing": {
+    "total_time_seconds": 0.7358551025390625
+  }
+}

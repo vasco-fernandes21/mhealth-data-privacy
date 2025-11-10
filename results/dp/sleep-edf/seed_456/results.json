@@ -1,0 +1,23 @@
+{
+  "experiment_info": {
+    "name": "dp_sleep_edf_noise2_0_run3",
+    "dataset": "sleep-edf",
+    "method": "dp",
+    "seed": 456,
+    "timestamp": "2025-11-10T01:48:20.080553"
+  },
+  "training_metrics": {
+    "total_epochs": 20,
+    "best_val_acc": 0.8501790181714679,
+    "training_time_seconds": 153.00880789756775
+  },
+  "test_metrics": {
+    "accuracy": 0.8605419604590073,
+    "precision": 0.8385969733509318,
+    "recall": 0.8605419604590073,
+    "f1_score": 0.841694966266222
+  },
+  "timing": {
+    "total_time_seconds": 153.49079394340515
+  }
+}

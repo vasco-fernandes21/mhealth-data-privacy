@@ -1,18 +1,7 @@
 # ================================================================
 # BASELINE - Standard Training
 # ================================================================
+# Baseline method uses dataset-specific configurations.
+# All training parameters are defined in the dataset config files.
 method: "baseline"
 description: "Standard training without privacy"
-
-training:
-  batch_size: 256
-  learning_rate: 0.001
-  optimizer: "adamw"
-  weight_decay: 0.0001
-  scheduler: "cosine"
-  scheduler_T_max: 40
-  epochs: 40
-  early_stopping_patience: 10
-  num_workers: 0
-  use_amp: true
-  pin_memory: true

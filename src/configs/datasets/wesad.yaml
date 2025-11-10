@@ -1,37 +1,25 @@
 # ================================================================
-# WESAD Dataset Config
+# WESAD - BASELINE com config do DP (para ablation test)
 # ================================================================
 
 dataset:
-  name: "wesad"
-  path: "data/processed/wesad"
-  input_dim: 14
+  name: wesad
+  input_dim: 140
   n_classes: 2
-  class_names: ["non-stress", "stress"]
-  class_weights: [0.714, 1.667]
+  class_names: ['non-stress', 'stress']
 
 model:
-  input_projection: 64
-  lstm_units: 32
-  lstm_layers: 1
-  bidirectional: true
-  dropout: 0.2
-  dense_layers: [32]
-
+  hidden_dims: [128, 64]
+  dropout: 0.3
 
 training:
-  epochs: 40
-  batch_size: 256
-  learning_rate: 0.0015
-  optimizer: "adamw"
-  weight_decay: 0.0001
-  loss: "cross_entropy"
-  label_smoothing: 0.1
-  scheduler: "cosine"
-  scheduler_T_max: 35
-  early_stopping_patience: 10
-  gradient_clipping: true
-  gradient_clip_norm: 1.0
+  batch_size: 256             # ← DP tem isto
+  epochs: 60
+  learning_rate: 0.0005
+  weight_decay: 0.0005        # ← DP tem isto
+  optimizer: adamw            # ← DP tem isto
+  momentum: 0.9
+  scheduler: plateau
+  gradient_clipping: false
+  early_stopping_patience: 15
   num_workers: 0
-  pin_memory: true
-  use_amp: true

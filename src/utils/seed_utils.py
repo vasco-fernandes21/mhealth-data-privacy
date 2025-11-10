@@ -5,7 +5,7 @@ Centralized random seeding for reproducibility.
 Handles:
 - Python random
 - NumPy random
-- PyTorch random (CPU, CUDA, MPS)
+- PyTorch random (CPU, CUDA)
 - CUDA backend options (deterministic, benchmark)
 
 Usage:
@@ -32,7 +32,7 @@ def set_all_seeds(seed: int = 42, verbose: bool = True) -> None:
         verbose: Print confirmation (default: True)
     
     Notes:
-        - Sets seeds for: Python, NumPy, PyTorch (CPU, CUDA, MPS)
+        - Sets seeds for: Python, NumPy, PyTorch (CPU, CUDA)
         - Does NOT set deterministic mode (see set_deterministic)
         - Safe to call multiple times
     """
@@ -50,10 +50,6 @@ def set_all_seeds(seed: int = 42, verbose: bool = True) -> None:
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
     
-    # PyTorch MPS (Apple Silicon)
-    if hasattr(torch, 'mps') and torch.mps.is_available():
-        torch.mps.manual_seed(seed)
-    
     # Also set environment variable for some libraries
     os.environ['PYTHONHASHSEED'] = str(seed)
     
@@ -61,7 +57,7 @@ def set_all_seeds(seed: int = 42, verbose: bool = True) -> None:
         print(f"✅ All random seeds set to {seed}")
 
 
-def set_deterministic(device: Literal['cuda', 'cpu', 'mps', 'auto'] = 'auto',
+def set_deterministic(device: Literal['cuda', 'cpu', 'auto'] = 'auto',
                       verbose: bool = True) -> None:
     """
     Force deterministic behavior (for maximum reproducibility).
@@ -71,19 +67,17 @@ def set_deterministic(device: Literal['cuda', 'cpu', 'mps', 'auto'] = 'auto',
     - CPU: Minimal impact
     
     Args:
-        device: Device type ('cuda', 'cpu', 'mps', or 'auto' to detect)
+        device: Device type ('cuda', 'cpu', or 'auto' to detect)
         verbose: Print confirmation
     
     Notes:
         - Only affects CUDA backend
-        - CPU and MPS are deterministic by default
+        - CPU is deterministic by default
         - Some operations still may not be deterministic
     """
     if device == 'auto':
         if torch.cuda.is_available():
             device = 'cuda'
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            device = 'mps'
         else:
             device = 'cpu'
     
@@ -92,11 +86,6 @@ def set_deterministic(device: Literal['cuda', 'cpu', 'mps', 'auto'] = 'auto',
         torch.backends.cudnn.benchmark = False
         if verbose:
             print(f"✅ CUDA deterministic mode enabled (slower but reproducible)")
-    
-    elif device == 'mps':
-        # MPS doesn't have deterministic/benchmark options
-        if verbose:
-            print(f"ℹ️  MPS backend is deterministic by default")
     
     elif device == 'cpu':
         if verbose:
@@ -176,8 +165,7 @@ class RandomState:
             self.cuda_state = torch.cuda.get_rng_state_all()
         
         # Set new seed
-        set_all_seeds(self.seed, verbose=False)
-        return self
+        set_all_seeds(self.seed)
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Restore states

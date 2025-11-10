@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-WESAD Dataset Preprocessing (OPTIMIZED)
-Following best practices from RACT-Net (Thakur et al., 2022)
-- 32Hz sampling rate
-- 32s windows with 75% overlap (optimal for stress detection)
-- Multi-channel support (EDA, BVP, ECG, Temp, ACC, EMG, Resp)
-- Per-subject normalization (removes individual bias)
-- Memory efficient processing
+WESAD Dataset Preprocessing (FEATURES ONLY)
+Direct conversion from raw signals to 140D features (10 per channel × 14 channels)
+Optimized for memory efficiency and stability.
 """
 
 import numpy as np
 import pickle
 from scipy import signal
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import joblib
 import os
@@ -22,7 +18,6 @@ import gc
 from typing import Tuple, Dict, List, Optional
 import warnings
 from multiprocessing import Pool, cpu_count
-import concurrent.futures
 
 warnings.filterwarnings('ignore')
 
@@ -208,18 +203,96 @@ def reduce_outliers(
     return clipped
 
 
-def create_temporal_windows(
+def extract_10_features(series: np.ndarray) -> List[float]:
+    """
+    Extract 10 stable statistical features from a signal.
+    Avoids problematic features like skewness and entropy.
+    """
+    series = series.astype(np.float64)
+
+    features = [
+        float(np.mean(series)),
+        float(np.std(series)),
+        float(np.min(series)),
+        float(np.max(series)),
+        float(np.median(series)),
+        float(np.percentile(series, 25)),
+        float(np.percentile(series, 75)),
+        float(np.ptp(series)),
+        float(np.sqrt(np.mean(series**2))),
+        float(np.sum(np.abs(np.diff(series))))
+    ]
+
+    return features
+
+
+def extract_window_features(
+    signal_dict: Dict, start_idx: int, end_idx: int
+) -> Optional[np.ndarray]:
+    """
+    Extract 10 features from each of 14 channels.
+    Returns array of shape (140,) for 14 channels × 10 features.
+
+    Canais:
+      1D: ecg, eda_chest, temp_chest, emg, resp, bvp, eda_wrist, temp_wrist
+      3D: acc_chest (x,y,z), acc_wrist (x,y,z)
+      Total: 8 × 1 + 2 × 3 = 14 canais
+    """
+    features = []
+
+    signal_names_1d = ['ecg', 'eda_chest', 'temp_chest', 'emg', 'resp',
+                       'bvp', 'eda_wrist', 'temp_wrist']
+    signal_names_3d = [('acc_chest', 3), ('acc_wrist', 3)]
+
+    # 1D signals
+    for name in signal_names_1d:
+        if name not in signal_dict:
+            continue
+
+        arr = signal_dict[name]
+        series = arr if arr.ndim == 1 else arr[:, 0]
+        series = series[start_idx:end_idx]
+
+        if len(series) == 0:
+            return None
+
+        ch_features = extract_10_features(series)
+        features.extend(ch_features)
+
+    # 3D signals (ACC)
+    for name, n_dims in signal_names_3d:
+        if name not in signal_dict:
+            continue
+
+        arr = signal_dict[name]
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+
+        if arr.shape[1] != n_dims:
+            continue
+
+        for c in range(n_dims):
+            series = arr[start_idx:end_idx, c]
+            if len(series) == 0:
+                return None
+
+            ch_features = extract_10_features(series)
+            features.extend(ch_features)
+
+    # Verificar dimensionalidade final
+    if len(features) != 140:
+        return None
+
+    return np.array(features, dtype=np.float32)
+
+
+def create_features_from_windows(
     data: Dict, window_size: int = 1024, overlap: float = 0.75,
     label_threshold: float = 0.7, random_state: int = 42
-) -> Tuple[np.ndarray, np.ndarray, List[str], int, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, int]:
     """
-    Create temporal sliding windows with deterministic labels.
-
-    Args:
-        window_size: samples per window (1024 @ 32Hz = 32s)
-        overlap: fraction of overlap (0.75 = 75% = stride of 256)
-        label_threshold: min valid label coverage
-        random_state: for reproducible label assignment
+    Create features from sliding windows.
+    Returns shape (n_windows, 140) for 140D features.
     """
     np.random.seed(random_state)
 
@@ -229,21 +302,8 @@ def create_temporal_windows(
     signal_names = ['ecg', 'eda_chest', 'temp_chest', 'acc_chest', 'emg',
                     'resp', 'bvp', 'eda_wrist', 'temp_wrist', 'acc_wrist']
 
-    channel_names = []
-    for name in signal_names:
-        if name not in data:
-            continue
-        arr = data[name]
-        if arr.ndim > 1 and arr.shape[1] > 1:
-            for ax in ['x', 'y', 'z'][:arr.shape[1]]:
-                channel_names.append(f"{name}_{ax}")
-        else:
-            channel_names.append(name)
-
-    n_channels = len(channel_names)
-    windows_list = []
+    features_list = []
     labels_list = []
-    subjects_list = []
     n_dropped = 0
 
     for start_idx in range(0, ref_length - window_size + 1, step_size):
@@ -255,27 +315,12 @@ def create_temporal_windows(
         ):
             continue
 
-        # Build window (OTIMIZADO: usar lista, não zeros)
-        window_data = []
+        window_features = extract_window_features(data, start_idx, end_idx)
 
-        for name in signal_names:
-            if name not in data:
-                continue
-            arr = data[name]
-
-            if arr.ndim > 1 and arr.shape[1] > 1:
-                for c in range(arr.shape[1]):
-                    window_data.append(arr[start_idx:end_idx, c])
-            else:
-                series = arr if arr.ndim == 1 else arr[:, 0]
-                window_data.append(series[start_idx:end_idx])
-
-        # Verificar tamanho
-        if not all(len(w) == window_size for w in window_data):
+        if window_features is None or len(window_features) != 140:
             n_dropped += 1
             continue
 
-        # Label assignment com maioria
         window_labels = data['labels'][start_idx:end_idx]
         valid_labels = window_labels[window_labels != 0]
 
@@ -289,59 +334,21 @@ def create_temporal_windows(
             n_dropped += 1
             continue
 
-        windows_list.append(np.stack(window_data, axis=0))
+        features_list.append(window_features)
         labels_list.append(window_label)
-        subjects_list.append(data['subject'])
 
-    if not windows_list:
+    if not features_list:
         return (
-            np.empty((0, n_channels, window_size), dtype=np.float32),
+            np.empty((0, 140), dtype=np.float32),
             np.array([], dtype=np.uint8),
-            channel_names, n_dropped,
-            np.array([], dtype=object)
+            n_dropped
         )
 
     return (
-        np.stack(windows_list, axis=0).astype(np.float32),
+        np.stack(features_list, axis=0).astype(np.float32),
         np.array(labels_list, dtype=np.uint8),
-        channel_names, n_dropped,
-        np.array(subjects_list, dtype=object)
+        n_dropped
     )
-
-
-def zscore_per_subject(
-    X: np.ndarray, subjects: np.ndarray
-) -> np.ndarray:
-    """Normalize per-subject to remove inter-individual bias."""
-    Xn = np.zeros_like(X, dtype=np.float32)
-
-    for subj in np.unique(subjects):
-        mask = subjects == subj
-        X_subj = X[mask]
-
-        mean = X_subj.mean(axis=(0, 2), keepdims=True)
-        std = X_subj.std(axis=(0, 2), keepdims=True) + 1e-8
-
-        Xn[mask] = (X_subj - mean) / std
-
-    return Xn
-
-
-def compute_normalization_stats(X: np.ndarray) -> Dict:
-    """Compute global per-channel z-score normalization."""
-    mean = X.mean(axis=(0, 2), keepdims=True)
-    std = X.std(axis=(0, 2), keepdims=True) + 1e-8
-
-    return {
-        'type': 'per_channel_zscore',
-        'mean': mean,
-        'std': std,
-    }
-
-
-def apply_normalization(X: np.ndarray, stats: Dict) -> np.ndarray:
-    """Apply saved normalization statistics."""
-    return (X - stats['mean']) / stats['std']
 
 
 def compute_class_weights(y: np.ndarray) -> Tuple[Dict, np.ndarray]:
@@ -363,7 +370,7 @@ def compute_class_weights(y: np.ndarray) -> Tuple[Dict, np.ndarray]:
 def process_single_wesad_file(
     args: Tuple
 ) -> Tuple[Optional[Dict], Optional[str]]:
-    """Process a single WESAD file in parallel."""
+    """Process a single WESAD file directly to features."""
     (pkl_file, target_freq, window_size, overlap,
      label_threshold, random_state) = args
 
@@ -375,21 +382,20 @@ def process_single_wesad_file(
         outlier_reduced = reduce_outliers(resampled)
         filtered = apply_filters(outlier_reduced, target_freq)
 
-        windows, labels, ch_names, n_dropped, subjs = \
-            create_temporal_windows(
-                filtered, window_size, overlap, label_threshold,
-                random_state
-            )
+        features, labels, n_dropped = create_features_from_windows(
+            filtered, window_size, overlap, label_threshold, random_state
+        )
 
-        # Cleanup
         del data, resampled, outlier_reduced, filtered
         gc.collect()
 
+        if len(features) == 0:
+            return None, subject
+
         return {
-            'windows': windows,
+            'features': features,
             'labels': labels,
-            'subjects': subjs,
-            'channel_names': ch_names,
+            'subject': subject,
             'n_dropped': n_dropped
         }, subject
 
@@ -398,7 +404,7 @@ def process_single_wesad_file(
         return None, None
 
 
-def preprocess_wesad_temporal(
+def preprocess_wesad(
     data_dir: str,
     output_dir: str,
     target_freq: int = 32,
@@ -413,23 +419,19 @@ def preprocess_wesad_temporal(
     force_reprocess: bool = False
 ) -> Dict:
     """
-    Preprocess WESAD dataset following RACT-Net paper.
-
-    Reference: RACT-Net (Thakur et al., 2022)
-    - Window: 32s (1024 samples @ 32Hz)
-    - Overlap: 75% (stride=256)
-    - Normalization: Per-subject + global
-    - Binary: stress vs non-stress
+    Preprocess WESAD directly to 140D features (10 per channel × 14 channels).
+    No intermediate temporal storage - memory efficient.
     """
     print("="*70)
-    print("WESAD PREPROCESSING (Following RACT-Net)")
+    print("WESAD PREPROCESSING (140D FEATURES)")
     print("="*70)
     print(f"Target freq: {target_freq} Hz")
     print(f"Window: {window_size/target_freq:.1f}s ({window_size} samples)")
-    print(f"Overlap: {overlap*100:.0f}% "
-          f"(stride={int(window_size*(1-overlap))})")
-    print(f"Split: {(1-test_size-val_size)*100:.0f}% train / "
-          f"{val_size*100:.0f}% val / {test_size*100:.0f}% test\n")
+    print(f"Overlap: {overlap*100:.0f}%")
+    print(f"Features: 140D (10 per channel × 14 channels)")
+    print(f"  - 8 channels 1D: ecg, eda_chest, temp_chest, emg, resp, bvp, "
+          f"eda_wrist, temp_wrist")
+    print(f"  - 6 channels 3D: acc_chest(x,y,z), acc_wrist(x,y,z)\n")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -442,26 +444,10 @@ def preprocess_wesad_temporal(
 
     if force_reprocess:
         print("Force reprocess enabled - cleaning up old files...")
-        old_files = [
-            'X_train.npy', 'X_val.npy', 'X_test.npy',
-            'y_train.npy', 'y_val.npy', 'y_test.npy',
-            'subjects_train.npy', 'subjects_val.npy', 'subjects_test.npy',
-            'metadata.pkl', 'normalization_stats.pkl', 'label_encoder.pkl',
-            'preprocessing_info.pkl', 'scaler.pkl'
-        ]
-
-        removed_count = 0
-        for f in old_files:
+        for f in required_files + ['metadata.pkl', 'scaler.pkl']:
             filepath = os.path.join(output_dir, f)
             if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                    removed_count += 1
-                except Exception as e:
-                    print(f"  Warning: Could not remove {f}: {e}")
-
-        if removed_count > 0:
-            print(f"  Removed {removed_count} old file(s)\n")
+                os.remove(filepath)
 
     if all_exist and not force_reprocess:
         print("Already preprocessed!")
@@ -491,11 +477,9 @@ def preprocess_wesad_temporal(
     print(f"Processing with {n_workers} workers...")
     start_time = time.time()
 
-    all_windows = []
+    all_features = []
     all_labels = []
     all_subjects = []
-    total_dropped = 0
-    channel_names = None
 
     with Pool(processes=n_workers) as pool:
         for idx, (result, subject) in enumerate(
@@ -504,13 +488,9 @@ def preprocess_wesad_temporal(
             )
         ):
             if result is not None:
-                if channel_names is None:
-                    channel_names = result['channel_names']
-
-                all_windows.append(result['windows'])
+                all_features.append(result['features'])
                 all_labels.append(result['labels'])
-                all_subjects.extend(result['subjects'])
-                total_dropped += result['n_dropped']
+                all_subjects.extend([result['subject']] * len(result['labels']))
 
                 del result
                 gc.collect()
@@ -519,35 +499,17 @@ def preprocess_wesad_temporal(
                 gc.collect()
 
     elapsed_processing = time.time() - start_time
-    print(f"Processed in {elapsed_processing:.1f}s")
-    print(f"Windows dropped (low label coverage): {total_dropped}\n")
+    print(f"Processed in {elapsed_processing:.1f}s\n")
 
-    print("Combining windows...")
-    total_windows = sum(len(w) for w in all_windows)
-    n_channels = all_windows[0].shape[1]
-    window_len = all_windows[0].shape[2]
-
-    X = np.zeros((total_windows, n_channels, window_len), dtype=np.float32)
-    y = np.zeros(total_windows, dtype=np.uint8)
-
-    idx = 0
-    for windows, labels in zip(all_windows, all_labels):
-        n = len(windows)
-        X[idx:idx+n] = windows
-        y[idx:idx+n] = labels
-        idx += n
-        del windows, labels
-
+    print("Combining features...")
+    X = np.vstack(all_features)
+    y = np.concatenate(all_labels)
     subjects_arr = np.array(all_subjects, dtype=object)
 
-    del all_windows, all_labels, all_subjects
+    del all_features, all_labels, all_subjects
     gc.collect()
 
     print(f"Combined: {X.shape}\n")
-
-    # Verificação de sincronização
-    assert len(X) == len(y) == len(subjects_arr), \
-        f"Mismatch: X={len(X)}, y={len(y)}, subjects={len(subjects_arr)}"
 
     # Binary classification
     if binary:
@@ -587,36 +549,25 @@ def preprocess_wesad_temporal(
 
     X_train = X[train_mask]
     y_train = y_binary[train_mask]
-    subj_train_arr = subjects_arr[train_mask]
 
     X_val = X[val_mask]
     y_val = y_binary[val_mask]
-    subj_val_arr = subjects_arr[val_mask]
 
     X_test = X[test_mask]
     y_test = y_binary[test_mask]
-    subj_test_arr = subjects_arr[test_mask]
 
-    print(f"  Train: {len(subj_train)} subjects -> {len(X_train)} windows")
-    print(f"  Val:   {len(subj_val)} subjects -> {len(X_val)} windows")
-    print(f"  Test:  {len(subj_test)} subjects -> {len(X_test)} windows\n")
+    print(f"  Train: {len(subj_train)} subjects -> {len(X_train)} samples")
+    print(f"  Val:   {len(subj_val)} subjects -> {len(X_val)} samples")
+    print(f"  Test:  {len(subj_test)} subjects -> {len(X_test)} samples\n")
 
     del X, y, y_binary, subjects_arr
     gc.collect()
 
-    print(f"Normalization: per-subject + global z-score...")
-    # CORRIGIDO: Per-subject primeiro (remove individual bias)
-    X_train = zscore_per_subject(X_train, subj_train_arr)
-    X_val = zscore_per_subject(X_val, subj_val_arr)
-    X_test = zscore_per_subject(X_test, subj_test_arr)
-
-    # CORRIGIDO: Stats DEPOIS, de dados já normalizados
-    norm_stats = compute_normalization_stats(X_train)
-
-    # Aplicar global normalization
-    X_train = apply_normalization(X_train, norm_stats)
-    X_val = apply_normalization(X_val, norm_stats)
-    X_test = apply_normalization(X_test, norm_stats)
+    print(f"Normalization: StandardScaler (global)...")
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train).astype(np.float32)
+    X_val = scaler.transform(X_val).astype(np.float32)
+    X_test = scaler.transform(X_test).astype(np.float32)
     print("Normalized\n")
 
     weights, class_counts = compute_class_weights(y_train)
@@ -632,49 +583,35 @@ def preprocess_wesad_temporal(
     np.save(os.path.join(output_dir, "y_train.npy"), y_train)
     np.save(os.path.join(output_dir, "y_val.npy"), y_val)
     np.save(os.path.join(output_dir, "y_test.npy"), y_test)
-    np.save(os.path.join(output_dir, "subjects_train.npy"), subj_train_arr)
-    np.save(os.path.join(output_dir, "subjects_val.npy"), subj_val_arr)
-    np.save(os.path.join(output_dir, "subjects_test.npy"), subj_test_arr)
 
-    joblib.dump(
-        LabelEncoder().fit(class_names),
-        os.path.join(output_dir, "label_encoder.pkl")
-    )
-    joblib.dump(
-        norm_stats,
-        os.path.join(output_dir, "normalization_stats.pkl")
-    )
+    joblib.dump(scaler, os.path.join(output_dir, "scaler.pkl"))
 
-    total_size_gb = (
+    total_size_mb = (
         X_train.nbytes + X_val.nbytes + X_test.nbytes
-    ) / 1e9
+    ) / 1e6
 
     metadata = {
-        'n_channels': n_channels,
-        'channel_names': channel_names,
-        'window_size': window_size,
-        'window_duration_s': window_size / target_freq,
-        'window_stride': int(window_size * (1 - overlap)),
-        'target_freq': target_freq,
-        'overlap': overlap,
+        'n_features': 140,
+        'features_per_channel': 10,
+        'n_channels': 14,
+        'channel_description': {
+            '1D_channels': ['ecg', 'eda_chest', 'temp_chest', 'emg', 'resp',
+                           'bvp', 'eda_wrist', 'temp_wrist'],
+            '3D_channels': ['acc_chest (x,y,z)', 'acc_wrist (x,y,z)']
+        },
         'class_names': class_names,
         'class_weights': weights,
         'class_counts_train': {
             class_names[int(c)]: int(cnt)
             for c, cnt in enumerate(np.bincount(y_train))
         },
-        'normalization': 'per_subject_zscore + global_per_channel_zscore',
+        'n_classes': len(class_names),
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
-        'total_windows': len(X_train) + len(X_val) + len(X_test),
-        'total_size_gb': total_size_gb,
+        'total_size_mb': total_size_mb,
         'total_subjects': len(unique_subjects),
-        'train_subjects': [str(s) for s in subj_train],
-        'val_subjects': [str(s) for s in subj_val],
-        'test_subjects': [str(s) for s in subj_test],
         'processing_time_s': elapsed_processing,
-        'paper_reference': 'RACT-Net (Thakur et al., 2022)'
     }
 
     joblib.dump(metadata, os.path.join(output_dir, "metadata.pkl"))
@@ -683,65 +620,51 @@ def preprocess_wesad_temporal(
     print("="*70)
     print(f"PREPROCESSING COMPLETE")
     print("="*70)
-    print(f"Total windows: {metadata['total_windows']}")
-    print(f"Total size: {total_size_gb:.2f} GB")
+    print(f"Total samples: {len(X_train) + len(X_val) + len(X_test)}")
+    print(f"Features: 140D (10 per channel × 14 channels)")
+    print(f"Total size: {total_size_mb:.1f} MB")
     print(f"Processing time: {elapsed_processing:.1f}s\n")
-
-    del X_train, X_val, X_test, y_train, y_val, y_test
-    del subj_train_arr, subj_val_arr, subj_test_arr
-    gc.collect()
 
     return metadata
 
 
-def load_processed_wesad_temporal(data_dir: str) -> Tuple:
-    """Load preprocessed WESAD data (optimized loading)."""
+def load_processed_wesad(data_dir: str) -> Tuple:
+    """
+    Load preprocessed WESAD data (features-only).
+
+    Args:
+        data_dir: Path to processed WESAD directory
+
+    Returns:
+        Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, scaler, info)
+    """
     print(f"Loading WESAD from {data_dir}...")
-    
-    def load_array(filename):
-        if 'subjects' in filename:
-            return np.load(os.path.join(data_dir, filename), allow_pickle=True)
-        else:
-            return np.load(os.path.join(data_dir, filename))
-    
-    # Lista de ficheiros por ordem
-    files = [
-        'X_train.npy', 'X_val.npy', 'X_test.npy',
-        'y_train.npy', 'y_val.npy', 'y_test.npy',
-        'subjects_train.npy', 'subjects_val.npy', 'subjects_test.npy'
-    ]
-    
-    # Load em paralelo
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        arrays = list(executor.map(load_array, files))
-    
-    X_train, X_val, X_test = arrays[0], arrays[1], arrays[2]
-    y_train, y_val, y_test = arrays[3], arrays[4], arrays[5]
-    subj_train, subj_val, subj_test = arrays[6], arrays[7], arrays[8]
-    
-    # Concatenar subjects
-    subjects = np.concatenate([subj_train, subj_val, subj_test])
-    
-    # Load metadata
+
+    X_train = np.load(os.path.join(data_dir, 'X_train.npy'))
+    X_val = np.load(os.path.join(data_dir, 'X_val.npy'))
+    X_test = np.load(os.path.join(data_dir, 'X_test.npy'))
+    y_train = np.load(os.path.join(data_dir, 'y_train.npy'))
+    y_val = np.load(os.path.join(data_dir, 'y_val.npy'))
+    y_test = np.load(os.path.join(data_dir, 'y_test.npy'))
+
+    scaler = joblib.load(os.path.join(data_dir, 'scaler.pkl'))
     info = joblib.load(os.path.join(data_dir, 'metadata.pkl'))
-    scaler = joblib.load(os.path.join(data_dir, 'normalization_stats.pkl'))
-    
-    print(f"Loaded:")
-    print(f"   Train: {X_train.shape}")
-    print(f"   Val:   {X_val.shape}")
-    print(f"   Test:  {X_test.shape}")
-    print(f"   Classes: {info['class_names']}")
-    print(f"   Window: {info['window_duration_s']:.0f}s, "
-          f"Overlap: {info['overlap']*100:.0f}%\n")
-    
-    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info, subjects
+
+    print(f"Loaded WESAD:")
+    print(f"  Train: {X_train.shape}")
+    print(f"  Val:   {X_val.shape}")
+    print(f"  Test:  {X_test.shape}")
+    print(f"  Classes: {info['n_classes']} ({info['class_names']})")
+    print(f"  Total size: {info.get('total_size_mb', 0):.1f} MB\n")
+
+    return X_train, X_val, X_test, y_train, y_val, y_test, scaler, info
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Preprocess WESAD (RACT-Net style)'
+        description='Preprocess WESAD to features (140D)'
     )
     parser.add_argument('--data_dir', default='data/raw/wesad')
     parser.add_argument('--output_dir', default='data/processed/wesad')
@@ -758,7 +681,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    info = preprocess_wesad_temporal(
+    info = preprocess_wesad(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         window_size=args.window_size,
