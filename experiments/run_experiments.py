@@ -292,6 +292,15 @@ class ExperimentRunner:
                 self._load_data(dataset)[:6]
             )
 
+            # Diagnostics: ensure test labels are consistent across runs
+            try:
+                checksum = int(y_test.sum())
+                yhash = hash(y_test.tobytes())
+                binc = np.bincount(y_test.astype(int)).tolist()
+                print(f"[DATA] {dataset} y_test: sum={checksum} hash={yhash} dist={binc}")
+            except Exception:
+                pass
+
             print(f"Data: train={X_train.shape} val={X_val.shape} "
                   f"test={X_test.shape}")
 

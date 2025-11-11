@@ -1,0 +1,1010 @@
+vasco@MacBook-Air-de-Vasco mhealth-data-privacy % mhealth-data-privacy % python -u experiments/run_experiments.py --scenario all --datasets wesad    
+zsh: command not found: mhealth-data-privacy
+vasco@MacBook-Air-de-Vasco mhealth-data-privacy % source venv/bin/activate
+((venv) ) vasco@MacBook-Air-de-Vasco mhealth-data-privacy % mhealth-data-privacy % python -u experiments/run_experiments.py --scenario all --datasets wesad
+zsh: command not found: mhealth-data-privacy
+((venv) ) vasco@MacBook-Air-de-Vasco mhealth-data-privacy %  python -u experiments/run_experiments.py --scenario all --datasets wesad     
+
+Device: cpu
+
+============================================================
+Will run 21 experiments:
+  - baseline_wesad_run1
+  - baseline_wesad_run2
+  - baseline_wesad_run3
+  - dp_wesad_noise0_6_run1
+  - dp_wesad_noise0_6_run2
+  ... and 16 more
+============================================================
+
+Proceed? (y/n): y
+
+============================================================
+Running 21 experiments on CPU
+============================================================
+
+[1/21]
+
+============================================================
+baseline_wesad_run1 | wesad | baseline | seed=42
+============================================================
+Loading wesad...
+Loading WESAD from data/processed/wesad...
+Loaded WESAD:
+  Train: (2437, 140)
+  Val:   (816, 140)
+  Test:  (817, 140)
+  Classes: 2 (['non-stress', 'stress'])
+  Total size: 2.3 MB
+
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+Epoch 001: train_loss=0.4963 train_acc=0.7620 | val_loss=0.3192 val_acc=0.8775
+Epoch 002: train_loss=0.2727 train_acc=0.9142 | val_loss=0.4293 val_acc=0.7708
+Epoch 003: train_loss=0.1665 train_acc=0.9495 | val_loss=0.3688 val_acc=0.8260
+Epoch 004: train_loss=0.1043 train_acc=0.9733 | val_loss=0.4117 val_acc=0.8235
+Epoch 005: train_loss=0.0701 train_acc=0.9799 | val_loss=0.5510 val_acc=0.7855
+Epoch 006: train_loss=0.0446 train_acc=0.9930 | val_loss=0.5924 val_acc=0.7843
+Epoch 007: train_loss=0.0359 train_acc=0.9914 | val_loss=0.5320 val_acc=0.8162
+Epoch 008: train_loss=0.0229 train_acc=0.9959 | val_loss=0.6682 val_acc=0.7868
+Epoch 009: train_loss=0.0184 train_acc=0.9971 | val_loss=0.7588 val_acc=0.7733
+Epoch 010: train_loss=0.0133 train_acc=0.9988 | val_loss=0.7844 val_acc=0.7770
+Epoch 011: train_loss=0.0152 train_acc=0.9975 | val_loss=0.8384 val_acc=0.7696
+Epoch 012: train_loss=0.0119 train_acc=0.9984 | val_loss=0.7955 val_acc=0.7868
+Epoch 013: train_loss=0.0092 train_acc=0.9996 | val_loss=0.7184 val_acc=0.8051
+Epoch 014: train_loss=0.0077 train_acc=0.9988 | val_loss=0.8486 val_acc=0.7733
+Epoch 015: train_loss=0.0057 train_acc=1.0000 | val_loss=0.9471 val_acc=0.7598
+Epoch 016: train_loss=0.0062 train_acc=0.9992 | val_loss=0.9449 val_acc=0.7623
+Early stopping triggered after 16 epochs (patience=15)
+[EVAL] Test set size (expected): 817
+[EVAL] y_true dist: [570, 247]
+[EVAL] y_pred dist: [679, 138]
+[EVAL] Confusion matrix:
+[[544  26]
+ [135 112]]
+✓ 0.8029 acc | 0.7836 f1 | 0.8s
+
+[2/21]
+
+============================================================
+baseline_wesad_run2 | wesad | baseline | seed=43
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+Epoch 001: train_loss=0.4855 train_acc=0.7788 | val_loss=0.4089 val_acc=0.7843
+Epoch 002: train_loss=0.2689 train_acc=0.9142 | val_loss=0.4472 val_acc=0.7806
+Epoch 003: train_loss=0.1693 train_acc=0.9483 | val_loss=0.4145 val_acc=0.8064
+Epoch 004: train_loss=0.1075 train_acc=0.9746 | val_loss=0.4685 val_acc=0.8076
+Epoch 005: train_loss=0.0706 train_acc=0.9860 | val_loss=0.5045 val_acc=0.8150
+Epoch 006: train_loss=0.0471 train_acc=0.9902 | val_loss=0.6237 val_acc=0.7892
+Epoch 007: train_loss=0.0348 train_acc=0.9926 | val_loss=0.5692 val_acc=0.8174
+Epoch 008: train_loss=0.0253 train_acc=0.9951 | val_loss=0.6160 val_acc=0.8076
+Epoch 009: train_loss=0.0198 train_acc=0.9975 | val_loss=0.6570 val_acc=0.8064
+Epoch 010: train_loss=0.0167 train_acc=0.9975 | val_loss=0.5683 val_acc=0.8370
+Epoch 011: train_loss=0.0131 train_acc=0.9984 | val_loss=0.6027 val_acc=0.8346
+Epoch 012: train_loss=0.0103 train_acc=0.9996 | val_loss=0.6739 val_acc=0.8199
+Epoch 013: train_loss=0.0091 train_acc=0.9988 | val_loss=0.7655 val_acc=0.8015
+Epoch 014: train_loss=0.0078 train_acc=0.9992 | val_loss=0.6598 val_acc=0.8321
+Epoch 015: train_loss=0.0068 train_acc=0.9996 | val_loss=0.6024 val_acc=0.8444
+Epoch 016: train_loss=0.0079 train_acc=0.9996 | val_loss=0.6890 val_acc=0.8358
+Epoch 017: train_loss=0.0059 train_acc=0.9992 | val_loss=0.7966 val_acc=0.8113
+Epoch 018: train_loss=0.0069 train_acc=0.9992 | val_loss=0.9050 val_acc=0.7904
+Epoch 019: train_loss=0.0064 train_acc=0.9992 | val_loss=0.8280 val_acc=0.8064
+Epoch 020: train_loss=0.0044 train_acc=1.0000 | val_loss=0.7958 val_acc=0.8150
+Epoch 021: train_loss=0.0046 train_acc=0.9996 | val_loss=0.8788 val_acc=0.7990
+Epoch 022: train_loss=0.0045 train_acc=0.9996 | val_loss=0.9080 val_acc=0.7904
+Epoch 023: train_loss=0.0040 train_acc=0.9996 | val_loss=0.9107 val_acc=0.7917
+Epoch 024: train_loss=0.0042 train_acc=0.9996 | val_loss=0.9216 val_acc=0.7917
+Epoch 025: train_loss=0.0039 train_acc=1.0000 | val_loss=0.9263 val_acc=0.7929
+Epoch 026: train_loss=0.0044 train_acc=0.9992 | val_loss=0.9398 val_acc=0.7917
+Epoch 027: train_loss=0.0027 train_acc=1.0000 | val_loss=0.9456 val_acc=0.7917
+Epoch 028: train_loss=0.0029 train_acc=1.0000 | val_loss=0.9454 val_acc=0.7929
+Epoch 029: train_loss=0.0027 train_acc=1.0000 | val_loss=0.9492 val_acc=0.7917
+Epoch 030: train_loss=0.0026 train_acc=1.0000 | val_loss=0.9492 val_acc=0.7929
+Early stopping triggered after 30 epochs (patience=15)
+[EVAL] Test set size (expected): 817
+[EVAL] y_true dist: [570, 247]
+[EVAL] y_pred dist: [579, 238]
+[EVAL] Confusion matrix:
+[[551  19]
+ [ 28 219]]
+✓ 0.9425 acc | 0.9422 f1 | 0.5s
+
+[3/21]
+
+============================================================
+baseline_wesad_run3 | wesad | baseline | seed=44
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+Epoch 001: train_loss=0.5143 train_acc=0.7341 | val_loss=0.4105 val_acc=0.7855
+Epoch 002: train_loss=0.2921 train_acc=0.9093 | val_loss=0.6336 val_acc=0.6998
+Epoch 003: train_loss=0.1724 train_acc=0.9438 | val_loss=0.6059 val_acc=0.7304
+Epoch 004: train_loss=0.1048 train_acc=0.9721 | val_loss=0.5741 val_acc=0.7672
+Epoch 005: train_loss=0.0657 train_acc=0.9844 | val_loss=0.7007 val_acc=0.7525
+Epoch 006: train_loss=0.0413 train_acc=0.9918 | val_loss=0.8528 val_acc=0.7402
+Epoch 007: train_loss=0.0317 train_acc=0.9943 | val_loss=0.8266 val_acc=0.7525
+Epoch 008: train_loss=0.0231 train_acc=0.9971 | val_loss=0.7431 val_acc=0.7770
+Epoch 009: train_loss=0.0194 train_acc=0.9963 | val_loss=0.7246 val_acc=0.7806
+Epoch 010: train_loss=0.0146 train_acc=0.9971 | val_loss=0.9957 val_acc=0.7488
+Epoch 011: train_loss=0.0122 train_acc=0.9975 | val_loss=0.9252 val_acc=0.7561
+Epoch 012: train_loss=0.0107 train_acc=0.9988 | val_loss=0.8583 val_acc=0.7721
+Epoch 013: train_loss=0.0080 train_acc=0.9988 | val_loss=1.0909 val_acc=0.7426
+Epoch 014: train_loss=0.0082 train_acc=0.9988 | val_loss=1.1341 val_acc=0.7402
+Epoch 015: train_loss=0.0062 train_acc=0.9992 | val_loss=1.0562 val_acc=0.7488
+Epoch 016: train_loss=0.0065 train_acc=0.9992 | val_loss=0.9487 val_acc=0.7635
+Early stopping triggered after 16 epochs (patience=15)
+[EVAL] Test set size (expected): 817
+[EVAL] y_true dist: [570, 247]
+[EVAL] y_pred dist: [711, 106]
+[EVAL] Confusion matrix:
+[[554  16]
+ [157  90]]
+✓ 0.7882 acc | 0.7576 f1 | 0.3s
+
+[4/21]
+
+============================================================
+dp_wesad_noise0_6_run1 | wesad | dp | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.6343 acc=0.6518 | val_loss=0.5843 val_acc=0.7010 | ε=8.3528
+Epoch 02: loss=0.6153 acc=0.7057 | val_loss=0.6883 val_acc=0.7022 | ε=10.5085
+Epoch 03: loss=0.6873 acc=0.6974 | val_loss=0.6357 val_acc=0.7414 | ε=12.2112
+Epoch 04: loss=0.5424 acc=0.7780 | val_loss=0.4704 val_acc=0.8002 | ε=13.6878
+Epoch 05: loss=0.4487 acc=0.8345 | val_loss=0.3397 val_acc=0.8566 | ε=15.0225
+Epoch 06: loss=0.3555 acc=0.8922 | val_loss=0.3672 val_acc=0.8444 | ε=16.2576
+Epoch 07: loss=0.2971 acc=0.9206 | val_loss=0.4723 val_acc=0.8113 | ε=17.4177
+Epoch 08: loss=0.2653 acc=0.9295 | val_loss=0.5675 val_acc=0.7929 | ε=18.5189
+Epoch 09: loss=0.2805 acc=0.9270 | val_loss=0.6315 val_acc=0.7855 | ε=19.5720
+Epoch 10: loss=0.2037 acc=0.9434 | val_loss=0.6710 val_acc=0.7855 | ε=20.5850
+Epoch 11: loss=0.2211 acc=0.9377 | val_loss=0.6916 val_acc=0.7831 | ε=21.5640
+Epoch 12: loss=0.1989 acc=0.9448 | val_loss=0.7374 val_acc=0.7794 | ε=22.5134
+Epoch 13: loss=0.1794 acc=0.9505 | val_loss=0.7752 val_acc=0.7782 | ε=23.4371
+Epoch 14: loss=0.1669 acc=0.9515 | val_loss=0.7970 val_acc=0.7770 | ε=24.3378
+Epoch 15: loss=0.1585 acc=0.9521 | val_loss=0.7979 val_acc=0.7843 | ε=25.2182
+Epoch 16: loss=0.1347 acc=0.9624 | val_loss=0.8143 val_acc=0.7843 | ε=26.0802
+Epoch 17: loss=0.1341 acc=0.9599 | val_loss=0.8235 val_acc=0.7880 | ε=26.9255
+Epoch 18: loss=0.1306 acc=0.9586 | val_loss=0.8403 val_acc=0.7892 | ε=27.7556
+Epoch 19: loss=0.1236 acc=0.9595 | val_loss=0.8525 val_acc=0.7892 | ε=28.5717
+Epoch 20: loss=0.0929 acc=0.9727 | val_loss=0.8742 val_acc=0.7880 | ε=29.3750
+Early stopping at epoch 20
+✓ 0.8115 acc | 0.7833 f1 | 4.4s
+
+[5/21]
+
+============================================================
+dp_wesad_noise0_6_run2 | wesad | dp | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.5741 acc=0.7072 | val_loss=0.5335 val_acc=0.7010 | ε=8.3528
+Epoch 02: loss=0.6433 acc=0.7109 | val_loss=0.6573 val_acc=0.7010 | ε=10.5085
+Epoch 03: loss=0.7031 acc=0.7025 | val_loss=0.6051 val_acc=0.7635 | ε=12.2112
+Epoch 04: loss=0.6053 acc=0.7602 | val_loss=0.4617 val_acc=0.8284 | ε=13.6878
+Epoch 05: loss=0.4523 acc=0.8627 | val_loss=0.4278 val_acc=0.8223 | ε=15.0225
+Epoch 06: loss=0.3738 acc=0.9021 | val_loss=0.5524 val_acc=0.7500 | ε=16.2576
+Epoch 07: loss=0.3116 acc=0.9218 | val_loss=0.7172 val_acc=0.7328 | ε=17.4177
+Epoch 08: loss=0.3184 acc=0.9202 | val_loss=0.8158 val_acc=0.7316 | ε=18.5189
+Epoch 09: loss=0.3229 acc=0.9223 | val_loss=0.8762 val_acc=0.7341 | ε=19.5720
+Epoch 10: loss=0.2745 acc=0.9292 | val_loss=0.8962 val_acc=0.7426 | ε=20.5850
+Epoch 11: loss=0.2355 acc=0.9409 | val_loss=0.9204 val_acc=0.7463 | ε=21.5640
+Epoch 12: loss=0.2288 acc=0.9392 | val_loss=0.9467 val_acc=0.7537 | ε=22.5134
+Epoch 13: loss=0.2197 acc=0.9467 | val_loss=0.9735 val_acc=0.7574 | ε=23.4371
+Epoch 14: loss=0.2246 acc=0.9408 | val_loss=1.0144 val_acc=0.7549 | ε=24.3378
+Epoch 15: loss=0.1957 acc=0.9463 | val_loss=1.0349 val_acc=0.7598 | ε=25.2182
+Epoch 16: loss=0.1883 acc=0.9450 | val_loss=1.0548 val_acc=0.7647 | ε=26.0802
+Epoch 17: loss=0.1654 acc=0.9498 | val_loss=1.0958 val_acc=0.7610 | ε=26.9255
+Epoch 18: loss=0.1415 acc=0.9525 | val_loss=1.1192 val_acc=0.7623 | ε=27.7556
+Epoch 19: loss=0.1438 acc=0.9532 | val_loss=1.0935 val_acc=0.7684 | ε=28.5717
+Early stopping at epoch 19
+✓ 0.7895 acc | 0.7470 f1 | 4.1s
+
+[6/21]
+
+============================================================
+dp_wesad_noise0_6_run3 | wesad | dp | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 0.6
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.5870 acc=0.7006 | val_loss=0.5296 val_acc=0.7022 | ε=8.3528
+Epoch 02: loss=0.6502 acc=0.6975 | val_loss=0.6019 val_acc=0.7243 | ε=10.5085
+Epoch 03: loss=0.6794 acc=0.7276 | val_loss=0.5779 val_acc=0.7880 | ε=12.2112
+Epoch 04: loss=0.5982 acc=0.7733 | val_loss=0.4906 val_acc=0.7929 | ε=13.6878
+Epoch 05: loss=0.4376 acc=0.8617 | val_loss=0.4819 val_acc=0.7929 | ε=15.0225
+Epoch 06: loss=0.3465 acc=0.9061 | val_loss=0.6171 val_acc=0.7475 | ε=16.2576
+Epoch 07: loss=0.3025 acc=0.9168 | val_loss=0.7882 val_acc=0.7414 | ε=17.4177
+Epoch 08: loss=0.3156 acc=0.9183 | val_loss=0.8812 val_acc=0.7463 | ε=18.5189
+Epoch 09: loss=0.2912 acc=0.9257 | val_loss=0.9226 val_acc=0.7475 | ε=19.5720
+Epoch 10: loss=0.2821 acc=0.9343 | val_loss=0.9442 val_acc=0.7512 | ε=20.5850
+Epoch 11: loss=0.2674 acc=0.9365 | val_loss=0.9842 val_acc=0.7549 | ε=21.5640
+Epoch 12: loss=0.2222 acc=0.9477 | val_loss=1.0298 val_acc=0.7525 | ε=22.5134
+Epoch 13: loss=0.2046 acc=0.9523 | val_loss=1.0753 val_acc=0.7525 | ε=23.4371
+Epoch 14: loss=0.2446 acc=0.9422 | val_loss=1.1096 val_acc=0.7512 | ε=24.3378
+Epoch 15: loss=0.2179 acc=0.9503 | val_loss=1.1123 val_acc=0.7525 | ε=25.2182
+Epoch 16: loss=0.1983 acc=0.9467 | val_loss=1.1276 val_acc=0.7537 | ε=26.0802
+Epoch 17: loss=0.1967 acc=0.9515 | val_loss=1.1288 val_acc=0.7537 | ε=26.9255
+Epoch 18: loss=0.1841 acc=0.9530 | val_loss=1.1182 val_acc=0.7623 | ε=27.7556
+Epoch 19: loss=0.1536 acc=0.9554 | val_loss=1.0856 val_acc=0.7696 | ε=28.5717
+Early stopping at epoch 19
+✓ 0.7931 acc | 0.7535 f1 | 4.2s
+
+[7/21]
+
+============================================================
+dp_wesad_noise1_0_run1 | wesad | dp | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.6483 acc=0.6445 | val_loss=0.5680 val_acc=0.7010 | ε=2.8648
+Epoch 02: loss=0.6006 acc=0.7073 | val_loss=0.6720 val_acc=0.7010 | ε=3.6010
+Epoch 03: loss=0.7135 acc=0.6913 | val_loss=0.7391 val_acc=0.7010 | ε=4.1886
+Epoch 04: loss=0.6814 acc=0.7239 | val_loss=0.6955 val_acc=0.7255 | ε=4.6985
+Epoch 05: loss=0.6763 acc=0.7142 | val_loss=0.5532 val_acc=0.7684 | ε=5.1586
+Epoch 06: loss=0.5427 acc=0.7844 | val_loss=0.4022 val_acc=0.8260 | ε=5.5831
+Epoch 07: loss=0.4027 acc=0.8658 | val_loss=0.3413 val_acc=0.8517 | ε=5.9804
+Epoch 08: loss=0.3463 acc=0.8956 | val_loss=0.3424 val_acc=0.8566 | ε=6.3560
+Epoch 09: loss=0.3435 acc=0.9018 | val_loss=0.3834 val_acc=0.8480 | ε=6.7140
+Epoch 10: loss=0.2608 acc=0.9203 | val_loss=0.4377 val_acc=0.8284 | ε=7.0571
+Epoch 11: loss=0.2788 acc=0.9245 | val_loss=0.4760 val_acc=0.8211 | ε=7.3874
+Epoch 12: loss=0.2663 acc=0.9275 | val_loss=0.5317 val_acc=0.8088 | ε=7.7066
+Epoch 13: loss=0.2454 acc=0.9313 | val_loss=0.5834 val_acc=0.7990 | ε=8.0161
+Epoch 14: loss=0.2317 acc=0.9391 | val_loss=0.6221 val_acc=0.7929 | ε=8.3170
+Epoch 15: loss=0.2366 acc=0.9396 | val_loss=0.6487 val_acc=0.7917 | ε=8.6100
+Epoch 16: loss=0.2106 acc=0.9421 | val_loss=0.6875 val_acc=0.7855 | ε=8.8961
+Epoch 17: loss=0.2119 acc=0.9426 | val_loss=0.7088 val_acc=0.7855 | ε=9.1758
+Epoch 18: loss=0.2128 acc=0.9431 | val_loss=0.7307 val_acc=0.7855 | ε=9.4497
+Epoch 19: loss=0.2038 acc=0.9397 | val_loss=0.7496 val_acc=0.7892 | ε=9.7183
+Epoch 20: loss=0.1727 acc=0.9522 | val_loss=0.7697 val_acc=0.7929 | ε=9.9818
+Epoch 21: loss=0.1817 acc=0.9445 | val_loss=0.7665 val_acc=0.7941 | ε=10.2408
+Epoch 22: loss=0.1578 acc=0.9495 | val_loss=0.7650 val_acc=0.7953 | ε=10.4956
+Epoch 23: loss=0.1584 acc=0.9564 | val_loss=0.7779 val_acc=0.7966 | ε=10.7463
+Early stopping at epoch 23
+✓ 0.7993 acc | 0.7788 f1 | 3.9s
+
+[8/21]
+
+============================================================
+dp_wesad_noise1_0_run2 | wesad | dp | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.5805 acc=0.7007 | val_loss=0.5169 val_acc=0.7010 | ε=2.8648
+Epoch 02: loss=0.6160 acc=0.7121 | val_loss=0.6349 val_acc=0.7010 | ε=3.6010
+Epoch 03: loss=0.7250 acc=0.6964 | val_loss=0.7004 val_acc=0.7010 | ε=4.1886
+Epoch 04: loss=0.7474 acc=0.7031 | val_loss=0.6371 val_acc=0.7243 | ε=4.6985
+Epoch 05: loss=0.6738 acc=0.7218 | val_loss=0.5125 val_acc=0.7953 | ε=5.1586
+Epoch 06: loss=0.5579 acc=0.7977 | val_loss=0.4298 val_acc=0.8542 | ε=5.5831
+Epoch 07: loss=0.4500 acc=0.8600 | val_loss=0.4186 val_acc=0.8211 | ε=5.9804
+Epoch 08: loss=0.4022 acc=0.8894 | val_loss=0.4572 val_acc=0.7868 | ε=6.3560
+Epoch 09: loss=0.3858 acc=0.9000 | val_loss=0.5428 val_acc=0.7574 | ε=6.7140
+Epoch 10: loss=0.3418 acc=0.9089 | val_loss=0.6230 val_acc=0.7512 | ε=7.0571
+Epoch 11: loss=0.3019 acc=0.9181 | val_loss=0.6881 val_acc=0.7500 | ε=7.3874
+Epoch 12: loss=0.2964 acc=0.9213 | val_loss=0.7525 val_acc=0.7500 | ε=7.7066
+Epoch 13: loss=0.2853 acc=0.9276 | val_loss=0.7993 val_acc=0.7451 | ε=8.0161
+Epoch 14: loss=0.2960 acc=0.9263 | val_loss=0.8481 val_acc=0.7426 | ε=8.3170
+Epoch 15: loss=0.2771 acc=0.9328 | val_loss=0.8835 val_acc=0.7451 | ε=8.6100
+Epoch 16: loss=0.2722 acc=0.9311 | val_loss=0.9208 val_acc=0.7463 | ε=8.8961
+Epoch 17: loss=0.2449 acc=0.9387 | val_loss=0.9683 val_acc=0.7426 | ε=9.1758
+Epoch 18: loss=0.2177 acc=0.9401 | val_loss=0.9975 val_acc=0.7439 | ε=9.4497
+Epoch 19: loss=0.2241 acc=0.9405 | val_loss=0.9851 val_acc=0.7512 | ε=9.7183
+Epoch 20: loss=0.1822 acc=0.9517 | val_loss=0.9741 val_acc=0.7586 | ε=9.9818
+Epoch 21: loss=0.2165 acc=0.9399 | val_loss=0.9813 val_acc=0.7623 | ε=10.2408
+Early stopping at epoch 21
+✓ 0.7895 acc | 0.7470 f1 | 3.9s
+
+[9/21]
+
+============================================================
+dp_wesad_noise1_0_run3 | wesad | dp | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 1.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.6010 acc=0.6918 | val_loss=0.5287 val_acc=0.7010 | ε=2.8648
+Epoch 02: loss=0.6398 acc=0.6903 | val_loss=0.6084 val_acc=0.7010 | ε=3.6010
+Epoch 03: loss=0.7132 acc=0.7006 | val_loss=0.6588 val_acc=0.7047 | ε=4.1886
+Epoch 04: loss=0.7422 acc=0.7118 | val_loss=0.6199 val_acc=0.7782 | ε=4.6985
+Epoch 05: loss=0.6438 acc=0.7467 | val_loss=0.5431 val_acc=0.7843 | ε=5.1586
+Epoch 06: loss=0.5560 acc=0.7948 | val_loss=0.4757 val_acc=0.7978 | ε=5.5831
+Epoch 07: loss=0.4371 acc=0.8561 | val_loss=0.4802 val_acc=0.7843 | ε=5.9804
+Epoch 08: loss=0.3992 acc=0.8810 | val_loss=0.5580 val_acc=0.7610 | ε=6.3560
+Epoch 09: loss=0.3391 acc=0.9064 | val_loss=0.6552 val_acc=0.7463 | ε=6.7140
+Epoch 10: loss=0.3419 acc=0.9106 | val_loss=0.7313 val_acc=0.7463 | ε=7.0571
+Epoch 11: loss=0.3219 acc=0.9189 | val_loss=0.7953 val_acc=0.7426 | ε=7.3874
+Epoch 12: loss=0.2785 acc=0.9256 | val_loss=0.8587 val_acc=0.7451 | ε=7.7066
+Epoch 13: loss=0.2597 acc=0.9363 | val_loss=0.9290 val_acc=0.7439 | ε=8.0161
+Epoch 14: loss=0.3081 acc=0.9275 | val_loss=0.9746 val_acc=0.7426 | ε=8.3170
+Epoch 15: loss=0.2882 acc=0.9377 | val_loss=0.9913 val_acc=0.7439 | ε=8.6100
+Epoch 16: loss=0.2651 acc=0.9346 | val_loss=1.0134 val_acc=0.7439 | ε=8.8961
+Epoch 17: loss=0.2674 acc=0.9400 | val_loss=1.0307 val_acc=0.7463 | ε=9.1758
+Epoch 18: loss=0.2582 acc=0.9412 | val_loss=1.0366 val_acc=0.7500 | ε=9.4497
+Epoch 19: loss=0.2273 acc=0.9447 | val_loss=1.0216 val_acc=0.7610 | ε=9.7183
+Epoch 20: loss=0.2546 acc=0.9376 | val_loss=1.0277 val_acc=0.7610 | ε=9.9818
+Epoch 21: loss=0.2376 acc=0.9436 | val_loss=1.0536 val_acc=0.7623 | ε=10.2408
+Early stopping at epoch 21
+✓ 0.7956 acc | 0.7580 f1 | 3.7s
+
+[10/21]
+
+============================================================
+dp_wesad_noise2_0_run1 | wesad | dp | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.6733 acc=0.6155 | val_loss=0.5803 val_acc=0.7022 | ε=0.8085
+Epoch 02: loss=0.5888 acc=0.7073 | val_loss=0.6039 val_acc=0.7010 | ε=1.0856
+Epoch 03: loss=0.6556 acc=0.6904 | val_loss=0.6993 val_acc=0.7010 | ε=1.3049
+Epoch 04: loss=0.6934 acc=0.7185 | val_loss=0.7762 val_acc=0.7010 | ε=1.4936
+Epoch 05: loss=0.8188 acc=0.6817 | val_loss=0.7876 val_acc=0.7010 | ε=1.6626
+Epoch 06: loss=0.7942 acc=0.6920 | val_loss=0.7320 val_acc=0.7047 | ε=1.8174
+Epoch 07: loss=0.6880 acc=0.7279 | val_loss=0.6688 val_acc=0.7353 | ε=1.9614
+Epoch 08: loss=0.6537 acc=0.7301 | val_loss=0.5956 val_acc=0.7574 | ε=2.0968
+Epoch 09: loss=0.6349 acc=0.7440 | val_loss=0.5188 val_acc=0.7819 | ε=2.2252
+Epoch 10: loss=0.5098 acc=0.7937 | val_loss=0.4531 val_acc=0.8088 | ε=2.3476
+Epoch 11: loss=0.4705 acc=0.8242 | val_loss=0.3962 val_acc=0.8321 | ε=2.4649
+Epoch 12: loss=0.4389 acc=0.8449 | val_loss=0.3585 val_acc=0.8505 | ε=2.5778
+Epoch 13: loss=0.3805 acc=0.8746 | val_loss=0.3402 val_acc=0.8566 | ε=2.6868
+Epoch 14: loss=0.3533 acc=0.8914 | val_loss=0.3437 val_acc=0.8542 | ε=2.7924
+Epoch 15: loss=0.3281 acc=0.9006 | val_loss=0.3586 val_acc=0.8517 | ε=2.8948
+Epoch 16: loss=0.3169 acc=0.9073 | val_loss=0.3878 val_acc=0.8370 | ε=2.9945
+Epoch 17: loss=0.3060 acc=0.9166 | val_loss=0.4109 val_acc=0.8370 | ε=3.0917
+Epoch 18: loss=0.3210 acc=0.9108 | val_loss=0.4345 val_acc=0.8309 | ε=3.1865
+Epoch 19: loss=0.3100 acc=0.9112 | val_loss=0.4601 val_acc=0.8235 | ε=3.2792
+Epoch 20: loss=0.2712 acc=0.9225 | val_loss=0.4870 val_acc=0.8186 | ε=3.3699
+Epoch 21: loss=0.2954 acc=0.9192 | val_loss=0.4983 val_acc=0.8137 | ε=3.4587
+Epoch 22: loss=0.2667 acc=0.9310 | val_loss=0.5151 val_acc=0.8150 | ε=3.5459
+Epoch 23: loss=0.2657 acc=0.9307 | val_loss=0.5319 val_acc=0.8137 | ε=3.6315
+Epoch 24: loss=0.2550 acc=0.9283 | val_loss=0.5436 val_acc=0.8125 | ε=3.7156
+Epoch 25: loss=0.2788 acc=0.9208 | val_loss=0.5579 val_acc=0.8100 | ε=3.7983
+Epoch 26: loss=0.2893 acc=0.9237 | val_loss=0.5672 val_acc=0.8076 | ε=3.8797
+Epoch 27: loss=0.2496 acc=0.9296 | val_loss=0.5804 val_acc=0.8064 | ε=3.9599
+Epoch 28: loss=0.2452 acc=0.9328 | val_loss=0.5947 val_acc=0.8027 | ε=4.0389
+Early stopping at epoch 28
+✓ 0.8103 acc | 0.7828 f1 | 3.1s
+
+[11/21]
+
+============================================================
+dp_wesad_noise2_0_run2 | wesad | dp | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.5937 acc=0.7015 | val_loss=0.5158 val_acc=0.7034 | ε=0.8085
+Epoch 02: loss=0.5823 acc=0.7153 | val_loss=0.5631 val_acc=0.7010 | ε=1.0856
+Epoch 03: loss=0.6598 acc=0.6960 | val_loss=0.6557 val_acc=0.7010 | ε=1.3049
+Epoch 04: loss=0.7427 acc=0.7004 | val_loss=0.7184 val_acc=0.7010 | ε=1.4936
+Epoch 05: loss=0.8042 acc=0.6933 | val_loss=0.7263 val_acc=0.7010 | ε=1.6626
+Epoch 06: loss=0.7945 acc=0.7079 | val_loss=0.7017 val_acc=0.7010 | ε=1.8174
+Epoch 07: loss=0.7571 acc=0.7115 | val_loss=0.6492 val_acc=0.7132 | ε=1.9614
+Epoch 08: loss=0.7222 acc=0.7172 | val_loss=0.5910 val_acc=0.7672 | ε=2.0968
+Epoch 09: loss=0.6942 acc=0.7236 | val_loss=0.5165 val_acc=0.7990 | ε=2.2252
+Epoch 10: loss=0.5778 acc=0.7856 | val_loss=0.4524 val_acc=0.8382 | ε=2.3476
+Epoch 11: loss=0.5130 acc=0.8231 | val_loss=0.4104 val_acc=0.8627 | ε=2.4649
+Epoch 12: loss=0.4829 acc=0.8409 | val_loss=0.3985 val_acc=0.8493 | ε=2.5778
+Epoch 13: loss=0.4408 acc=0.8667 | val_loss=0.4012 val_acc=0.8272 | ε=2.6868
+Epoch 14: loss=0.4147 acc=0.8870 | val_loss=0.4251 val_acc=0.8076 | ε=2.7924
+Epoch 15: loss=0.4102 acc=0.8933 | val_loss=0.4661 val_acc=0.7831 | ε=2.8948
+Epoch 16: loss=0.3934 acc=0.8940 | val_loss=0.5173 val_acc=0.7708 | ε=2.9945
+Epoch 17: loss=0.3677 acc=0.9004 | val_loss=0.5794 val_acc=0.7561 | ε=3.0917
+Epoch 18: loss=0.3288 acc=0.9105 | val_loss=0.6336 val_acc=0.7390 | ε=3.1865
+Epoch 19: loss=0.3381 acc=0.9122 | val_loss=0.6624 val_acc=0.7402 | ε=3.2792
+Epoch 20: loss=0.2839 acc=0.9295 | val_loss=0.6768 val_acc=0.7439 | ε=3.3699
+Epoch 21: loss=0.3260 acc=0.9151 | val_loss=0.7013 val_acc=0.7463 | ε=3.4587
+Epoch 22: loss=0.3531 acc=0.9108 | val_loss=0.7214 val_acc=0.7475 | ε=3.5459
+Epoch 23: loss=0.3175 acc=0.9143 | val_loss=0.7355 val_acc=0.7488 | ε=3.6315
+Epoch 24: loss=0.2935 acc=0.9235 | val_loss=0.7434 val_acc=0.7525 | ε=3.7156
+Epoch 25: loss=0.3162 acc=0.9212 | val_loss=0.7590 val_acc=0.7561 | ε=3.7983
+Epoch 26: loss=0.2681 acc=0.9284 | val_loss=0.7765 val_acc=0.7574 | ε=3.8797
+Early stopping at epoch 26
+✓ 0.7895 acc | 0.7470 f1 | 2.7s
+
+[12/21]
+
+============================================================
+dp_wesad_noise2_0_run3 | wesad | dp | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+DP Training
+  Noise multiplier: 2.0
+  Max grad norm: 1.0
+  Delta: 1e-05
+  Epochs: 60
+
+Epoch 01: loss=0.6218 acc=0.6757 | val_loss=0.5418 val_acc=0.7010 | ε=0.8085
+Epoch 02: loss=0.6233 acc=0.6903 | val_loss=0.5766 val_acc=0.7010 | ε=1.0856
+Epoch 03: loss=0.6714 acc=0.6974 | val_loss=0.6527 val_acc=0.7010 | ε=1.3049
+Epoch 04: loss=0.7582 acc=0.6961 | val_loss=0.7055 val_acc=0.7010 | ε=1.4936
+Epoch 05: loss=0.7714 acc=0.7060 | val_loss=0.7260 val_acc=0.7010 | ε=1.6626
+Epoch 06: loss=0.8104 acc=0.6997 | val_loss=0.7001 val_acc=0.7071 | ε=1.8174
+Epoch 07: loss=0.7438 acc=0.7159 | val_loss=0.6517 val_acc=0.7623 | ε=1.9614
+Epoch 08: loss=0.7073 acc=0.7301 | val_loss=0.5958 val_acc=0.7855 | ε=2.0968
+Epoch 09: loss=0.5941 acc=0.7748 | val_loss=0.5572 val_acc=0.7757 | ε=2.2252
+Epoch 10: loss=0.5936 acc=0.7934 | val_loss=0.5287 val_acc=0.7770 | ε=2.3476
+Epoch 11: loss=0.5254 acc=0.8219 | val_loss=0.5057 val_acc=0.7770 | ε=2.4649
+Epoch 12: loss=0.4589 acc=0.8435 | val_loss=0.5006 val_acc=0.7831 | ε=2.5778
+Epoch 13: loss=0.4077 acc=0.8655 | val_loss=0.5302 val_acc=0.7672 | ε=2.6868
+Epoch 14: loss=0.4274 acc=0.8754 | val_loss=0.5660 val_acc=0.7586 | ε=2.7924
+Epoch 15: loss=0.3926 acc=0.8972 | val_loss=0.6022 val_acc=0.7561 | ε=2.8948
+Epoch 16: loss=0.3644 acc=0.8994 | val_loss=0.6426 val_acc=0.7439 | ε=2.9945
+Epoch 17: loss=0.3540 acc=0.9088 | val_loss=0.6812 val_acc=0.7426 | ε=3.0917
+Epoch 18: loss=0.3512 acc=0.9068 | val_loss=0.7084 val_acc=0.7426 | ε=3.1865
+Epoch 19: loss=0.3227 acc=0.9105 | val_loss=0.7195 val_acc=0.7463 | ε=3.2792
+Epoch 20: loss=0.3590 acc=0.9051 | val_loss=0.7418 val_acc=0.7500 | ε=3.3699
+Epoch 21: loss=0.3425 acc=0.9147 | val_loss=0.7831 val_acc=0.7414 | ε=3.4587
+Epoch 22: loss=0.3318 acc=0.9137 | val_loss=0.8036 val_acc=0.7426 | ε=3.5459
+Epoch 23: loss=0.2851 acc=0.9219 | val_loss=0.8132 val_acc=0.7426 | ε=3.6315
+Early stopping at epoch 23
+✓ 0.7821 acc | 0.7355 f1 | 2.6s
+
+[13/21]
+
+============================================================
+fl_wesad_c3_run1 | wesad | fl | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 3
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.4427 acc=0.8026
+Round   4: loss=0.3029 acc=0.8982
+Round   5: loss=0.2598 acc=0.9138 | val_loss=0.4241 val_acc=0.7696
+Round   6: loss=0.2245 acc=0.9294
+Round   8: loss=0.1707 acc=0.9491
+Round  10: loss=0.1268 acc=0.9676 | val_loss=0.5321 val_acc=0.7451
+Round  12: loss=0.1009 acc=0.9729
+Round  14: loss=0.0806 acc=0.9815
+Round  15: loss=0.0706 acc=0.9856 | val_loss=0.5714 val_acc=0.7684
+Round  16: loss=0.0648 acc=0.9865
+Round  18: loss=0.0579 acc=0.9881
+Round  20: loss=0.0472 acc=0.9918 | val_loss=0.6678 val_acc=0.7586
+Round  22: loss=0.0436 acc=0.9902
+Round  24: loss=0.0426 acc=0.9906
+Round  25: loss=0.0399 acc=0.9914 | val_loss=0.6700 val_acc=0.7647
+Round  26: loss=0.0400 acc=0.9910
+Round  28: loss=0.0381 acc=0.9910
+Round  30: loss=0.0374 acc=0.9906 | val_loss=0.7090 val_acc=0.7635
+Round  32: loss=0.0344 acc=0.9934
+Round  34: loss=0.0375 acc=0.9926
+Round  35: loss=0.0348 acc=0.9906 | val_loss=0.7139 val_acc=0.7635
+Round  36: loss=0.0335 acc=0.9930
+Round  38: loss=0.0350 acc=0.9926
+Round  40: loss=0.0337 acc=0.9930 | val_loss=0.7199 val_acc=0.7635
+
+======================================================================
+Training completed: 40 rounds in 0.5s
+  Best validation accuracy: 0.7696 (round 5)
+  Validation checks: 8
+======================================================================
+
+✓ 0.7993 acc | 0.7911 f1 | 0.6s
+
+[14/21]
+
+============================================================
+fl_wesad_c3_run2 | wesad | fl | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 3
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.4414 acc=0.8047
+Round   4: loss=0.2963 acc=0.9003
+Round   5: loss=0.2509 acc=0.9167 | val_loss=0.5039 val_acc=0.7145
+Round   6: loss=0.2129 acc=0.9282
+Round   8: loss=0.1517 acc=0.9524
+Round  10: loss=0.1161 acc=0.9672 | val_loss=0.6409 val_acc=0.7341
+Round  12: loss=0.0942 acc=0.9737
+Round  14: loss=0.0749 acc=0.9836
+Round  15: loss=0.0646 acc=0.9852 | val_loss=0.7662 val_acc=0.7365
+Round  16: loss=0.0610 acc=0.9852
+Round  18: loss=0.0534 acc=0.9860
+Round  20: loss=0.0463 acc=0.9897 | val_loss=0.8209 val_acc=0.7390
+Round  22: loss=0.0402 acc=0.9922
+Round  24: loss=0.0359 acc=0.9918
+Round  25: loss=0.0355 acc=0.9926 | val_loss=0.8932 val_acc=0.7414
+Round  26: loss=0.0347 acc=0.9934
+Round  28: loss=0.0356 acc=0.9938
+Round  30: loss=0.0312 acc=0.9926 | val_loss=0.9024 val_acc=0.7475
+Round  32: loss=0.0310 acc=0.9943
+Round  34: loss=0.0293 acc=0.9938
+Round  35: loss=0.0327 acc=0.9918 | val_loss=0.9206 val_acc=0.7475
+Round  36: loss=0.0334 acc=0.9914
+Round  38: loss=0.0275 acc=0.9955
+Round  40: loss=0.0287 acc=0.9947 | val_loss=0.9208 val_acc=0.7475
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.7475 (round 30)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8617 acc | 0.8601 f1 | 0.7s
+
+[15/21]
+
+============================================================
+fl_wesad_c3_run3 | wesad | fl | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 3
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.4421 acc=0.8154
+Round   4: loss=0.2940 acc=0.9015
+Round   5: loss=0.2507 acc=0.9167 | val_loss=0.6267 val_acc=0.7145
+Round   6: loss=0.2079 acc=0.9302
+Round   8: loss=0.1477 acc=0.9594
+Round  10: loss=0.1075 acc=0.9725 | val_loss=0.6962 val_acc=0.7292
+Round  12: loss=0.0897 acc=0.9750
+Round  14: loss=0.0711 acc=0.9848
+Round  15: loss=0.0695 acc=0.9819 | val_loss=0.7673 val_acc=0.7451
+Round  16: loss=0.0576 acc=0.9840
+Round  18: loss=0.0539 acc=0.9856
+Round  20: loss=0.0459 acc=0.9893 | val_loss=0.8738 val_acc=0.7402
+Round  22: loss=0.0402 acc=0.9897
+Round  24: loss=0.0374 acc=0.9918
+Round  25: loss=0.0361 acc=0.9926 | val_loss=0.8503 val_acc=0.7525
+Round  26: loss=0.0366 acc=0.9934
+Round  28: loss=0.0309 acc=0.9926
+Round  30: loss=0.0310 acc=0.9943 | val_loss=0.8623 val_acc=0.7512
+Round  32: loss=0.0327 acc=0.9926
+Round  34: loss=0.0302 acc=0.9938
+Round  35: loss=0.0320 acc=0.9943 | val_loss=0.8894 val_acc=0.7500
+Round  36: loss=0.0299 acc=0.9934
+Round  38: loss=0.0338 acc=0.9914
+Round  40: loss=0.0289 acc=0.9951 | val_loss=0.8914 val_acc=0.7500
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.7525 (round 25)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8654 acc | 0.8642 f1 | 0.6s
+
+[16/21]
+
+============================================================
+fl_wesad_c5_run1 | wesad | fl | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 5
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.5431 acc=0.7321
+Round   4: loss=0.4260 acc=0.8026
+Round   5: loss=0.3805 acc=0.8474 | val_loss=0.3480 val_acc=0.8727
+Round   6: loss=0.3510 acc=0.8757
+Round   8: loss=0.2984 acc=0.8986
+Round  10: loss=0.2618 acc=0.9175 | val_loss=0.3750 val_acc=0.8173
+Round  12: loss=0.2379 acc=0.9208
+Round  14: loss=0.2171 acc=0.9335
+Round  15: loss=0.2031 acc=0.9388 | val_loss=0.4070 val_acc=0.7867
+Round  16: loss=0.1900 acc=0.9372
+Round  18: loss=0.1856 acc=0.9438
+Round  20: loss=0.1707 acc=0.9442 | val_loss=0.3910 val_acc=0.8112
+Round  22: loss=0.1609 acc=0.9475
+Round  24: loss=0.1582 acc=0.9462
+Round  25: loss=0.1505 acc=0.9520 | val_loss=0.3981 val_acc=0.8112
+Round  26: loss=0.1535 acc=0.9487
+Round  28: loss=0.1397 acc=0.9479
+Round  30: loss=0.1397 acc=0.9561 | val_loss=0.3973 val_acc=0.8149
+Round  32: loss=0.1489 acc=0.9532
+Round  34: loss=0.1492 acc=0.9516
+Round  35: loss=0.1474 acc=0.9516 | val_loss=0.3976 val_acc=0.8149
+Round  36: loss=0.1419 acc=0.9540
+Round  38: loss=0.1410 acc=0.9544
+Round  40: loss=0.1408 acc=0.9548 | val_loss=0.3980 val_acc=0.8149
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.8727 (round 5)
+  Validation checks: 8
+======================================================================
+
+✓ 0.7993 acc | 0.7788 f1 | 0.6s
+
+[17/21]
+
+============================================================
+fl_wesad_c5_run2 | wesad | fl | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 5
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.5192 acc=0.7600
+Round   4: loss=0.4241 acc=0.8207
+Round   5: loss=0.3868 acc=0.8581 | val_loss=0.3849 val_acc=0.8530
+Round   6: loss=0.3450 acc=0.8789
+Round   8: loss=0.2950 acc=0.9089
+Round  10: loss=0.2586 acc=0.9188 | val_loss=0.4429 val_acc=0.7487
+Round  12: loss=0.2312 acc=0.9253
+Round  14: loss=0.2118 acc=0.9339
+Round  15: loss=0.2032 acc=0.9351 | val_loss=0.4836 val_acc=0.7560
+Round  16: loss=0.1953 acc=0.9343
+Round  18: loss=0.1840 acc=0.9438
+Round  20: loss=0.1672 acc=0.9462 | val_loss=0.4989 val_acc=0.7695
+Round  22: loss=0.1651 acc=0.9487
+Round  24: loss=0.1653 acc=0.9434
+Round  25: loss=0.1548 acc=0.9479 | val_loss=0.5212 val_acc=0.7756
+Round  26: loss=0.1581 acc=0.9487
+Round  28: loss=0.1557 acc=0.9503
+Round  30: loss=0.1538 acc=0.9512 | val_loss=0.5308 val_acc=0.7817
+Round  32: loss=0.1535 acc=0.9511
+Round  34: loss=0.1529 acc=0.9491
+Round  35: loss=0.1570 acc=0.9503 | val_loss=0.5347 val_acc=0.7829
+Round  36: loss=0.1515 acc=0.9511
+Round  38: loss=0.1471 acc=0.9516
+Round  40: loss=0.1547 acc=0.9491 | val_loss=0.5347 val_acc=0.7829
+
+======================================================================
+Training completed: 40 rounds in 0.5s
+  Best validation accuracy: 0.8530 (round 5)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8029 acc | 0.7725 f1 | 0.6s
+
+[18/21]
+
+============================================================
+fl_wesad_c5_run3 | wesad | fl | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 5
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.5289 acc=0.7518
+Round   4: loss=0.4318 acc=0.8133
+Round   5: loss=0.3906 acc=0.8564 | val_loss=0.4347 val_acc=0.7709
+Round   6: loss=0.3544 acc=0.8806
+Round   8: loss=0.2970 acc=0.9159
+Round  10: loss=0.2656 acc=0.9183 | val_loss=0.5295 val_acc=0.7340
+Round  12: loss=0.2301 acc=0.9314
+Round  14: loss=0.2070 acc=0.9380
+Round  15: loss=0.2050 acc=0.9380 | val_loss=0.5435 val_acc=0.7511
+Round  16: loss=0.1913 acc=0.9401
+Round  18: loss=0.1759 acc=0.9454
+Round  20: loss=0.1684 acc=0.9483 | val_loss=0.5441 val_acc=0.7597
+Round  22: loss=0.1611 acc=0.9471
+Round  24: loss=0.1501 acc=0.9520
+Round  25: loss=0.1563 acc=0.9503 | val_loss=0.5597 val_acc=0.7634
+Round  26: loss=0.1517 acc=0.9487
+Round  28: loss=0.1446 acc=0.9528
+Round  30: loss=0.1468 acc=0.9507 | val_loss=0.5570 val_acc=0.7695
+Round  32: loss=0.1492 acc=0.9511
+Round  34: loss=0.1452 acc=0.9520
+Round  35: loss=0.1381 acc=0.9557 | val_loss=0.5518 val_acc=0.7768
+Round  36: loss=0.1462 acc=0.9487
+Round  38: loss=0.1438 acc=0.9507
+Round  40: loss=0.1358 acc=0.9557 | val_loss=0.5511 val_acc=0.7781
+
+======================================================================
+Training completed: 40 rounds in 0.5s
+  Best validation accuracy: 0.7781 (round 40)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8115 acc | 0.8064 f1 | 0.6s
+
+[19/21]
+
+============================================================
+fl_wesad_c10_run1 | wesad | fl | seed=42
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 10
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.6603 acc=0.6014
+Round   4: loss=0.5554 acc=0.7271
+Round   5: loss=0.5340 acc=0.7370 | val_loss=0.4486 val_acc=0.7547
+Round   6: loss=0.5024 acc=0.7615
+Round   8: loss=0.4573 acc=0.7812
+Round  10: loss=0.4348 acc=0.8037 | val_loss=0.3666 val_acc=0.8308
+Round  12: loss=0.4117 acc=0.8271
+Round  14: loss=0.3797 acc=0.8582
+Round  15: loss=0.3673 acc=0.8673 | val_loss=0.3330 val_acc=0.8837
+Round  16: loss=0.3662 acc=0.8726
+Round  18: loss=0.3518 acc=0.8784
+Round  20: loss=0.3284 acc=0.8862 | val_loss=0.3280 val_acc=0.8725
+Round  22: loss=0.3218 acc=0.8972
+Round  24: loss=0.3175 acc=0.8997
+Round  25: loss=0.3130 acc=0.8997 | val_loss=0.3304 val_acc=0.8625
+Round  26: loss=0.3076 acc=0.9009
+Round  28: loss=0.2991 acc=0.9071
+Round  30: loss=0.2941 acc=0.9087 | val_loss=0.3311 val_acc=0.8600
+Round  32: loss=0.2937 acc=0.9091
+Round  34: loss=0.2920 acc=0.9104
+Round  35: loss=0.2931 acc=0.9075 | val_loss=0.3309 val_acc=0.8587
+Round  36: loss=0.2917 acc=0.9104
+Round  38: loss=0.2932 acc=0.9079
+Round  40: loss=0.2923 acc=0.9058 | val_loss=0.3308 val_acc=0.8587
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.8837 (round 15)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8054 acc | 0.7868 f1 | 0.6s
+
+[20/21]
+
+============================================================
+fl_wesad_c10_run2 | wesad | fl | seed=123
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 10
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.5942 acc=0.6966
+Round   4: loss=0.5346 acc=0.7449
+Round   5: loss=0.5194 acc=0.7502 | val_loss=0.4554 val_acc=0.7962
+Round   6: loss=0.5007 acc=0.7626
+Round   8: loss=0.4654 acc=0.7801
+Round  10: loss=0.4405 acc=0.8079 | val_loss=0.3952 val_acc=0.8430
+Round  12: loss=0.4159 acc=0.8272
+Round  14: loss=0.3954 acc=0.8595
+Round  15: loss=0.3868 acc=0.8612 | val_loss=0.3631 val_acc=0.8783
+Round  16: loss=0.3732 acc=0.8686
+Round  18: loss=0.3591 acc=0.8789
+Round  20: loss=0.3432 acc=0.8899 | val_loss=0.3588 val_acc=0.8457
+Round  22: loss=0.3295 acc=0.8969
+Round  24: loss=0.3203 acc=0.8965
+Round  25: loss=0.3163 acc=0.8920 | val_loss=0.3637 val_acc=0.8235
+Round  26: loss=0.3127 acc=0.9030
+Round  28: loss=0.3059 acc=0.9042
+Round  30: loss=0.3051 acc=0.9022 | val_loss=0.3670 val_acc=0.8086
+Round  32: loss=0.2971 acc=0.9055
+Round  34: loss=0.2965 acc=0.9055
+Round  35: loss=0.2993 acc=0.9026 | val_loss=0.3678 val_acc=0.8062
+Round  36: loss=0.2994 acc=0.9083
+Round  38: loss=0.2861 acc=0.9121
+Round  40: loss=0.2914 acc=0.9087 | val_loss=0.3678 val_acc=0.8062
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.8783 (round 15)
+  Validation checks: 8
+======================================================================
+
+✓ 0.8127 acc | 0.7831 f1 | 0.6s
+
+[21/21]
+
+============================================================
+fl_wesad_c10_run3 | wesad | fl | seed=456
+============================================================
+✓ Using cached wesad
+[DATA] wesad y_test: sum=247 hash=-4505757182164507408 dist=[570, 247]
+Data: train=(2437, 140) val=(816, 140) test=(817, 140)
+Model: 26,818 params
+
+======================================================================
+FEDERATED LEARNING TRAINING
+======================================================================
+  Clients: 10
+  Global rounds: 40
+  Local epochs per round: 1
+  Validation frequency: every 5 rounds
+  Early stopping patience: 15 validation rounds
+======================================================================
+
+Round   2: loss=0.6295 acc=0.6640
+Round   4: loss=0.5631 acc=0.7183
+Round   5: loss=0.5361 acc=0.7390 | val_loss=0.4735 val_acc=0.7715
+Round   6: loss=0.5133 acc=0.7603
+Round   8: loss=0.4738 acc=0.7857
+Round  10: loss=0.4494 acc=0.8026 | val_loss=0.4307 val_acc=0.7739
+Round  12: loss=0.4147 acc=0.8337
+Round  14: loss=0.4002 acc=0.8529
+Round  15: loss=0.3870 acc=0.8628 | val_loss=0.4337 val_acc=0.7614
+Round  16: loss=0.3794 acc=0.8695
+Round  18: loss=0.3611 acc=0.8846
+Round  20: loss=0.3506 acc=0.8781 | val_loss=0.4538 val_acc=0.7476
+Round  22: loss=0.3367 acc=0.8866
+Round  24: loss=0.3184 acc=0.9002
+Round  25: loss=0.3246 acc=0.8973 | val_loss=0.4694 val_acc=0.7452
+Round  26: loss=0.3235 acc=0.8981
+Round  28: loss=0.3104 acc=0.9034
+Round  30: loss=0.3097 acc=0.9022 | val_loss=0.4759 val_acc=0.7404
+Round  32: loss=0.3058 acc=0.9056
+Round  34: loss=0.3104 acc=0.9014
+Round  35: loss=0.3068 acc=0.9030 | val_loss=0.4774 val_acc=0.7404
+Round  36: loss=0.3093 acc=0.9047
+Round  38: loss=0.2970 acc=0.9084
+Round  40: loss=0.3049 acc=0.9080 | val_loss=0.4776 val_acc=0.7404
+
+======================================================================
+Training completed: 40 rounds in 0.6s
+  Best validation accuracy: 0.7739 (round 10)
+  Validation checks: 8
+======================================================================
+
+✓ 0.7870 acc | 0.7491 f1 | 0.6s
+✓ Cache cleared
+
+============================================================
+RESULTS
+============================================================
+Success: 21/21
+Avg Accuracy: 0.8114
+Avg F1: 0.7861
+Time: 0.01h
+Saved: experiments/results_log.json
+
+Total time: 0.7 minutes
+
+((venv) ) vasco@MacBook-Air-de-Vasco mhealth-data-privacy % 

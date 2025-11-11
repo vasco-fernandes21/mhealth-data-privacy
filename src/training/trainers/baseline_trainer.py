@@ -131,6 +131,12 @@ class BaselineTrainer(BaseTrainer):
         self, test_loader: DataLoader
     ) -> Dict[str, Any]:
         """Full evaluation with all metrics."""
+        # Diagnostics: test set size (if available)
+        try:
+            total_expected = len(getattr(test_loader, 'dataset', []))
+            print(f"[EVAL] Test set size (expected): {total_expected}")
+        except Exception:
+            pass
         self.model.eval()
         y_true = []
         y_pred = []
@@ -150,6 +156,15 @@ class BaselineTrainer(BaseTrainer):
         y_pred = np.array(y_pred)
         unique_labels = np.unique(y_true)
 
+        # Diagnostics: distributions
+        try:
+            true_counts = np.bincount(y_true.astype(int))
+            pred_counts = np.bincount(y_pred.astype(int))
+            print(f"[EVAL] y_true dist: {true_counts.tolist()}")
+            print(f"[EVAL] y_pred dist: {pred_counts.tolist()}")
+        except Exception:
+            pass
+
         (precision_per_class, recall_per_class, f1_per_class, _) = (
             precision_recall_fscore_support(
                 y_true, y_pred, labels=unique_labels, zero_division=0
@@ -157,6 +172,11 @@ class BaselineTrainer(BaseTrainer):
         )
 
         cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
+        # Diagnostics: confusion matrix
+        try:
+            print(f"[EVAL] Confusion matrix:\n{cm}")
+        except Exception:
+            pass
 
         return {
             'accuracy': float(accuracy_score(y_true, y_pred)),
