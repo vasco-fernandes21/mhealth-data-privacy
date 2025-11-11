@@ -31,10 +31,10 @@ from src.preprocessing.wesad import load_processed_wesad
 
 
 # ================================================================
-# DATA CACHE - Evita carregar dados a cada run
+# DATA CACHE - Prevents reloading data for each run
 # ================================================================
 class DataCache:
-    """Global data cache - carrega dados uma vez, reutiliza N vezes."""
+    """Global data cache - loads data once, reuses N times."""
     
     _cache: Dict[str, Tuple] = {}
     
@@ -281,7 +281,7 @@ class ExperimentRunner:
         start_time = time.time()
 
         try:
-            # SET SEED FIRST
+            # Set seed first
             set_seed_everywhere(seed=seed, device=device)
             
             config = self._get_config(

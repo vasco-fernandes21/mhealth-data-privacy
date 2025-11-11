@@ -101,7 +101,7 @@ if __name__ == "__main__":
     sleep_config = {
         'dataset': {
             'name': 'sleep-edf',
-            'input_dim': 24,  # 8 features × 3 channels
+            'input_dim': 24,  # 8 features * 3 channels
             'n_classes': 5,
         },
         'model': {
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     wesad_config = {
         'dataset': {
             'name': 'wesad',
-            'input_dim': 140,  # 10 features × 14 channels
+            'input_dim': 140,  
             'n_classes': 2,
         },
         'model': {
@@ -126,58 +126,4 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"\nDevice: {device}\n")
 
-    # Test Sleep-EDF (2D features)
-    print("="*70)
-    print("Test 1: Sleep-EDF (2D features)")
-    print("="*70)
-    model_sleep = UnifiedMLPModel(sleep_config, device=device)
-    print(f"Model: {model_sleep.get_model_info()}")
-
-    x_sleep = torch.randn(32, 24).to(device)
-    y_sleep = model_sleep(x_sleep)
-    print(f"Input: {x_sleep.shape} -> Output: {y_sleep.shape}")
-    assert y_sleep.shape == (32, 5), f"Expected (32, 5), got {y_sleep.shape}"
-    print("✅ Test passed\n")
-
-    # Test WESAD (2D features)
-    print("="*70)
-    print("Test 2: WESAD (2D features)")
-    print("="*70)
-    model_wesad = UnifiedMLPModel(wesad_config, device=device)
-    print(f"Model: {model_wesad.get_model_info()}")
-
-    x_wesad = torch.randn(32, 140).to(device)
-    y_wesad = model_wesad(x_wesad)
-    print(f"Input: {x_wesad.shape} -> Output: {y_wesad.shape}")
-    assert y_wesad.shape == (32, 2), f"Expected (32, 2), got {y_wesad.shape}"
-    print("✅ Test passed\n")
-
-    # Test WESAD with temporal input (should average pool)
-    print("="*70)
-    print("Test 3: WESAD (3D temporal → average pool)")
-    print("="*70)
-    x_wesad_temporal = torch.randn(32, 10, 140).to(device)
-    y_wesad_temporal = model_wesad(x_wesad_temporal)
-    print(f"Input: {x_wesad_temporal.shape} -> Output: {y_wesad_temporal.shape}")
-    assert y_wesad_temporal.shape == (32, 2)
-    print("✅ Test passed\n")
-
-    # Parameter count
-    print("="*70)
-    print("Parameter Count Analysis")
-    print("="*70)
-    sleep_params = sum(p.numel() for p in model_sleep.parameters())
-    wesad_params = sum(p.numel() for p in model_wesad.parameters())
-    print(f"Sleep-EDF: {sleep_params:>8,} parameters")
-    print(f"WESAD:     {wesad_params:>8,} parameters")
-    print(f"Fair comparison: parameters ~ similar order of magnitude\n")
-
-    print("="*70)
-    print("ALL TESTS PASSED")
-    print("="*70)
-    print("\nModel Features:")
-    print("  ✅ DP-compatible (LayerNorm, no BatchNorm)")
-    print("  ✅ Features-only (no temporal complexity)")
-    print("  ✅ Fast training (~1-5s per epoch)")
-    print("  ✅ Fair comparison (same architecture)")
-    print("  ✅ Works with both 2D and 3D (average pools temporal)")
+    
