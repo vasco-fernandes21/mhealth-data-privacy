@@ -208,11 +208,15 @@ class DPTrainer(BaseTrainer):
 
         best_epoch = 0
         epoch_num = 0
+        epsilon_history = []
 
         for epoch_num in range(1, epochs + 1):
             train_loss, train_acc = self.train_epoch(train_loader)
             val_loss, val_acc = self.validate(val_loader)
             epsilon = self._get_epsilon()
+            
+            if epsilon is not None:
+                epsilon_history.append(epsilon)
 
             self.history['epoch'].append(epoch_num)
             self.history['train_loss'].append(train_loss)
@@ -272,6 +276,7 @@ class DPTrainer(BaseTrainer):
         return {
             'total_epochs': epoch_num,
             'best_epoch': best_epoch,
+            'epochs_no_improve': self.epochs_no_improve,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
             'final_train_loss': train_loss,
@@ -279,7 +284,8 @@ class DPTrainer(BaseTrainer):
             'final_val_loss': val_loss,
             'final_val_acc': val_acc,
             'history': self.history,
-            'final_epsilon': epsilon
+            'final_epsilon': epsilon,
+            'epsilon_history': epsilon_history
         }
 
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:

@@ -612,9 +612,16 @@ class FLDPTrainer(BaseTrainer):
             print(f"  Final epsilon: {epsilon_history[-1]:.4f}")
         print(f"{'='*70}\n", flush=True)
 
+        # Calculate model size for communication cost
+        model_size_bytes = sum(
+            p.numel() * 4  # float32 = 4 bytes
+            for p in self.model.parameters()
+        )
+        
         results = {
             'total_rounds': round_num,
             'best_round': best_epoch,
+            'epochs_no_improve': self.epochs_no_improve,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
             'final_train_loss': train_loss,
@@ -630,7 +637,13 @@ class FLDPTrainer(BaseTrainer):
             'history': self.history,
             'n_clients': len(self.clients),
             'local_epochs': local_epochs,
-            'validation_frequency': validation_frequency
+            'validation_frequency': validation_frequency,
+            'communication': {
+                'total_rounds': round_num,
+                'model_size_bytes': model_size_bytes,
+                'total_communication_bytes': model_size_bytes * round_num * len(self.clients),
+                'communication_per_round_bytes': model_size_bytes * len(self.clients)
+            }
         }
 
         # Add DP metrics

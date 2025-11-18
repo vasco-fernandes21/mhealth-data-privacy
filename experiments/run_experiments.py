@@ -229,6 +229,126 @@ class ExperimentRunner:
                 result[key] = deepcopy(value)
         return result
 
+    def _extract_privacy_metrics(self, method: str, training_results: dict, 
+                                  config: dict) -> dict:
+        """
+        Extract privacy metrics relevant for the paper.
+        
+        For DP: final_epsilon, delta, noise_multiplier
+        For FL: n_clients, total_rounds (decentralization info)
+        For FL+DP: all of the above
+        """
+        privacy_metrics = {}
+        
+        if method == 'dp':
+            # Pure DP: epsilon from training_results
+            privacy_metrics = {
+                'final_epsilon': training_results.get('final_epsilon'),
+                'epsilon_history': training_results.get('epsilon_history', []),
+                'delta': config.get('differential_privacy', {}).get('target_delta', 1e-5),
+                'noise_multiplier': config.get('differential_privacy', {}).get('noise_multiplier'),
+            }
+        elif method == 'fl':
+            # Pure FL: decentralization metrics (no formal privacy)
+            privacy_metrics = {
+                'n_clients': training_results.get('n_clients'),
+                'total_rounds': training_results.get('total_epochs'),  # FL uses 'total_epochs' for rounds
+                'local_epochs': training_results.get('local_epochs'),
+                'decentralized': True,  # Data never leaves clients
+                'formal_privacy': False,  # No epsilon/delta guarantees
+            }
+        elif method == 'dp_fl':
+            # FL+DP: both decentralization and formal privacy
+            dp_info = training_results.get('differential_privacy', {})
+            privacy_metrics = {
+                'n_clients': training_results.get('n_clients'),
+                'total_rounds': training_results.get('total_rounds', training_results.get('total_epochs')),
+                'local_epochs': training_results.get('local_epochs'),
+                'decentralized': True,
+                'formal_privacy': True,
+                'final_epsilon': dp_info.get('final_epsilon'),
+                'epsilon_history': dp_info.get('epsilon_history', []),
+                'delta': dp_info.get('delta', config.get('differential_privacy', {}).get('target_delta', 1e-5)),
+                'noise_multiplier': dp_info.get('noise_multiplier', config.get('differential_privacy', {}).get('noise_multiplier')),
+                'max_grad_norm': dp_info.get('max_grad_norm', config.get('differential_privacy', {}).get('max_grad_norm', 1.0)),
+            }
+        else:
+            # Baseline: no privacy mechanisms
+            privacy_metrics = {
+                'decentralized': False,
+                'formal_privacy': False,
+            }
+        
+        return privacy_metrics
+
+    def _compute_class_imbalance_metrics(self, confusion_matrix: list, 
+                                         class_names: list) -> dict:
+        """Compute class imbalance metrics from confusion matrix."""
+        if not confusion_matrix or not class_names:
+            return {}
+        
+        cm = np.array(confusion_matrix)
+        
+        # True positives per class (diagonal)
+        tp_per_class = np.diag(cm)
+        # Total samples per class (row sums)
+        total_per_class = cm.sum(axis=1)
+        # Predicted samples per class (column sums)
+        predicted_per_class = cm.sum(axis=0)
+        
+        # Class distribution
+        class_distribution = {
+            name: int(count) for name, count in zip(class_names, total_per_class)
+        }
+        
+        # Imbalance ratio (max/min)
+        if len(total_per_class) > 1 and total_per_class.min() > 0:
+            imbalance_ratio = float(total_per_class.max() / total_per_class.min())
+        else:
+            imbalance_ratio = 1.0
+        
+        return {
+            'class_distribution': class_distribution,
+            'imbalance_ratio': imbalance_ratio,
+            'total_samples': int(total_per_class.sum()),
+            'minority_class': class_names[int(np.argmin(total_per_class))] if len(total_per_class) > 0 else None,
+            'majority_class': class_names[int(np.argmax(total_per_class))] if len(total_per_class) > 0 else None,
+        }
+
+    def _extract_hyperparameters(self, config: dict, method: str) -> dict:
+        """Extract hyperparameters used in training."""
+        training_cfg = config.get('training', {})
+        model_cfg = config.get('model', {})
+        
+        hyperparams = {
+            'batch_size': training_cfg.get('batch_size', 128),
+            'learning_rate': training_cfg.get('learning_rate', 1e-4),
+            'weight_decay': training_cfg.get('weight_decay', 0.0),
+            'optimizer': training_cfg.get('optimizer', 'adamw'),
+            'scheduler': training_cfg.get('scheduler', 'cosine'),
+            'label_smoothing': training_cfg.get('label_smoothing', 0.0),
+            'dropout': model_cfg.get('dropout', 0.3),
+            'hidden_dims': model_cfg.get('hidden_dims', [256, 128]),
+        }
+        
+        if method in ['fl', 'dp_fl']:
+            fl_cfg = config.get('federated_learning', {})
+            hyperparams.update({
+                'n_clients': fl_cfg.get('n_clients', 10),
+                'local_epochs': fl_cfg.get('local_epochs', 1),
+                'aggregation_method': fl_cfg.get('aggregation_method', 'fedavg'),
+            })
+        
+        if method in ['dp', 'dp_fl']:
+            dp_cfg = config.get('differential_privacy', {})
+            hyperparams.update({
+                'noise_multiplier': dp_cfg.get('noise_multiplier', 1.0),
+                'max_grad_norm': dp_cfg.get('max_grad_norm', 1.0),
+                'delta': dp_cfg.get('target_delta', dp_cfg.get('delta', 1e-5)),
+            })
+        
+        return hyperparams
+
     def _get_config(self, dataset: str, method: str, hyperparams=None):
         """Get merged config with proper defaults."""
         dataset_cfg = self._load_config(
@@ -417,13 +537,21 @@ class ExperimentRunner:
                     'timestamp': datetime.now().isoformat(),
                 },
                 'training_metrics': {
-                    'total_epochs': training_results.get('total_epochs', 0),
+                    'total_epochs': training_results.get('total_epochs', training_results.get('total_rounds', 0)),
+                    'best_epoch': training_results.get('best_epoch', training_results.get('best_round', 0)),
+                    'epochs_no_improve': training_results.get('epochs_no_improve', 0),
                     'best_val_acc': training_results.get('best_val_acc', 0),
                     'training_time_seconds': training_results.get(
                         'training_time_seconds', 0
                     ),
+                    'convergence': {
+                        'early_stopped': training_results.get('epochs_no_improve', 0) > 0,
+                        'epochs_without_improvement': training_results.get('epochs_no_improve', 0),
+                    }
                 },
-                'privacy_metrics': training_results.get('differential_privacy', {}),
+                'privacy_metrics': self._extract_privacy_metrics(
+                    method, training_results, config
+                ),
                 'test_metrics': {
                     'accuracy': test_metrics.get('accuracy', 0),
                     'precision': test_metrics.get('precision', 0),
@@ -434,10 +562,16 @@ class ExperimentRunner:
                     'f1_per_class': test_metrics.get('f1_per_class', []),
                     'confusion_matrix': test_metrics.get('confusion_matrix', []),
                     'class_names': test_metrics.get('class_names', []),
+                    'class_imbalance': self._compute_class_imbalance_metrics(
+                        test_metrics.get('confusion_matrix', []),
+                        test_metrics.get('class_names', [])
+                    ),
                 },
                 'timing': {
                     'total_time_seconds': elapsed,
                 },
+                'hyperparameters': self._extract_hyperparameters(config, method),
+                'communication': training_results.get('communication', {}),
                 'model_path': str(output_dir / 'best_model.pth') if output_dir else None
             }
 

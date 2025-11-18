@@ -149,6 +149,8 @@ class BaseTrainer(ABC):
 
         return {
             'total_epochs': epoch,
+            'best_epoch': epoch - self.epochs_no_improve if self.epochs_no_improve < epoch else epoch,
+            'epochs_no_improve': self.epochs_no_improve,
             'training_time_seconds': training_time,
             'best_val_acc': self.best_val_acc,
             'history': self.history

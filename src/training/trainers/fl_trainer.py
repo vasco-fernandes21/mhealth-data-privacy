@@ -248,9 +248,16 @@ class FLTrainer(BaseTrainer):
               f"(round {best_epoch})")
         print(f"{'='*70}\n", flush=True)
 
+        # Calculate model size for communication cost
+        model_size_bytes = sum(
+            p.numel() * 4  # float32 = 4 bytes
+            for p in self.model.parameters()
+        )
+        
         return {
             'total_epochs': round_num,
             'best_epoch': best_epoch,
+            'epochs_no_improve': self.epochs_no_improve,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
             'history': self.history,
@@ -266,5 +273,11 @@ class FLTrainer(BaseTrainer):
             'final_val_acc': (
                 self.history['val_acc'][-1]
                 if self.history['val_acc'] else 0.0
-            )
+            ),
+            'communication': {
+                'total_rounds': round_num,
+                'model_size_bytes': model_size_bytes,
+                'total_communication_bytes': model_size_bytes * round_num * len(clients),
+                'communication_per_round_bytes': model_size_bytes * len(clients)
+            }
         }
