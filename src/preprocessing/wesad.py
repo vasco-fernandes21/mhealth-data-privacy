@@ -233,10 +233,10 @@ def extract_window_features(
     Extract 10 features from each of 14 channels.
     Returns array of shape (140,) for 14 channels × 10 features.
 
-    Canais:
+    Channels:
       1D: ecg, eda_chest, temp_chest, emg, resp, bvp, eda_wrist, temp_wrist
       3D: acc_chest (x,y,z), acc_wrist (x,y,z)
-      Total: 8 × 1 + 2 × 3 = 14 canais
+      Total: 8 × 1 + 2 × 3 = 14 channels
     """
     features = []
 

@@ -33,7 +33,6 @@ class DPConfig:
         self.max_grad_norm = float(dp_cfg.get('max_grad_norm', 1.0))
         self.delta = float(dp_cfg.get('delta', 1e-5))
         self.poisson_sampling = bool(dp_cfg.get('poisson_sampling', True))
-        self.accounting_method = str(dp_cfg.get('accounting_method', 'rdp'))
         self.grad_sample_mode = str(dp_cfg.get('grad_sample_mode', 'hooks'))
 
     def __repr__(self) -> str:
@@ -51,6 +50,7 @@ class DPTrainer(BaseTrainer):
         self.dp_config = DPConfig(self.config)
         self.privacy_engine = None
         self.dp_train_loader = None
+        self.best_model_state = None
 
     def setup_optimizer_and_loss(self) -> None:
         """Setup optimizer and loss for DP training."""
@@ -206,12 +206,15 @@ class DPTrainer(BaseTrainer):
         print(f"  Delta: {self.dp_config.delta}")
         print(f"  Epochs: {epochs}\n")
 
-        for epoch in range(1, epochs + 1):
+        best_epoch = 0
+        epoch_num = 0
+
+        for epoch_num in range(1, epochs + 1):
             train_loss, train_acc = self.train_epoch(train_loader)
             val_loss, val_acc = self.validate(val_loader)
             epsilon = self._get_epsilon()
 
-            self.history['epoch'].append(epoch)
+            self.history['epoch'].append(epoch_num)
             self.history['train_loss'].append(train_loss)
             self.history['train_acc'].append(train_acc)
             self.history['val_loss'].append(val_loss)
@@ -220,7 +223,7 @@ class DPTrainer(BaseTrainer):
             eps_str = f"ε={epsilon:.4f}" if epsilon else "ε=N/A"
 
             print(
-                f"Epoch {epoch:02d}: loss={train_loss:.4f} "
+                f"Epoch {epoch_num:02d}: loss={train_loss:.4f} "
                 f"acc={train_acc:.4f} | val_loss={val_loss:.4f} "
                 f"val_acc={val_acc:.4f} | {eps_str}"
             )
@@ -228,16 +231,24 @@ class DPTrainer(BaseTrainer):
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
                 self.epochs_no_improve = 0
-                # store best model state in memory so we can restore it even without output_dir
+                best_epoch = epoch_num
+
+                # Store in memory always
                 self.best_model_state = {
-                    k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()
+                    k: v.detach().cpu().clone()
+                    for k, v in self.model.state_dict().items()
                 }
+
                 if output_path:
                     self.save_checkpoint(output_path / 'best_model.pth')
+                    logger.info(
+                        f"Saved best model at epoch {epoch_num} "
+                        f"(val_acc={val_acc:.4f})"
+                    )
             else:
                 self.epochs_no_improve += 1
                 if self.epochs_no_improve >= patience:
-                    print(f"Early stopping at epoch {epoch}")
+                    print(f"Early stopping at epoch {epoch_num}")
                     break
 
             if isinstance(
@@ -248,15 +259,19 @@ class DPTrainer(BaseTrainer):
 
         elapsed = time.time() - start_time
 
+        # Restore best model
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
+            logger.info("Loaded best model from memory")
         elif output_path and (output_path / 'best_model.pth').exists():
             self.load_checkpoint(output_path / 'best_model.pth')
+            logger.info("Loaded best model from disk")
 
         epsilon = self._get_epsilon()
 
         return {
-            'total_epochs': epoch,
+            'total_epochs': epoch_num,
+            'best_epoch': best_epoch,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
             'final_train_loss': train_loss,

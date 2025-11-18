@@ -138,7 +138,9 @@ class BaseModel(ABC, nn.Module):
         """
         path = Path(path)
         
-        checkpoint = torch.load(path, map_location=device)
+        # weights_only=False needed for PyTorch 2.6+ compatibility
+        # Checkpoints contain numpy arrays in config/history
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
         config = checkpoint['config']
         
         # Create model instance

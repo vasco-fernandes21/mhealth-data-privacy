@@ -4,17 +4,20 @@ dataset:
   input_dim: 24
   n_classes: 5
   class_names: ["W", "N1", "N2", "N3", "R"]
+  use_class_weights: true  # Dataset is large enough, less critical
 
 model:
-  hidden_dims: [128, 64]  
+  hidden_dims: [256, 128]  
   dropout: 0.5            
 
 training:
-  batch_size: 256         
-  epochs: 60              
-  learning_rate: 0.001   
-  weight_decay: 0.001    
+  batch_size: 128         
+  epochs: 40              
+  learning_rate: 0.0005   
+  weight_decay: 0.0001   
   optimizer: adamw        
   scheduler: cosine      
-  early_stopping_patience: 15  
+  label_smoothing: 0.05   
+  gradient_clipping: false
+  early_stopping_patience: 20  
   num_workers: 0

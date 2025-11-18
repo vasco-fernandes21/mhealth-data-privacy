@@ -22,6 +22,7 @@ class BaselineTrainer(BaseTrainer):
     def setup_optimizer_and_loss(self) -> None:
         """Setup optimizer and loss."""
         cfg = self.config['training']
+        dataset_cfg = self.config.get('dataset', {})
 
         lr = float(cfg.get('learning_rate', 1e-4))
         weight_decay = float(cfg.get('weight_decay', 0.0))
@@ -48,7 +49,27 @@ class BaselineTrainer(BaseTrainer):
                 weight_decay=weight_decay
             )
 
-        self.criterion = nn.CrossEntropyLoss(reduction='mean')
+        # Setup loss with class weights and label smoothing
+        use_class_weights = dataset_cfg.get('use_class_weights', False)
+        label_smoothing = float(cfg.get('label_smoothing', 0.0))
+        
+        class_weights = None
+        if use_class_weights:
+            # Try to get class weights from config metadata
+            if 'class_weights' in dataset_cfg:
+                weights_dict = dataset_cfg['class_weights']
+                n_classes = dataset_cfg.get('n_classes', 2)
+                class_weights = torch.zeros(n_classes, dtype=torch.float32)
+                for class_idx, weight in weights_dict.items():
+                    class_weights[int(class_idx)] = float(weight)
+                class_weights = class_weights.to(self.device)
+                print(f"[TRAINER] Using class weights: {class_weights.tolist()}")
+
+        self.criterion = nn.CrossEntropyLoss(
+            weight=class_weights,
+            label_smoothing=label_smoothing,
+            reduction='mean'
+        )
         self.criterion = self.criterion.to(self.device)
 
         self._setup_scheduler()

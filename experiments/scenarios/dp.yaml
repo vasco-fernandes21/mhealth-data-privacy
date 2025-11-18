@@ -181,7 +181,7 @@ experiments:
         noise_multiplier: 1.0
 
   # High noise (σ=2.0)
-  dp_wesad_noise2_0_run1:
+  dp_wesad_noise2_0_run1: 
     name: "DP - WESAD σ=2.0 (elevado) - Run 1"
     enabled: true
     dataset: "wesad"

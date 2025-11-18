@@ -8,7 +8,7 @@ Implements federated learning with multiple clients and a central server.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any, Tuple
 import time
 import numpy as np
 from pathlib import Path
@@ -28,6 +28,10 @@ logger = get_logger(__name__)
 class FLTrainer(BaseTrainer):
     """Federated Learning trainer."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_model_state = None
+
     def setup_optimizer_and_loss(self) -> None:
         """Setup loss (clients manage optimizers)."""
         cfg = self.config['training']
@@ -35,31 +39,21 @@ class FLTrainer(BaseTrainer):
         self.criterion = nn.CrossEntropyLoss(
             label_smoothing=label_smoothing
         ).to(self.device)
-        logger.info("Loss function initialized (CE with label smoothing)")
+        logger.info("Loss function initialized")
 
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
         """
         Train one epoch (not used in FL).
 
-        FL uses federated rounds instead of epochs. This method exists
-        only to satisfy the abstract base class interface.
+        FL uses federated rounds instead of epochs.
         """
         raise NotImplementedError(
             "FLTrainer uses federated rounds, not epochs. "
-            "Use fit() with train_loaders and client_ids instead."
+            "Use fit() instead."
         )
 
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
-        """
-        Full evaluation with all metrics.
-
-        Args:
-            test_loader: Test data loader
-
-        Returns:
-            Dictionary with accuracy, precision, recall, f1, per-class
-            metrics, confusion matrix and class names.
-        """
+        """Full evaluation with metrics."""
         self.model.eval()
         y_true = []
         y_pred = []
@@ -87,7 +81,7 @@ class FLTrainer(BaseTrainer):
 
         cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
 
-        metrics = {
+        return {
             'accuracy': float(accuracy_score(y_true, y_pred)),
             'precision': float(
                 precision_score(
@@ -114,26 +108,12 @@ class FLTrainer(BaseTrainer):
             'class_names': self.config['dataset'].get('class_names', [])
         }
 
-        return metrics
-
-    def _update_history(self, epoch_num: int, train_loss: float,
-                       train_acc: float, val_loss: float = None,
-                       val_acc: float = None) -> None:
-        """Update training history."""
-        self.history['epoch'].append(epoch_num)
-        self.history['train_loss'].append(train_loss)
-        self.history['train_acc'].append(train_acc)
-        if val_loss is not None:
-            self.history['val_loss'].append(val_loss)
-        if val_acc is not None:
-            self.history['val_acc'].append(val_acc)
-
     def fit(self, train_loaders: List[DataLoader],
             val_loaders: List[DataLoader],
             client_ids: List[str],
             epochs: int = 100,
             patience: int = 10,
-            output_dir: str = None) -> Dict[str, Any]:
+            output_dir: Optional[str] = None) -> Dict[str, Any]:
         """
         Train with Federated Learning.
 
@@ -142,7 +122,7 @@ class FLTrainer(BaseTrainer):
             val_loaders: List of validation loaders (one per client)
             client_ids: List of client identifiers
             epochs: Number of global rounds
-            patience: Early stopping patience (validation rounds)
+            patience: Early stopping patience
             output_dir: Directory to save best model
 
         Returns:
@@ -154,6 +134,11 @@ class FLTrainer(BaseTrainer):
         fl_cfg = self.config.get('federated_learning', {})
         validation_frequency = fl_cfg.get('validation_frequency', 5)
         local_epochs = fl_cfg.get('local_epochs', 1)
+
+        output_path = None
+        if output_dir is not None:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
 
         clients = [
             FLClient(
@@ -188,7 +173,7 @@ class FLTrainer(BaseTrainer):
         print(f"{'='*70}\n")
 
         best_epoch = 0
-        validation_count = 0
+        round_num = 0
 
         for round_num in range(1, epochs + 1):
             train_metrics = server.train_round()
@@ -205,12 +190,11 @@ class FLTrainer(BaseTrainer):
                 val_loss = val_metrics['loss']
                 val_acc = val_metrics['accuracy']
 
-                self._update_history(
-                    round_num, train_loss, train_acc,
-                    val_loss, val_acc
-                )
-
-                validation_count += 1
+                self.history['epoch'].append(round_num)
+                self.history['train_loss'].append(train_loss)
+                self.history['train_acc'].append(train_acc)
+                self.history['val_loss'].append(val_loss)
+                self.history['val_acc'].append(val_acc)
 
                 print(
                     f"Round {round_num:3d}: "
@@ -224,11 +208,14 @@ class FLTrainer(BaseTrainer):
                     self.epochs_no_improve = 0
                     best_epoch = round_num
 
-                    if output_dir:
-                        Path(output_dir).mkdir(parents=True, exist_ok=True)
-                        self.save_checkpoint(
-                            f"{output_dir}/best_model.pth"
-                        )
+                    # Store in memory ALWAYS
+                    self.best_model_state = {
+                        k: v.detach().cpu().clone()
+                        for k, v in self.model.state_dict().items()
+                    }
+
+                    if output_path:
+                        self.save_checkpoint(output_path / 'best_model.pth')
                         logger.info(
                             f"Saved best model at round {round_num} "
                             f"(val_acc={val_acc:.4f})"
@@ -237,45 +224,29 @@ class FLTrainer(BaseTrainer):
                     self.epochs_no_improve += 1
                     if self.epochs_no_improve >= patience:
                         print(
-                            f"\nEarly stopping triggered at round {round_num} "
-                            f"(no improvement for {patience} validation rounds)",
+                            f"\nEarly stopping at round {round_num} "
+                            f"(patience={patience})",
                             flush=True
                         )
                         break
-            else:
-                self._update_history(round_num, train_loss, train_acc)
-
-                if round_num % max(1, validation_frequency // 2) == 0:
-                    print(
-                        f"Round {round_num:3d}: "
-                        f"loss={train_loss:.4f} acc={train_acc:.4f}",
-                        flush=True
-                    )
-
-                if round_num % 10 == 0 and self.device.type == 'cuda':
-                    self.cleanup_memory()
 
         elapsed = time.time() - start_time
 
-        print(f"\n{'='*70}")
-        if round_num == epochs:
-            print(f"Training completed: {round_num} rounds "
-                  f"in {elapsed:.1f}s")
-        else:
-            print(f"Training stopped early: {round_num} rounds "
-                  f"in {elapsed:.1f}s")
-        print(f"  Best validation accuracy: {self.best_val_acc:.4f} "
-              f"(round {best_epoch})")
-        print(f"  Validation checks: {validation_count}")
-        print(f"{'='*70}\n", flush=True)
-
-        if output_dir:
-            best_path = Path(output_dir) / 'best_model.pth'
-            if best_path.exists():
-                self.load_checkpoint((best_path))
-                logger.info(f"Loaded best model from {best_path}")
+        # Restore best model from memory or disk
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
+            logger.info("Loaded best model from memory")
+        elif output_path and (output_path / 'best_model.pth').exists():
+            self.load_checkpoint(output_path / 'best_model.pth')
+            logger.info("Loaded best model from disk")
 
         self.cleanup_memory()
+
+        print(f"\n{'='*70}")
+        print(f"Training completed: {round_num} rounds in {elapsed:.1f}s")
+        print(f"  Best validation accuracy: {self.best_val_acc:.4f} "
+              f"(round {best_epoch})")
+        print(f"{'='*70}\n", flush=True)
 
         return {
             'total_epochs': round_num,
@@ -288,9 +259,12 @@ class FLTrainer(BaseTrainer):
             'local_epochs': local_epochs,
             'final_train_loss': train_loss,
             'final_train_acc': train_acc,
-            'final_val_loss': (self.history['val_loss'][-1]
-                              if self.history['val_loss'] else 0.0),
-            'final_val_acc': (self.history['val_acc'][-1]
-                             if self.history['val_acc'] else 0.0),
-            'validation_checks': validation_count
+            'final_val_loss': (
+                self.history['val_loss'][-1]
+                if self.history['val_loss'] else 0.0
+            ),
+            'final_val_acc': (
+                self.history['val_acc'][-1]
+                if self.history['val_acc'] else 0.0
+            )
         }

@@ -268,7 +268,7 @@ class ExperimentRunner:
         return self.data_cache.load_data(dataset, self.data_dir)
 
     def run_experiment(self, exp_name: str, exp_config: Dict,
-                      device: str) -> Dict:
+                      device: str, save_model: bool = True) -> Dict:
         """Execute single experiment."""
         dataset = exp_config['dataset']
         method = exp_config['method']
@@ -288,9 +288,20 @@ class ExperimentRunner:
                 dataset, method, exp_config.get('hyperparameters')
             )
 
-            X_train, X_val, X_test, y_train, y_val, y_test = (
-                self._load_data(dataset)[:6]
-            )
+            # Load data and metadata
+            data_tuple = self._load_data(dataset)
+            X_train, X_val, X_test, y_train, y_val, y_test = data_tuple[:6]
+            
+            # Extract metadata (info) if available (index 7 for both datasets)
+            if len(data_tuple) > 7:
+                metadata = data_tuple[7]
+                # Add class weights to config if available and requested
+                if metadata and 'class_weights' in metadata:
+                    use_class_weights = config.get('dataset', {}).get('use_class_weights', False)
+                    self.logger.info(f"Class weights: {config['dataset'].get('class_weights')}")
+                    if use_class_weights:
+                        config['dataset']['class_weights'] = metadata['class_weights']
+                        self.logger.info(f"[CONFIG] Loaded class weights from metadata")
 
             # Diagnostics: ensure test labels are consistent across runs
             try:
@@ -310,9 +321,15 @@ class ExperimentRunner:
             n_params = sum(p.numel() for p in model.parameters())
             print(f"Model: {n_params:,} params")
 
-            output_dir = (self.results_dir / method / dataset /
-                         f'seed_{seed}')
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # New structure: results/experiments/method/dataset/
+            results_dir = self.results_dir / 'experiments' / method / dataset
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Output dir for models (only if save_model is True)
+            output_dir = None
+            if save_model:
+                output_dir = results_dir / 'models' / exp_name
+                output_dir.mkdir(parents=True, exist_ok=True)
 
             batch_size = config['training'].get('batch_size', 64)
             epochs = config['training'].get('epochs', 40)
@@ -327,7 +344,7 @@ class ExperimentRunner:
                 trainer = BaselineTrainer(model, config, device=device)
                 training_results = trainer.fit(
                     train_loader, val_loader, epochs=epochs,
-                    patience=patience, output_dir=str(output_dir)
+                    patience=patience, output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -339,7 +356,7 @@ class ExperimentRunner:
                 trainer = DPTrainer(model, config, device=device)
                 training_results = trainer.fit(
                     train_loader, val_loader, epochs=epochs,
-                    patience=patience, output_dir=str(output_dir)
+                    patience=patience, output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -360,7 +377,29 @@ class ExperimentRunner:
                     epochs=config['federated_learning'].get(
                         'global_rounds', 40
                     ),
-                    patience=patience, output_dir=str(output_dir)
+                    patience=patience, output_dir=str(output_dir) if output_dir else None
+                )
+                test_metrics = trainer.evaluate_full(test_loader)
+
+            elif method == 'dp_fl':
+                from src.training.trainers.dp_fl import FLDPTrainer
+                n_clients = config['federated_learning'].get(
+                    'n_clients', 5
+                )
+                train_loaders, val_loaders, test_loader = (
+                    create_fl_dataloaders(
+                        X_train, y_train, X_val, y_val, X_test, y_test,
+                        n_clients, batch_size, device
+                    )
+                )
+                client_ids = [f"client_{i:02d}" for i in range(n_clients)]
+                trainer = FLDPTrainer(model, config, device=device)
+                training_results = trainer.fit(
+                    train_loaders, val_loaders, client_ids=client_ids,
+                    epochs=config['federated_learning'].get(
+                        'global_rounds', 40
+                    ),
+                    patience=patience, output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -384,23 +423,35 @@ class ExperimentRunner:
                         'training_time_seconds', 0
                     ),
                 },
+                'privacy_metrics': training_results.get('differential_privacy', {}),
                 'test_metrics': {
                     'accuracy': test_metrics.get('accuracy', 0),
                     'precision': test_metrics.get('precision', 0),
                     'recall': test_metrics.get('recall', 0),
                     'f1_score': test_metrics.get('f1_score', 0),
+                    'precision_per_class': test_metrics.get('precision_per_class', []),
+                    'recall_per_class': test_metrics.get('recall_per_class', []),
+                    'f1_per_class': test_metrics.get('f1_per_class', []),
+                    'confusion_matrix': test_metrics.get('confusion_matrix', []),
+                    'class_names': test_metrics.get('class_names', []),
                 },
                 'timing': {
                     'total_time_seconds': elapsed,
-                }
+                },
+                'model_path': str(output_dir / 'best_model.pth') if output_dir else None
             }
 
-            with open(output_dir / 'results.json', 'w') as f:
+            # Save results as exp_name.json in results/experiments/method/dataset/
+            results_file = results_dir / f'{exp_name}.json'
+            with open(results_file, 'w') as f:
                 json.dump(results_data, f, indent=2)
 
             print(f"✓ {test_metrics.get('accuracy', 0):.4f} acc "
                   f"| {test_metrics.get('f1_score', 0):.4f} f1 "
                   f"| {elapsed:.1f}s")
+            print(f"  Results saved: {results_file}")
+            if output_dir:
+                print(f"  Model saved: {output_dir / 'best_model.pth'}")
 
             result = {
                 'name': exp_name,
@@ -431,7 +482,7 @@ class ExperimentRunner:
         self.results.append(result)
         return result
 
-    def run_all(self, experiments: Dict, device: str):
+    def run_all(self, experiments: Dict, device: str, save_model: bool = True):
         """Run all experiments."""
         total = len(experiments)
         print(f"\n{'='*60}")
@@ -440,7 +491,7 @@ class ExperimentRunner:
 
         for idx, (exp_name, exp_config) in enumerate(experiments.items(), 1):
             print(f"\n[{idx}/{total}]", flush=True)
-            self.run_experiment(exp_name, exp_config, device)
+            self.run_experiment(exp_name, exp_config, device, save_model=save_model)
 
         return self.results
 
@@ -502,7 +553,7 @@ Examples:
     )
 
     parser.add_argument('--scenario', 
-                       choices=['baseline', 'dp', 'fl', 'all'],
+                       choices=['baseline', 'dp', 'fl', 'dp_fl', 'pilot', 'all'],
                        default='baseline', help='Scenario to run')
     parser.add_argument('--device', default='auto',
                        help='Device (cuda/cpu/auto)')
@@ -512,6 +563,8 @@ Examples:
                        help='Limit number of experiments')
     parser.add_argument('--auto', action='store_true', 
                        help='Skip confirmation')
+    parser.add_argument('--nomodel', action='store_true',
+                       help='Do not save model checkpoints (.pth files)')
     parser.add_argument('--output_file', 
                        default='experiments/results_log.json')
 
@@ -524,7 +577,7 @@ Examples:
         torch.cuda.empty_cache()
 
     runner = ExperimentRunner()
-    scenarios = ['baseline', 'dp', 'fl'] if args.scenario == 'all' else [
+    scenarios = ['baseline', 'dp', 'fl', 'dp_fl'] if args.scenario == 'all' else [
         args.scenario
     ]
 
@@ -572,7 +625,7 @@ Examples:
 
     start_time = time.time()
     try:
-        runner.run_all(all_experiments, device)
+        runner.run_all(all_experiments, device, save_model=not args.nomodel)
     finally:
         # Always clear cache at the end
         runner.data_cache.clear()

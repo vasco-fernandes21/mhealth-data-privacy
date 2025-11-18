@@ -182,7 +182,11 @@ class BaseTrainer(ABC):
             return
 
         try:
-            checkpoint = torch.load(path, map_location=self.device)
+            # weights_only=False needed for PyTorch 2.6+ compatibility
+            # Checkpoints contain numpy arrays in history/config
+            checkpoint = torch.load(
+                path, map_location=self.device, weights_only=False
+            )
             self.model.load_state_dict(checkpoint['model_state'])
 
             if self.optimizer and checkpoint.get('optimizer_state'):
