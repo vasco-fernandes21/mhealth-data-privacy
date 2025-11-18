@@ -3,10 +3,9 @@
 Unified MLP Model for Privacy Research
 
 Features:
-- Works with any input dimension (features-only)
-- Fast training (no temporal complexity)
-- Fair comparison across datasets
+- CONSISTENT architecture across datasets (scientific rigor)
 - DP-compatible (LayerNorm, no BatchNorm)
+- Fast training (features-only, no temporal complexity)
 """
 
 import torch
@@ -20,10 +19,17 @@ class UnifiedMLPModel(BaseModel):
     Unified MLP architecture for privacy-preserving research.
     
     Design principles:
+    - FIXED architecture [256, 128] for all datasets (scientific consistency)
     - Features-only input (no temporal)
     - LayerNorm for DP compatibility
-    - Flexible hidden dimensions
-    - Fast training for extensive experiments
+    - Dropout for regularization
+    
+    Architecture:
+        Input (D) → Linear(D, 256) → LayerNorm → ReLU → Dropout(0.3)
+                 → Linear(256, 128) → LayerNorm → ReLU → Dropout(0.3)
+                 → Linear(128, n_classes)
+    
+    where D = input_dim (140 for WESAD, 24 for Sleep-EDF)
     """
 
     def __init__(self, config: Dict[str, Any], device: str = 'cpu'):
@@ -32,12 +38,15 @@ class UnifiedMLPModel(BaseModel):
         dataset_cfg = config.get('dataset', {})
         model_cfg = config.get('model', {})
 
-        # Input: always features (1D)
         input_dim = dataset_cfg.get('input_dim')
         self.n_classes = dataset_cfg.get('n_classes', 2)
 
-        hidden_dims = model_cfg.get('hidden_dims', [128, 64])
+        # FIXED hidden dimensions for scientific consistency
+        # Override config if present to enforce uniformity
+        hidden_dims = [256, 128]  
         dropout = model_cfg.get('dropout', 0.3)
+        
+        print(f"Unified MLP: {input_dim}D → {hidden_dims} → {self.n_classes} classes")
 
         # Build MLP layers
         layers = []
@@ -55,6 +64,11 @@ class UnifiedMLPModel(BaseModel):
 
         self.mlp = nn.Sequential(*layers)
         self.to(self.device)
+        
+        # Count parameters
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        print(f"  Total params: {total_params:,} (trainable: {trainable_params:,})")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -68,10 +82,8 @@ class UnifiedMLPModel(BaseModel):
         Returns:
             (batch, n_classes)
         """
-        # Handle temporal input (convert to features)
         if x.dim() == 3:
-            # Average pool over temporal dimension
-            x = x.mean(dim=1)  # (batch, seq_len, features) → (batch, features)
+            x = x.mean(dim=1)  # Temporal → features
         
         if x.dim() != 2:
             raise ValueError(
@@ -85,8 +97,10 @@ class UnifiedMLPModel(BaseModel):
         info.update({
             'model_name': 'UnifiedMLPModel',
             'architecture': 'MLP (features-only)',
+            'hidden_dims': [256, 128],
             'type': 'privacy_research_baseline',
             'dp_compatible': True,
+            'normalization': 'LayerNorm',
             'temporal_support': 'average_pooling'
         })
         return info
@@ -96,21 +110,21 @@ if __name__ == "__main__":
     print("="*70)
     print("UNIFIED MLP MODEL - PRIVACY RESEARCH")
     print("="*70)
+    print("Fixed architecture [256, 128] for scientific consistency\n")
 
-    # Sleep-EDF config (features)
+    # Sleep-EDF config
     sleep_config = {
         'dataset': {
             'name': 'sleep-edf',
-            'input_dim': 24,  # 8 features * 3 channels
+            'input_dim': 24,
             'n_classes': 5,
         },
         'model': {
-            'hidden_dims': [128, 64],
             'dropout': 0.3
         }
     }
 
-    # WESAD config (features)
+    # WESAD config
     wesad_config = {
         'dataset': {
             'name': 'wesad',
@@ -118,12 +132,17 @@ if __name__ == "__main__":
             'n_classes': 2,
         },
         'model': {
-            'hidden_dims': [128, 64],
             'dropout': 0.3
         }
     }
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"\nDevice: {device}\n")
-
+    print(f"Device: {device}\n")
     
+    # Test both configurations
+    print("Creating models:")
+    sleep_model = UnifiedMLPModel(sleep_config, device)
+    print()
+    wesad_model = UnifiedMLPModel(wesad_config, device)
+    
+    print("\n" + "="*70)

@@ -553,7 +553,7 @@ Examples:
     )
 
     parser.add_argument('--scenario', 
-                       choices=['baseline', 'dp', 'fl', 'dp_fl', 'pilot', 'all'],
+                       choices=['baseline', 'dp', 'fl', 'dp_fl', 'all'],
                        default='baseline', help='Scenario to run')
     parser.add_argument('--device', default='auto',
                        help='Device (cuda/cpu/auto)')

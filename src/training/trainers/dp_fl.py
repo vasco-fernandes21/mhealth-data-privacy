@@ -170,14 +170,42 @@ class FLDPClient(FLClient):
         try:
             cfg = self.config['training']
             lr = float(cfg.get('learning_rate', 1e-3))
-            momentum = float(cfg.get('momentum', 0.7))
+            weight_decay = float(cfg.get('weight_decay', 0.0))
+            opt_name = cfg.get('optimizer', 'sgd').lower()
 
-            # Create plain SGD optimizer (will be wrapped by PrivacyEngine)
-            optimizer = torch.optim.SGD(
-                self.model.parameters(),
-                lr=lr,
-                momentum=momentum
-            )
+            # Create optimizer based on config (like DPTrainer)
+            if opt_name == 'adamw':
+                optimizer = torch.optim.AdamW(
+                    self.model.parameters(),
+                    lr=lr,
+                    weight_decay=weight_decay
+                )
+                logger.info(
+                    "Client %s: Using AdamW (lr=%.4f, wd=%.4f)",
+                    self.client_id, lr, weight_decay
+                )
+            elif opt_name == 'adam':
+                optimizer = torch.optim.Adam(
+                    self.model.parameters(),
+                    lr=lr,
+                    weight_decay=weight_decay
+                )
+                logger.info(
+                    "Client %s: Using Adam (lr=%.4f, wd=%.4f)",
+                    self.client_id, lr, weight_decay
+                )
+            else:
+                momentum = float(cfg.get('momentum', 0.7))
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=lr,
+                    momentum=momentum,
+                    weight_decay=weight_decay
+                )
+                logger.info(
+                    "Client %s: Using SGD (lr=%.4f, momentum=%.2f, wd=%.4f)",
+                    self.client_id, lr, momentum, weight_decay
+                )
 
             # Attach PrivacyEngine
             privacy_engine = PrivacyEngine()
@@ -206,7 +234,7 @@ class FLDPClient(FLClient):
                 str(e)
             )
             raise
-
+            
     def train_local(self) -> Dict[str, float]:
         """
         Train model locally for local_epochs with optional DP.
