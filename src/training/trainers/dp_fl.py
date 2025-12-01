@@ -376,8 +376,8 @@ class FLDPTrainer(BaseTrainer):
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
         """Full evaluation with metrics."""
         self.model.eval()
-        y_true = []
-        y_pred = []
+        y_true_list = []
+        y_pred_list = []
 
         with torch.no_grad():
             for batch_x, batch_y in test_loader:
@@ -387,11 +387,11 @@ class FLDPTrainer(BaseTrainer):
                 outputs = self.model(batch_x)
                 _, predicted = torch.max(outputs, 1)
 
-                y_true.extend(batch_y.cpu().numpy())
-                y_pred.extend(predicted.cpu().numpy())
+                y_true_list.append(batch_y.cpu())
+                y_pred_list.append(predicted.cpu())
 
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
+        y_true = torch.cat(y_true_list).numpy()
+        y_pred = torch.cat(y_pred_list).numpy()
         unique_labels = np.unique(y_true)
 
         precision_per_class, recall_per_class, f1_per_class, _ = (
@@ -466,18 +466,7 @@ class FLDPTrainer(BaseTrainer):
 
         # Create DP-enabled clients
         logger.info(f"Creating {len(client_ids)} FL-DP clients...")
-        # Debug: Check if class weights are in config
-        dataset_cfg = self.config.get('dataset', {})
-        logger.warning(
-            "[DEBUG] Config check - use_class_weights: %s, class_weights in config: %s",
-            dataset_cfg.get('use_class_weights', False),
-            'class_weights' in dataset_cfg
-        )
-        if 'class_weights' in dataset_cfg:
-            logger.warning(
-                "[DEBUG] Config class_weights: %s",
-                dataset_cfg['class_weights']
-            )
+        
         self.clients = [
             FLDPClient(
                 client_id=cid,

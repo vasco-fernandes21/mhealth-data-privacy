@@ -12,7 +12,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.preprocessing.sleep_edf import preprocess_sleep_edf
+from src.preprocessing.sleep_edf import (
+    preprocess_sleep_edf,
+    CLASS_WEIGHT_TEMPERATURE,
+)
 from src.preprocessing.wesad import preprocess_wesad
 from src.utils.logging_utils import setup_logging, get_logger
 
@@ -89,6 +92,7 @@ def preprocess_sleep_edf_wrapper(
         print(f"   Split: {(1-args.test_size-args.val_size)*100:.0f}% train / "
               f"{args.val_size*100:.0f}% val / {args.test_size*100:.0f}% test")
         print(f"   Workers: {args.n_workers}")
+        print(f"   Class-weight temperature: {args.sleep_class_weight_temperature}")
         print_memory("Start")
 
         print(f"\nProcessing...")
@@ -101,7 +105,8 @@ def preprocess_sleep_edf_wrapper(
             val_size=args.val_size,
             random_state=args.random_state,
             n_workers=args.n_workers,
-            force_reprocess=args.force_reprocess
+            force_reprocess=args.force_reprocess,
+            class_weight_temperature=args.sleep_class_weight_temperature
         )
 
         elapsed = time.time() - start
@@ -292,6 +297,12 @@ EXAMPLES:
         '--force_reprocess',
         action='store_true',
         help='Force reprocessing'
+    )
+    parser.add_argument(
+        '--sleep_class_weight_temperature',
+        type=float,
+        default=CLASS_WEIGHT_TEMPERATURE,
+        help='Exponent applied to Sleep-EDF class weights (1.0 keeps raw)'
     )
 
     parser.add_argument(

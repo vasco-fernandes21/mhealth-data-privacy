@@ -1,108 +1,57 @@
 #!/usr/bin/env python3
-"""
-Federated Learning Server.
-
-Manages global model and coordinates client training.
-"""
+"""Federated Learning server implementation."""
 
 import torch
 import torch.nn as nn
 from typing import List, Dict, Any
-import copy
 
 from src.privacy.fl_client import FLClient
 from src.privacy.fl_aggregators import create_aggregator
 
 
-class FLServer: 
-    """Federated Learning Server - coordinates FL training."""
+class FLServer:
     
     def __init__(self,
                  model: nn.Module,
                  clients: List[FLClient],
                  config: Dict[str, Any],
                  device: str = 'cpu'):
-        """
-        Initialize FL server.
-        
-        Args:
-            model: Global model
-            clients: List of FL clients
-            config: Configuration dictionary
-            device: Device to use (cpu/cuda)
-        """
         self.model = model.to(device)
         self.clients = clients
         self.config = config
         self.device = torch.device(device)
         
-        # FL config
         fl_cfg = config.get('federated_learning', {})
         self.aggregation_method = fl_cfg.get('aggregation_method', 'fedavg')
-        
-        # Aggregator
         self.aggregator = create_aggregator(self.aggregation_method)
         
-        # Loss function
-        label_smoothing = float(
-            config['training'].get('label_smoothing', 0.0)
-        )
-        self.criterion = nn.CrossEntropyLoss(
-            label_smoothing=label_smoothing
-        )
+        label_smoothing = float(config['training'].get('label_smoothing', 0.0))
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
     def broadcast_model(self) -> None:
-        """Send global model weights to all clients."""
         global_weights = {
             name: param.data.clone()
             for name, param in self.model.named_parameters()
         }
-        
         for client in self.clients:
             client.set_weights(global_weights)
     
-    def aggregate_updates(
-        self, initial_weights: Dict[str, torch.Tensor]
-    ) -> None:
-        """
-        Aggregate client updates and update global model.
-        
-        Args:
-            initial_weights: Global weights before local training
-        """
-        # Collect updates from all clients
+    def aggregate_updates(self, initial_weights: Dict[str, torch.Tensor]) -> None:
         client_updates = []
         client_weights = []
         
         for client in self.clients:
             updates = client.get_weight_updates(initial_weights)
             client_updates.append(updates)
-            client_weights.append(1.0)  # Equal weight for all clients
+            client_weights.append(1.0)
         
-        # Aggregate
-        aggregated_updates = self.aggregator.aggregate(
-            client_updates, client_weights
-        )
+        aggregated_updates = self.aggregator.aggregate(client_updates, client_weights)
         
-        # Apply to global model: w_new = w_old + delta_w
         for name, param in self.model.named_parameters():
             if name in aggregated_updates:
-                param.data = (
-                    initial_weights[name] + aggregated_updates[name]
-                )
+                param.data = initial_weights[name] + aggregated_updates[name]
     
-    def evaluate_on_clients(
-        self, val_loaders: List
-    ) -> Dict[str, float]:
-        """
-        Evaluate global model on all clients' validation data.
-        
-        Args:
-            val_loaders: List of validation loaders (one per client)
-        
-        Returns:
-            Average metrics across clients
-        """
+    def evaluate_on_clients(self, val_loaders: List) -> Dict[str, float]:
         accuracies = []
         losses = []
         
@@ -132,26 +81,16 @@ class FLServer:
                 losses.append(loss)
         
         return {
-            'accuracy': (
-                sum(accuracies) / len(accuracies) if accuracies else 0.0
-            ),
+            'accuracy': sum(accuracies) / len(accuracies) if accuracies else 0.0,
             'loss': sum(losses) / len(losses) if losses else 0.0,
         }
     
     def train_round(self) -> Dict[str, float]:
-        """
-        Execute one federated learning round.
-        
-        Returns:
-            Metrics for this round
-        """
-        # Save initial weights
         initial_weights = {
             name: param.data.clone()
             for name, param in self.model.named_parameters()
         }
         
-        # Broadcast and train locally
         self.broadcast_model()
         
         client_metrics = []
@@ -159,16 +98,10 @@ class FLServer:
             metrics = client.train_local()
             client_metrics.append(metrics)
         
-        # Aggregate updates
         self.aggregate_updates(initial_weights)
         
-        # Average metrics
-        avg_loss = (
-            sum(m['loss'] for m in client_metrics) / len(client_metrics)
-        )
-        avg_acc = (
-            sum(m['accuracy'] for m in client_metrics) / len(client_metrics)
-        )
+        avg_loss = sum(m['loss'] for m in client_metrics) / len(client_metrics)
+        avg_acc = sum(m['accuracy'] for m in client_metrics) / len(client_metrics)
         
         return {
             'loss': avg_loss,

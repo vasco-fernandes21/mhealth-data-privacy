@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simplified BaseTrainer for PyTorch models.
-Handles training, validation, checkpointing, and memory cleanup.
+Handles training, validation, checkpointing and memory cleanup.
 Compatible with CUDA and CPU.
 """
 

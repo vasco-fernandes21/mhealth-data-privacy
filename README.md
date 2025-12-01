@@ -1,131 +1,80 @@
-# Privacy-Preserving mHealth Data Analysis
+# Privacy-Preserving Physiological Signal Classification
 
-This repository studies the privacy–utility trade-off in mobile health (mHealth) using Differential Privacy (DP) and Federated Learning (FL) on two real-world datasets: Sleep-EDF and WESAD. The work is developed in the context of the SIDM course (Information Systems for Mobile Devices).
+This repository contains the implementation and experimental code for the paper **"Privacy-Preserving Physiological Signal Classification in Mobile Health: A Comparative Study of Federated Learning and Differential Privacy"**.
 
-## Overview
+It provides a comprehensive evaluation of privacy-preserving machine learning techniques applied to wearable sensor data, specifically focusing on the trade-offs between utility and privacy in mobile health (mHealth) scenarios.
 
-We implement and compare the following training settings:
+## Scientific Goals
 
-1. Baseline: standard supervised training (no privacy)
-2. Differential Privacy (DP): per-sample gradient clipping and noise
-3. Federated Learning (FL): simulated multi-client training
-4. DP + FL: differentially private federated training
+The primary objective of this project is to empirically evaluate how different privacy mechanisms affect model performance on real-world physiological data. We compare:
+
+1.  **Federated Learning (FL)**: Decentralized training where raw data never leaves the client device.
+2.  **Differential Privacy (DP)**: Formal privacy guarantees via gradient clipping and noise addition (DP-SGD).
+3.  **FL + DP**: A combined approach offering both decentralization and formal privacy guarantees.
+
+### Key Discovery: Class Weights vs. Differential Privacy
+
+A major contribution of this work is the empirical demonstration that **standard class weighting techniques are rendered ineffective by gradient clipping in DP-SGD**.
+
+-   In standard training, up-weighting minority classes amplifies their gradients to correct bias.
+-   In DP training, per-sample gradient clipping (essential for privacy bounds) caps these amplified gradients, effectively neutralizing the weighting strategy.
+-   **Result**: Random seed initialization dominates minority class performance by a ratio exceeding 100:1 compared to class weights.
+
+## Datasets
+
+We evaluate these methods on two distinct physiological signal datasets:
+
+| Dataset | Task | Subjects | Signal Type | Challenge |
+| :--- | :--- | :--- | :--- | :--- |
+| **WESAD** | Stress Detection (Binary) | 15 | EDA, ECG, EMG | High Class Imbalance |
+| **Sleep-EDF** | Sleep Staging (5-class) | ~80 | EEG, EOG | Multi-class Classification |
+
+*Note: The system uses a unified MLP architecture on hand-crafted features (statistical and spectral) to ensure consistent comparisons across all experiments.*
 
 ## Project Structure
+
+The codebase is organized to separate scientific logic from infrastructure:
 
 ```
 mhealth-data-privacy/
 ├── src/
-│   ├── configs/                 # YAML configs for datasets and methods
-│   ├── preprocessing/           # Dataset preprocessing pipelines
-│   ├── models/                  # Model architectures (PyTorch)
-│   ├── training/                # Trainers, schedulers, utils
-│   ├── privacy/                 # DP and FL utilities
-│   └── evaluation/              # Metrics and reporting
+│   ├── configs/          # Experiment configurations (YAML)
+│   ├── models/           # Unified MLP architecture (PyTorch)
+│   ├── privacy/          # DP (Opacus) and FL implementation
+│   ├── training/         # Specialized trainers (Baseline, DP, FL, DP+FL)
+│   └── preprocessing/    # Feature extraction pipelines
 ├── experiments/
-│   ├── scenarios/               # Experiment scenario definitions
-│   └── run_experiments.py       # Unified experiment runner
-├── data/                        # Raw and processed data (not versioned)
-├── results/                     # Training outputs and logs (not versioned)
-├── requirements.txt
-├── setup.py
-└── README.md
+│   ├── scenarios/        # Definition of experimental scenarios
+│   └── run_experiments.py # Main entry point for reproducibility
+├── paper/                # LaTeX source and analysis scripts
+└── results/              # Output logs and metrics
 ```
 
-## Installation
+## Quick Start
 
-```bash
-git clone https://github.com/vasco-fernandes21/mhealth-data-privacy.git
-cd mhealth-data-privacy
+To reproduce the experiments:
 
-python -m venv venv
-source venv/bin/activate  # Mac/Linux
-# venv\Scripts\activate   # Windows
+1.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-pip install -U pip
-pip install -e .
-pip install -r requirements.txt
-```
+2.  **Preprocess Data**:
+    ```bash
+    # Preprocess WESAD (example)
+    python src/preprocessing/wesad.py --data_dir data/raw/wesad --output_dir data/processed/wesad
+    ```
 
-## Data Preprocessing
+3.  **Run Experiments**:
+    Experiments are driven by scenario files.
+    ```bash
+    # Run baseline comparison
+    python experiments/run_experiments.py --scenario baseline --auto
 
-Preprocessed data is stored under `data/processed/`.
-
-- WESAD (default: 32 Hz, window 1024 samples ≈ 32 s, 50% overlap):
-
-```bash
-python src/preprocessing/wesad.py \
-  --data_dir data/raw/wesad \
-  --output_dir data/processed/wesad \
-  --target_freq 32 \
-  --window_size 1024
-```
-
-- Sleep-EDF (already prepared as windows of length 10 with 24 features):
-
-```bash
-python src/preprocessing/sleep_edf.py \
-  --data_dir data/raw/sleep-edf \
-  --output_dir data/processed/sleep-edf
-```
-
-## Configuration
-
-YAML files in `src/configs` define dataset- and method-specific parameters. The current baseline configurations are as follows.
-
-- WESAD (`src/configs/datasets/wesad.yaml`):
-  - Model: LSTM, bidirectional, input projection 128, `lstm_units=56`, `dropout=0.48`, `dense_layers=[112, 56]`.
-  - Training: `batch_size=12`, `learning_rate=0.0008`, `optimizer=AdamW`, `label_smoothing=0.13`, warmup cosine scheduler (`warmup_epochs=3`), early stopping patience 18, gradient clipping.
-  - Sequence length in config is for model reference; the actual sequence length is determined by preprocessing (currently 1024).
-
-- Sleep-EDF (`src/configs/datasets/sleep-edf.yaml`):
-  - 5-class classification with 24 features and sequence length 10 (already windowed in preprocessing).
-  - Baseline uses the unified LSTM model with appropriate input dimensions set at runtime.
-
-Method configs live in `src/configs/methods/` and can override training hyperparameters.
-
-## Running Experiments
-
-Experiments are driven by scenarios in `experiments/scenarios/*.yaml`. The runner loads the scenario, merges dataset and method configs, applies optional overrides, and executes training with consistent logging.
-
-Examples:
-
-```bash
-# Baseline on WESAD
-python experiments/run_experiments.py --scenario baseline --datasets wesad --auto
-
-# Baseline on Sleep-EDF
-python experiments/run_experiments.py --scenario baseline --datasets sleep-edf --auto
-
-# Run all scenarios (baseline, dp, fl, dp_fl)
-python experiments/run_experiments.py --scenario all --auto
-```
-
-Key flags:
-
-- `--tags tier1` filter by tags defined in the scenario file
-- `--methods baseline,dp` filter by method(s)
-- `--epsilon 5.0` filter DP experiments by target epsilon
-- `--clients 5` filter FL experiments by client count
-- `--n_experiments N` limit the number of runs
-
-## Results and Logging
-
-- Per-run results are saved under `results/{method}/{dataset}/seed_{seed}/results.json`.
-- A summary of all runs in a session is saved to `experiments/results_log.json`.
-- The baseline trainer reports accuracy, precision, recall, F1 (weighted), per-class metrics, and the confusion matrix.
-
-## Implementation Notes
-
-- Framework: PyTorch
-- Best-model evaluation: the runner enables checkpointing per run to restore best validation weights before test evaluation.
-
-## Acknowledgements
-
-Developed as part of the SIDM course (Information Systems for Mobile Devices). This repository focuses on rigorous, reproducible comparisons of privacy-preserving learning techniques in mHealth.
-
+    # Run full suite (Baseline, FL, DP, FL+DP)
+    python experiments/run_experiments.py --scenario all --auto
+    ```
 
 ## License
 
-This project is for academic research purposes.
-
+This project is intended for academic research purposes.

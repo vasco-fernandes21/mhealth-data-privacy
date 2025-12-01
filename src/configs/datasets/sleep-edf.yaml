@@ -4,7 +4,7 @@ dataset:
   input_dim: 24
   n_classes: 5
   class_names: ["W", "N1", "N2", "N3", "R"]
-  use_class_weights: true  # Dataset is large enough, less critical
+  use_class_weights: true 
 
 model:
   hidden_dims: [256, 128]  

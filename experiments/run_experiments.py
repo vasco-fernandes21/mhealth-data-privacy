@@ -40,9 +40,8 @@ class DataCache:
     
     @classmethod
     def load_data(cls, dataset: str, data_dir: Path) -> Tuple:
-        """Load dataset with caching."""
         if dataset in cls._cache:
-            print(f"✓ Using cached {dataset}", flush=True)
+            print(f"Using cached {dataset}", flush=True)
             return cls._cache[dataset]
         
         print(f"Loading {dataset}...", flush=True)
@@ -56,7 +55,6 @@ class DataCache:
             else:
                 raise ValueError(f"Unknown dataset: {dataset}")
             
-            # Cacheia para futuras chamadas
             cls._cache[dataset] = data
             return data
         
@@ -65,9 +63,8 @@ class DataCache:
     
     @classmethod
     def clear(cls) -> None:
-        """Clear cache."""
         cls._cache.clear()
-        print("✓ Cache cleared", flush=True)
+        print("Cache cleared", flush=True)
     
     @classmethod
     def get_stats(cls) -> Dict[str, str]:
@@ -126,6 +123,22 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         make_loader(X_val, y_val, False),
         make_loader(X_test, y_test, False)
     )
+
+
+def compute_class_weights(y: np.ndarray) -> Dict:
+    """Compute balanced class weights."""
+    class_counts = np.bincount(y.astype(int))
+    n_classes = len(class_counts)
+    n_samples = len(y)
+
+    weights = {}
+    for c in range(n_classes):
+        if class_counts[c] > 0:
+            weights[c] = n_samples / (n_classes * class_counts[c])
+        else:
+            weights[c] = 1.0
+
+    return weights
 
 
 def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
@@ -413,15 +426,28 @@ class ExperimentRunner:
             X_train, X_val, X_test, y_train, y_val, y_test = data_tuple[:6]
             
             # Extract metadata (info) if available (index 7 for both datasets)
-            if len(data_tuple) > 7:
-                metadata = data_tuple[7]
-                # Add class weights to config if available and requested
-                if metadata and 'class_weights' in metadata:
-                    use_class_weights = config.get('dataset', {}).get('use_class_weights', False)
-                    self.logger.info(f"Class weights: {config['dataset'].get('class_weights')}")
-                    if use_class_weights:
+            dataset_cfg = config.get('dataset', {})
+            use_class_weights = dataset_cfg.get('use_class_weights', False)
+            has_manual_weights = (
+                'class_weights' in dataset_cfg and dataset_cfg['class_weights']
+            )
+            if use_class_weights and not has_manual_weights:
+                if len(data_tuple) > 7:
+                    metadata = data_tuple[7]
+                    # Load class weights from metadata (computed during preprocessing)
+                    if metadata and 'class_weights' in metadata:
                         config['dataset']['class_weights'] = metadata['class_weights']
-                        self.logger.info(f"[CONFIG] Loaded class weights from metadata")
+                        self.logger.info(f"[CONFIG] Loaded class weights from preprocessing metadata")
+                    else:
+                        # Fallback: calculate dynamically if not in metadata (legacy data)
+                        class_weights = compute_class_weights(y_train)
+                        config['dataset']['class_weights'] = class_weights
+                        self.logger.warning(f"[CONFIG] Class weights not in metadata, computed dynamically (consider re-running preprocessing)")
+                else:
+                    # Fallback: no metadata available, calculate from training data
+                    class_weights = compute_class_weights(y_train)
+                    config['dataset']['class_weights'] = class_weights
+                    self.logger.warning(f"[CONFIG] No metadata available, computed class weights dynamically (consider re-running preprocessing)")
 
             # Diagnostics: ensure test labels are consistent across runs
             try:
@@ -580,7 +606,7 @@ class ExperimentRunner:
             with open(results_file, 'w') as f:
                 json.dump(results_data, f, indent=2)
 
-            print(f"✓ {test_metrics.get('accuracy', 0):.4f} acc "
+            print(f"Done: {test_metrics.get('accuracy', 0):.4f} acc "
                   f"| {test_metrics.get('f1_score', 0):.4f} f1 "
                   f"| {elapsed:.1f}s")
             print(f"  Results saved: {results_file}")
@@ -600,7 +626,7 @@ class ExperimentRunner:
 
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"✗ Failed: {e}")
+            print(f"Failed: {e}")
             self.logger.error(f"{exp_name} failed: {e}", exc_info=True)
 
             result = {

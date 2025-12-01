@@ -7,7 +7,6 @@ dataset:
   input_dim: 140
   n_classes: 2
   class_names: ['non-stress', 'stress']
-  # Class weights computed: ~1.43 for stress (minority class)
   use_class_weights: true
 
 model:

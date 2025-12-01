@@ -152,15 +152,9 @@ class BaselineTrainer(BaseTrainer):
         self, test_loader: DataLoader
     ) -> Dict[str, Any]:
         """Full evaluation with all metrics."""
-        # Diagnostics: test set size (if available)
-        try:
-            total_expected = len(getattr(test_loader, 'dataset', []))
-            print(f"[EVAL] Test set size (expected): {total_expected}")
-        except Exception:
-            pass
         self.model.eval()
-        y_true = []
-        y_pred = []
+        y_true_list = []
+        y_pred_list = []
 
         with torch.no_grad():
             for batch_x, batch_y in test_loader:
@@ -170,34 +164,21 @@ class BaselineTrainer(BaseTrainer):
                 outputs = self.model(batch_x)
                 _, predicted = torch.max(outputs, 1)
 
-                y_true.extend(batch_y.detach().cpu().numpy())
-                y_pred.extend(predicted.detach().cpu().numpy())
+                y_true_list.append(batch_y.cpu())
+                y_pred_list.append(predicted.cpu())
 
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
+        # Concatenate once at the end (faster than extending list of numpys)
+        y_true = torch.cat(y_true_list).numpy()
+        y_pred = torch.cat(y_pred_list).numpy()
         unique_labels = np.unique(y_true)
 
-        # Diagnostics: distributions
-        try:
-            true_counts = np.bincount(y_true.astype(int))
-            pred_counts = np.bincount(y_pred.astype(int))
-            print(f"[EVAL] y_true dist: {true_counts.tolist()}")
-            print(f"[EVAL] y_pred dist: {pred_counts.tolist()}")
-        except Exception:
-            pass
-
-        (precision_per_class, recall_per_class, f1_per_class, _) = (
+        precision_per_class, recall_per_class, f1_per_class, _ = (
             precision_recall_fscore_support(
                 y_true, y_pred, labels=unique_labels, zero_division=0
             )
         )
 
         cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
-        # Diagnostics: confusion matrix
-        try:
-            print(f"[EVAL] Confusion matrix:\n{cm}")
-        except Exception:
-            pass
 
         return {
             'accuracy': float(accuracy_score(y_true, y_pred)),

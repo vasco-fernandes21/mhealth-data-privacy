@@ -306,13 +306,49 @@ def process_single_file(args: Tuple) -> Tuple[List, List, str]:
 
 
 # ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+CLASS_WEIGHT_TEMPERATURE = 1.0 
+
+
+def compute_class_weights(y: np.ndarray) -> Tuple[Dict, np.ndarray]:
+    """Compute balanced class weights."""
+    class_counts = np.bincount(y.astype(int))
+    n_classes = len(class_counts)
+    n_samples = len(y)
+
+    weights = {}
+    for c in range(n_classes):
+        if class_counts[c] > 0:
+            weights[c] = n_samples / (n_classes * class_counts[c])
+        else:
+            weights[c] = 1.0
+
+    return weights, class_counts
+
+
+def apply_class_weight_temperature(
+    weights: Dict[int, float], temperature: float
+) -> Dict[int, float]:
+    """Apply temperature scaling to class weights."""
+    if temperature == 1.0:
+        return dict(weights)
+    return {
+        class_idx: float(weight ** temperature)
+        for class_idx, weight in weights.items()
+    }
+
+
+# ============================================================================
 # MAIN PREPROCESSING FUNCTION (FEATURES-ONLY)
 # ============================================================================
 
 def preprocess_sleep_edf(data_dir: str, output_dir: str,
                         test_size: float = 0.15, val_size: float = 0.15,
                         random_state: int = 42, n_workers: int = None, 
-                        force_reprocess: bool = False) -> Dict:
+                        force_reprocess: bool = False,
+                        class_weight_temperature: float = CLASS_WEIGHT_TEMPERATURE) -> Dict:
     """
     Complete preprocessing pipeline - FEATURES ONLY (No windowing)
 
@@ -324,6 +360,7 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
         random_state: Random seed
         n_workers: Number of parallel workers
         force_reprocess: Force reprocessing
+        class_weight_temperature: Exponent to adjust class weights (1.0 = raw weights, no scaling)
 
     Returns:
         Dictionary with preprocessing info
@@ -463,6 +500,23 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
     X_val_scaled = scaler.transform(X_val)
     X_test_scaled = scaler.transform(X_test)
 
+    # Compute class weights (for balanced training)
+    class_names = ['W', 'N1', 'N2', 'N3', 'R']
+    weight_temperature = float(class_weight_temperature)
+    weights_raw, class_counts = compute_class_weights(y_train)
+    weights = apply_class_weight_temperature(weights_raw, weight_temperature)
+    
+    if weight_temperature == 1.0:
+        print(f"Class weights (balanced):")
+        for c, w in weights.items():
+            print(f"  {class_names[c]}: {w:.3f}")
+    else:
+        print(f"Class weights (raw → adjusted, temperature={weight_temperature}):")
+        for c, w in weights.items():
+            raw_w = weights_raw.get(c, w)
+            print(f"  {class_names[c]}: {raw_w:.3f} → {w:.3f}")
+    print()
+
     # SAVE FEATURES (No windowing!)
     np.save(os.path.join(output_dir, 'X_train.npy'), X_train_scaled)
     np.save(os.path.join(output_dir, 'X_val.npy'), X_val_scaled)
@@ -482,7 +536,14 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
         'n_samples': len(X),
         'n_features': X.shape[1],  # 24
         'n_classes': len(np.unique(y_encoded)),  # 5
-        'class_names': ['W', 'N1', 'N2', 'N3', 'R'],
+        'class_names': class_names,
+        'class_weights': weights,
+        'class_weights_raw': weights_raw,
+        'class_weight_temperature': weight_temperature,
+        'class_counts_train': {
+            class_names[int(c)]: int(cnt)
+            for c, cnt in enumerate(class_counts)
+        },
         'train_size': len(X_train),
         'val_size': len(X_val),
         'test_size': len(X_test),
@@ -506,7 +567,7 @@ def preprocess_sleep_edf(data_dir: str, output_dir: str,
 
     joblib.dump(preprocessing_info, os.path.join(output_dir, 'preprocessing_info.pkl'))
 
-    print(f"\n✅ Sleep-EDF preprocessing complete (FEATURES-ONLY)!")
+    print(f"\nSleep-EDF preprocessing complete")
     print(f"Train: {X_train_scaled.shape}, Val: {X_val_scaled.shape}, Test: {X_test_scaled.shape}")
     print(f"Total size: {preprocessing_info['total_size_mb']:.1f} MB")
     print(f"\nData saved to: {output_dir}")
@@ -636,6 +697,12 @@ Output:
         action='store_true',
         help='Force reprocessing even if data exists'
     )
+    parser.add_argument(
+        '--class_weight_temperature',
+        type=float,
+        default=CLASS_WEIGHT_TEMPERATURE,
+        help='Exponent applied to raw class weights (1.0 = raw weights, no scaling)'
+    )
     
     args = parser.parse_args()
     
@@ -654,6 +721,7 @@ Output:
     print(f"Test size: {args.test_size}")
     print(f"Validation size: {args.val_size}")
     print(f"Random state: {args.random_state}")
+    print(f"Class-weight temperature: {args.class_weight_temperature}")
     print(f"Force reprocess: {args.force_reprocess}\n")
     
     # Run preprocessing
@@ -664,10 +732,11 @@ Output:
         val_size=args.val_size,
         random_state=args.random_state,
         n_workers=args.n_workers,
-        force_reprocess=args.force_reprocess
+        force_reprocess=args.force_reprocess,
+        class_weight_temperature=args.class_weight_temperature
     )
     
-    print(f"\n✅ Sleep-EDF preprocessing completed!")
+    print(f"\nSleep-EDF preprocessing completed")
     if info:
         print(f"Preprocessing info:")
         for key, value in info.items():

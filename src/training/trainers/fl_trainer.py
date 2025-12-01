@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-Federated Learning Trainer.
-
-Implements federated learning with multiple clients and a central server.
-"""
+"""Federated Learning trainer implementation."""
 
 import torch
 import torch.nn as nn
@@ -26,37 +22,24 @@ logger = get_logger(__name__)
 
 
 class FLTrainer(BaseTrainer):
-    """Federated Learning trainer."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_model_state = None
 
     def setup_optimizer_and_loss(self) -> None:
-        """Setup loss (clients manage optimizers)."""
         cfg = self.config['training']
         label_smoothing = float(cfg.get('label_smoothing', 0.0))
-        self.criterion = nn.CrossEntropyLoss(
-            label_smoothing=label_smoothing
-        ).to(self.device)
-        logger.info("Loss function initialized")
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing).to(self.device)
 
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """
-        Train one epoch (not used in FL).
-
-        FL uses federated rounds instead of epochs.
-        """
-        raise NotImplementedError(
-            "FLTrainer uses federated rounds, not epochs. "
-            "Use fit() instead."
-        )
+        raise NotImplementedError("FLTrainer uses federated rounds")
 
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
         """Full evaluation with metrics."""
         self.model.eval()
-        y_true = []
-        y_pred = []
+        y_true_list = []
+        y_pred_list = []
 
         with torch.no_grad():
             for batch_x, batch_y in test_loader:
@@ -66,11 +49,11 @@ class FLTrainer(BaseTrainer):
                 outputs = self.model(batch_x)
                 _, predicted = torch.max(outputs, 1)
 
-                y_true.extend(batch_y.cpu().numpy())
-                y_pred.extend(predicted.cpu().numpy())
+                y_true_list.append(batch_y.cpu())
+                y_pred_list.append(predicted.cpu())
 
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
+        y_true = torch.cat(y_true_list).numpy()
+        y_pred = torch.cat(y_pred_list).numpy()
         unique_labels = np.unique(y_true)
 
         precision_per_class, recall_per_class, f1_per_class, _ = (
