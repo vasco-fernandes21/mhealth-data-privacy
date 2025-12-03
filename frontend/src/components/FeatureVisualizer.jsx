@@ -14,6 +14,9 @@ import './FeatureVisualizer.css';
 const FeatureVisualizer = ({ data, metadata }) => {
   const [selectedSample, setSelectedSample] = useState(0);
   const [selectedChannel, setSelectedChannel] = useState(0);
+  const [yAxisScale, setYAxisScale] = useState('auto');
+  const [customMin, setCustomMin] = useState('');
+  const [customMax, setCustomMax] = useState('');
 
   const channelNames = [
     'ECG',
@@ -50,10 +53,7 @@ const FeatureVisualizer = ({ data, metadata }) => {
 
     const sample = data.features[selectedSample];
     const channelStart = selectedChannel * 10;
-    const channelFeatures = sample.slice(
-      channelStart,
-      channelStart + 10
-    );
+    const channelFeatures = sample.slice(channelStart, channelStart + 10);
 
     return featureNames.map((name, idx) => ({
       name,
@@ -67,10 +67,7 @@ const FeatureVisualizer = ({ data, metadata }) => {
     const sample = data.features[selectedSample];
     return channelNames.map((name, idx) => {
       const channelStart = idx * 10;
-      const channelFeatures = sample.slice(
-        channelStart,
-        channelStart + 10
-      );
+      const channelFeatures = sample.slice(channelStart, channelStart + 10);
       return {
         name,
         mean: channelFeatures[0],
@@ -79,6 +76,17 @@ const FeatureVisualizer = ({ data, metadata }) => {
       };
     });
   }, [data, selectedSample]);
+
+  const getYAxisDomain = () => {
+    if (yAxisScale === 'custom') {
+      const min = parseFloat(customMin);
+      const max = parseFloat(customMax);
+      if (!isNaN(min) && !isNaN(max)) {
+        return [min, max];
+      }
+    }
+    return ['auto', 'auto'];
+  };
 
   if (!data) return null;
 
@@ -98,9 +106,8 @@ const FeatureVisualizer = ({ data, metadata }) => {
             {selectedSample + 1} / {data.features.length}
           </span>
           <span className="label-badge">
-            Label: {data.labels[selectedSample] === 0
-              ? 'Non-Stress'
-              : 'Stress'}
+            Label:{' '}
+            {data.labels[selectedSample] === 0 ? 'Non-Stress' : 'Stress'}
           </span>
         </div>
 
@@ -117,18 +124,45 @@ const FeatureVisualizer = ({ data, metadata }) => {
             ))}
           </select>
         </div>
+
+        <div className="control-group">
+          <label>Y-Axis Scale:</label>
+          <select
+            value={yAxisScale}
+            onChange={(e) => setYAxisScale(e.target.value)}
+          >
+            <option value="auto">Auto</option>
+            <option value="custom">Custom</option>
+          </select>
+          {yAxisScale === 'custom' && (
+            <div className="scale-inputs">
+              <input
+                type="number"
+                placeholder="Min"
+                value={customMin}
+                onChange={(e) => setCustomMin(e.target.value)}
+                style={{ width: '80px', marginLeft: '10px' }}
+              />
+              <input
+                type="number"
+                placeholder="Max"
+                value={customMax}
+                onChange={(e) => setCustomMax(e.target.value)}
+                style={{ width: '80px', marginLeft: '5px' }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="charts-container">
         <div className="chart-card">
-          <h3>
-            10 Features - {channelNames[selectedChannel]}
-          </h3>
+          <h3>10 Features - {channelNames[selectedChannel]}</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
-              <YAxis />
+              <YAxis domain={getYAxisDomain()} />
               <Tooltip />
               <Legend />
               <Line
@@ -146,8 +180,13 @@ const FeatureVisualizer = ({ data, metadata }) => {
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={allChannelData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
+              <XAxis
+                dataKey="name"
+                angle={-45}
+                textAnchor="end"
+                height={100}
+              />
+              <YAxis domain={getYAxisDomain()} />
               <Tooltip />
               <Legend />
               <Line type="monotone" dataKey="mean" stroke="#82ca9d" />
@@ -174,7 +213,9 @@ const FeatureVisualizer = ({ data, metadata }) => {
                       className="matrix-cell"
                       title={`${featureNames[featIdx]}: ${value.toFixed(4)}`}
                       style={{
-                        backgroundColor: `rgba(136, 132, 216, ${Math.abs(value) / 10})`,
+                        backgroundColor: `rgba(136, 132, 216, ${
+                          Math.abs(value) / 10
+                        })`,
                       }}
                     />
                   );
