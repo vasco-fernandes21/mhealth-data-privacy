@@ -68,76 +68,10 @@ def run_experiment(max_grad_norm, class_weight_stress, noise_multiplier, seed):
     
     return None
 
-def format_latex_table(results_by_C):
-    """Generate LaTeX table for paper (Table 14 replacement)."""
-    
-    latex = r"""
-% Replace current Table 14 with expanded version:
-
-\begin{table}[h]
-\centering
-\caption{Increasing $C$ (Max Grad Norm) Partially Restores Class Weight Functionality (Weight=2.0, $\sigma=0.6$, averaged over 3 seeds)}
-\label{tab:grad_norm_scaling}
-\footnotesize
-\begin{tabular}{lcccc}
-\toprule
-\textbf{$C$} & \textbf{Recall} & \textbf{Seed Std Dev} & \textbf{$\epsilon$} & \textbf{$\Delta$ vs C=1.0} \\
-\midrule
-"""
-    
-    C_values = sorted(results_by_C.keys())
-    baseline_recall = results_by_C[C_values[0]]['mean_recall'] if C_values else 0
-    
-    for C in C_values:
-        stats = results_by_C[C]
-        mean_recall = stats['mean_recall'] * 100
-        std_recall = stats['std_recall'] * 100
-        mean_epsilon = stats['mean_epsilon']
-        
-        delta_pct = ((stats['mean_recall'] - baseline_recall) / baseline_recall * 100) if baseline_recall > 0 else 0
-        
-        latex += f"{C:.1f} & {mean_recall:.1f}\\% & $\\pm${std_recall:.1f}\\% & {mean_epsilon:.1f} & "
-        
-        if C == C_values[0]:
-            latex += "--- \\\\\n"
-        else:
-            latex += f"+{delta_pct:.1f}\\% \\\\\n"
-    
-    # Calculate improvements
-    if len(C_values) >= 2:
-        first_std = results_by_C[C_values[0]]['std_recall'] * 100
-        last_std = results_by_C[C_values[-1]]['std_recall'] * 100
-        std_reduction = ((first_std - last_std) / first_std * 100) if first_std > 0 else 0
-        
-        latex += r"""\midrule
-\textbf{Improvement} & """ + f"+{delta_pct:.1f}\\%" + r""" & """ + f"-{std_reduction:.0f}\\%" + r""" & """ + \
-        f"{results_by_C[C_values[-1]]['mean_epsilon'] - results_by_C[C_values[0]]['mean_epsilon']:.1f}" + r""" & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Key observations:
-\begin{itemize}
-    \item Recall improves by """ + f"{delta_pct:.1f}\\%" + r""" (""" + \
-    f"{baseline_recall*100:.1f}\\% $\\rightarrow$ {results_by_C[C_values[-1]]['mean_recall']*100:.1f}\\%)" + r"""
-    \item \textbf{Seed variance decreases by """ + f"{std_reduction:.0f}\\%" + r"""} (""" + \
-    f"{first_std:.1f}\\% $\\rightarrow$ {last_std:.1f}\\%)" + r"""), 
-          confirming that higher $C$ allows weights to function
-    \item However, seed still dominates: """ + f"{last_std:.1f}\\%" + r""" seed std dev vs. <1\% 
-          weight std dev (still ~""" + f"{last_std:.0f}" + r""":1 ratio even at C=""" + f"{C_values[-1]:.1f})" + r"""
-\end{itemize}
-
-The decrease in seed variance is the smoking gun that proves our hypothesis: 
-as the clipping bound increases, gradient signals from class weights are 
-progressively preserved, reducing the dominance of random initialization.
-"""
-    
-    return latex
-
 if __name__ == '__main__':
-    # Test max_grad_norm scaling with MULTIPLE SEEDS (reviewer requirement)
-    max_grad_norms = [1.0, 2.0, 5.0]  # Core values for paper
-    seeds = [42, 123, 456]  # 3 seeds as requested by reviewer
+
+    max_grad_norms = [1.0, 2.0, 5.0]  
+    seeds = [42, 123, 456]  
     class_weight = 2.0
     noise = 0.6
     
@@ -215,11 +149,7 @@ if __name__ == '__main__':
     
     # Generate LaTeX
     print("\n" + "="*80)
-    print("LATEX OUTPUT FOR PAPER")
     print("="*80)
-    
-    latex_text = format_latex_table(results_by_C)
-    print(latex_text)
     
     # Save results
     output_data = {
@@ -233,13 +163,6 @@ if __name__ == '__main__':
         json.dump(output_data, f, indent=2, default=str)
     
     print(f"\n\nResults saved to: {output_file}")
-    
-    # Save LaTeX
-    latex_file = Path('paper/grad_norm_scaling_latex.tex')
-    with open(latex_file, 'w') as f:
-        f.write(latex_text)
-    
-    print(f"LaTeX snippet saved to: {latex_file}")
     
     # Final verdict
     print("\n" + "="*80)
@@ -260,6 +183,6 @@ if __name__ == '__main__':
             print("\nHYPOTHESIS CONFIRMED")
             print("   Increasing C reduces seed dominance and improves minority recall.")
         else:
-            print("\n⚠️  HYPOTHESIS PARTIALLY CONFIRMED")
+            print("\n HYPOTHESIS PARTIALLY CONFIRMED")
             print("   Results show some improvement but may need more investigation.")
 

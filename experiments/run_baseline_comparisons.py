@@ -121,68 +121,6 @@ def get_mlp_baseline_results(dataset_name):
         }
     return None
 
-def format_latex_table(results_wesad, results_sleep_edf):
-    """Generate LaTeX table for paper."""
-    
-    latex = r"""
-% Add to Section 5.1, before Table 2:
-
-\textbf{Baseline Model Comparison:} Before evaluating privacy-preserving 
-methods, we compared our MLP architecture against traditional ML baselines 
-on centralized data (Table~\ref{tab:baseline_comparison}). The MLP achieves 
-competitive performance while offering compatibility with DP training 
-(which requires per-sample gradients, precluding tree-based methods).
-
-\begin{table}[h]
-\centering
-\caption{Baseline Model Comparison (No Privacy)}
-\label{tab:baseline_comparison}
-\footnotesize
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Model} & \textbf{WESAD} & \textbf{Sleep-EDF} & \textbf{Training Time} \\
-\midrule
-"""
-    
-    # Add each model's results
-    for model_name in ['Random Forest', 'Gradient Boosting', 'SVM (RBF)', 'MLP (ours)']:
-        if model_name == 'Random Forest':
-            w_acc = results_wesad['rf']['accuracy'] * 100
-            s_acc = results_sleep_edf['rf']['accuracy'] * 100
-            time_str = f"{results_wesad['rf']['training_time']:.1f}s / {results_sleep_edf['rf']['training_time']:.1f}s"
-        elif model_name == 'Gradient Boosting':
-            w_acc = results_wesad['gb']['accuracy'] * 100
-            s_acc = results_sleep_edf['gb']['accuracy'] * 100
-            time_str = f"{results_wesad['gb']['training_time']:.1f}s / {results_sleep_edf['gb']['training_time']:.1f}s"
-        elif model_name == 'SVM (RBF)':
-            w_acc = results_wesad['svm']['accuracy'] * 100
-            s_acc = results_sleep_edf['svm']['accuracy'] * 100
-            time_str = f"{results_wesad['svm']['training_time']:.1f}s / {results_sleep_edf['svm']['training_time']:.1f}s"
-        else:  # MLP
-            w_acc = results_wesad['mlp']['accuracy'] * 100
-            s_acc = results_sleep_edf['mlp']['accuracy'] * 100
-            time_str = f"{results_wesad['mlp']['training_time']:.1f}s / {results_sleep_edf['mlp']['training_time']:.1f}s"
-            model_name = r"\textbf{MLP (ours)}"
-            w_acc_str = r"\textbf{" + f"{w_acc:.1f}\\%" + r"}"
-            s_acc_str = r"\textbf{" + f"{s_acc:.1f}\\%" + r"}"
-            latex += f"{model_name} & {w_acc_str} & {s_acc_str} & {time_str} \\\\\n"
-            continue
-        
-        latex += f"{model_name} & {w_acc:.1f}\\% & {s_acc:.1f}\\% & {time_str} \\\\\n"
-    
-    latex += r"""\bottomrule
-\end{tabular}
-\end{table}
-
-The MLP outperforms all baseline methods on WESAD and achieves comparable 
-performance on Sleep-EDF, while maintaining fast training times (<1s for 
-WESAD, ~80s for Sleep-EDF). Importantly, the MLP architecture is compatible 
-with Opacus for DP training, whereas tree-based methods (RF, GB) cannot be 
-directly adapted to DP-SGD due to their non-differentiable decision boundaries.
-"""
-    
-    return latex
-
 if __name__ == '__main__':
     print("="*80)
     print("BASELINE MODEL COMPARISONS")
@@ -244,26 +182,4 @@ if __name__ == '__main__':
             print(f"  ✗ Could not load MLP results")
         
         results[dataset_name] = dataset_results
-    
-    # Generate LaTeX
-    print("\n" + "="*80)
-    print("LATEX OUTPUT FOR PAPER")
-    print("="*80)
-    
-    latex_text = format_latex_table(results['wesad'], results['sleep-edf'])
-    print(latex_text)
-    
-    # Save results
-    output_file = Path('results/baseline_comparisons.json')
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"\nResults saved to: {output_file}")
-    
-    # Save LaTeX
-    latex_file = Path('paper/baseline_comparison_latex.tex')
-    with open(latex_file, 'w') as f:
-        f.write(latex_text)
-    
-    print(f"LaTeX snippet saved to: {latex_file}")
-
+   

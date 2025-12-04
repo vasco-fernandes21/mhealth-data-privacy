@@ -217,7 +217,6 @@ class FLDPClient(FLClient):
                     noise_multiplier=self.dp_config.noise_multiplier,
                     max_grad_norm=self.dp_config.max_grad_norm,
                     poisson_sampling=True,
-                    clipping_mode='flat',
                     grad_sample_mode='hooks'
                 )
             )

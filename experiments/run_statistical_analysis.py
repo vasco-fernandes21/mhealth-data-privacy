@@ -153,36 +153,6 @@ def compute_icc(data_by_seed):
     
     return icc_results
 
-def format_latex_results(anova_results, icc_results):
-    """Generate LaTeX-formatted text for the paper."""
-    
-    latex_text = r"""
-% Add to Section 5.7.2 after Table 13:
-
-To formally test whether class weights have any effect on minority class 
-recall, we conducted a two-way ANOVA with factors \textit{seed} (5 levels) 
-and \textit{weight} (4 levels: 1.0, 2.0, 5.0, 10.0). The results confirm 
-our observation:
-
-\begin{itemize}
-    \item \textbf{Seed effect:} $F(""" + f"{anova_results['seed']['df']}" + r""", """ + \
-    f"{anova_results['error']['df']}" + r""") = """ + f"{anova_results['seed']['F']:.1f}" + \
-    r"""$, $p """ + f"{anova_results['seed']['p']}" + r"""$ (highly significant)
-    \item \textbf{Weight effect:} $F(""" + f"{anova_results['weight']['df']}" + r""", """ + \
-    f"{anova_results['error']['df']}" + r""") = """ + f"{anova_results['weight']['F']:.2f}" + \
-    r"""$, $p """ + f"{anova_results['weight']['p']}" + r"""$ (no effect)
-\end{itemize}
-
-Additionally, we computed the intraclass correlation coefficient (ICC) 
-for each seed: all five seeds exhibit ICC = 1.00 (perfect within-seed 
-consistency), confirming that class weights have zero measurable impact 
-when seed is held constant. The F-ratio for the seed effect is """ + \
-    f"{anova_results['seed']['F']:.1f}" + r""", indicating that seed 
-variation is the sole contributor to observed differences in minority 
-class recall.
-"""
-    
-    return latex_text
 
 if __name__ == '__main__':
     print("="*80)
@@ -252,35 +222,7 @@ if __name__ == '__main__':
         print(f"  Values: {[f'{v:.4f}' for v in result['values']]}")
         print(f"  Mean = {result['mean']:.4f}")
         print(f"  Std = {result['std']:.6f}")
-    
-    # Generate LaTeX
-    print("\n" + "="*80)
-    print("LATEX OUTPUT FOR PAPER")
-    print("="*80)
-    
-    latex_text = format_latex_results(anova_results, icc_results)
-    print(latex_text)
-    
-    # Save results
-    output = {
-        'anova': anova_results,
-        'icc': icc_results,
-        'latex': latex_text
-    }
-    
-    output_file = Path('results/statistical_analysis_results.json')
-    with open(output_file, 'w') as f:
-        json.dump(output, f, indent=2, default=str)
-    
-    print(f"\nResults saved to: {output_file}")
-    
-    # Also save LaTeX to separate file
-    latex_file = Path('paper/statistical_analysis_latex.tex')
-    with open(latex_file, 'w') as f:
-        f.write(latex_text)
-    
-    print(f"LaTeX snippet saved to: {latex_file}")
-
+  
 
 
 

@@ -13,19 +13,16 @@ from .seed_utils import (
     set_all_seeds,
     set_deterministic,
     set_reproducible,
-    RandomState,
 )
 
 from .logging_utils import (
     setup_logging,
     get_logger,
-    log_config,
-    log_metrics,
 )
 
 from .device_utils import (
     get_optimal_device,
-    print_device_info,
+    get_device_info,
 )
 
 __all__ = [
@@ -33,13 +30,10 @@ __all__ = [
     'set_all_seeds',
     'set_deterministic',
     'set_reproducible',
-    'RandomState',
     # logging_utils
     'setup_logging',
     'get_logger',
-    'log_config',
-    'log_metrics',
     # device_utils
     'get_optimal_device',
-    'print_device_info',
+    'get_device_info',
 ]
