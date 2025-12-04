@@ -10,17 +10,16 @@ import { TerminalLogs } from './components/Simulation/TerminalLogs';
 import { FairnessAlert } from './components/Simulation/FairnessAlert';
 
 const DashboardContent = () => {
-  const { status, metricsHistory, history, start, stop } = useSimulationContext();
-  const [config, setConfig] = useState({ dataset: 'wesad', clients: 5, sigma: 1.0 });
+  const { status, metricsHistory, metrics, start, stop, currentRound } = useSimulationContext();
+  const [config, setConfig] = useState({ dataset: 'wesad', clients: 0, sigma: 0.0 });
   
   // Get latest minority recall for fairness alert
-  const latestRecall = metricsHistory.length > 0 
-    ? metricsHistory[metricsHistory.length - 1]?.minority_recall || 0 
-    : 0;
+  const latestRecall = metrics?.minority_recall || 
+    (metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1]?.minority_recall || 0 : 0);
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-slate-950 bg-aurora flex">
-      <Sidebar history={history} />
+      <Sidebar history={[]} />
       
       <div className="flex-1 md:ml-64">
       {/* Noise Texture Overlay for texture */}
@@ -64,8 +63,8 @@ const DashboardContent = () => {
             </div>
             
             {/* Run Stats (Only visible when running/finished) */}
-            <div className={`transition-all duration-500 ${metricsHistory.length ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-               <StatGrid metrics={metricsHistory} />
+            <div className={`transition-all duration-500 ${(metricsHistory.length > 0 || metrics) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+               <StatGrid metrics={metricsHistory} currentRound={currentRound} />
             </div>
           </div>
 

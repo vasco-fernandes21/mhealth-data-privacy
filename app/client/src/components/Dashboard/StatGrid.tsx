@@ -1,6 +1,6 @@
-import { ShieldCheck, Target, Users } from 'lucide-react';
+import { ShieldCheck, Target, Users, Zap } from 'lucide-react';
 
-export const StatGrid = ({ metrics }: { metrics: any[] }) => {
+export const StatGrid = ({ metrics, currentRound }: { metrics: any[], currentRound?: number }) => {
     const latest = metrics.length > 0 ? metrics[metrics.length - 1] : null;
     
     // Helper for formatting
@@ -19,7 +19,15 @@ export const StatGrid = ({ metrics }: { metrics: any[] }) => {
     );
 
     return (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {currentRound !== undefined && currentRound > 0 && (
+                <Stat 
+                    label="Round" 
+                    value={currentRound.toString()} 
+                    color="text-slate-300" 
+                    icon={Zap}
+                />
+            )}
             <Stat 
                 label="Global Acc" 
                 value={latest ? (latest.accuracy * 100).toFixed(1) + '%' : null} 
@@ -28,7 +36,7 @@ export const StatGrid = ({ metrics }: { metrics: any[] }) => {
             />
             <Stat 
                 label="Privacy Budget" 
-                value={latest ? latest.epsilon.toFixed(2) : null} 
+                value={latest ? latest.epsilon?.toFixed(2) || '--' : '--'} 
                 color="text-purple-400" 
                 icon={ShieldCheck}
             />

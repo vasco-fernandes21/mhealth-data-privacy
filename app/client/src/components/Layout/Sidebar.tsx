@@ -1,4 +1,4 @@
-import { History, Settings2, Download, Zap } from 'lucide-react';
+import { Settings2, Download } from 'lucide-react';
 import { useSimulationContext } from '../../context/SimulationContext';
 
 export const Sidebar = ({ history }: { history: any[] }) => {

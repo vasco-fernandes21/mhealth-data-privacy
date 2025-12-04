@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
-from .api import websocket, routes
+from .api import routes
 from .data.loader import data_loader
 
 app = FastAPI(title=settings.PROJECT_NAME)
@@ -14,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(websocket.router)
+# REST API only (WebSocket removed for robustness)
 app.include_router(routes.router, prefix=settings.API_V1_STR)
 
 @app.on_event("startup")

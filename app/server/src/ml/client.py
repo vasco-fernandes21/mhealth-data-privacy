@@ -68,7 +68,7 @@ class VirtualClient:
                     optimizer=optimizer,
                     data_loader=base_loader,
                     noise_multiplier=self.dp_cfg.get("noise_multiplier", 1.0),
-                    max_grad_norm=self.dp_cfg.get("max_grad_norm", 1.0),
+                    max_grad_norm=self.dp_cfg.get("max_grad_norm", 5.0),  # BUG FIX: Paper uses 5.0, not 1.0
                     poisson_sampling=True,  # Match paper configuration
                     grad_sample_mode=self.dp_cfg.get("grad_sample_mode", "hooks")
                 )
@@ -82,7 +82,7 @@ class VirtualClient:
                     optimizer=optimizer,
                     data_loader=base_loader,
                     noise_multiplier=self.dp_cfg.get("noise_multiplier", 1.0),
-                    max_grad_norm=self.dp_cfg.get("max_grad_norm", 1.0),
+                    max_grad_norm=self.dp_cfg.get("max_grad_norm", 5.0),  # BUG FIX: Paper uses 5.0, not 1.0
                     poisson_sampling=False,
                     grad_sample_mode=self.dp_cfg.get("grad_sample_mode", "hooks")
                 )
@@ -101,7 +101,7 @@ class VirtualClient:
                 optimizer=optimizer,
                 data_loader=base_loader,
                 noise_multiplier=self.dp_cfg.get("noise_multiplier", 1.0),
-                max_grad_norm=self.dp_cfg.get("max_grad_norm", 1.0),
+                max_grad_norm=self.dp_cfg.get("max_grad_norm", 5.0),  # BUG FIX: Paper uses 5.0, not 1.0
                 poisson_sampling=poisson_setting,
                 grad_sample_mode=self.dp_cfg.get("grad_sample_mode", "hooks")
             )
@@ -158,11 +158,13 @@ class VirtualClient:
                 try:
                     from ..ml.privacy import estimate_epsilon
                     sample_rate = self.batch_size / self.dataset_size if self.dataset_size > 0 else 0.001
+                    # BUG FIX: Pass is_steps=True since self.total_steps is already the number of steps
                     epsilon = estimate_epsilon(
                         self.dp_cfg.get("noise_multiplier", 1.0),
                         sample_rate,
                         self.total_steps,  # Use total steps for accumulation
-                        delta
+                        delta,
+                        is_steps=True  # CRITICAL: total_steps is already steps, not epochs
                     )
                     print(f"DEBUG Client {self.id}: Using fallback epsilon={epsilon:.4f}")
                 except Exception as est_err:

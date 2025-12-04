@@ -30,20 +30,17 @@ export const TerminalLogs = () => {
               <span>System ready. Waiting for protocol initialization...</span>
             </div>
           )}
-          {logs.map((log) => (
-              <div key={log.id} className="flex gap-3 animate-fade-in group">
-                  <span className="text-slate-600 shrink-0 select-none font-mono text-[9px]">
-                    [{log.timestamp}]
-                  </span>
+          {logs.map((log, idx) => (
+              <div key={idx} className="flex gap-3 animate-fade-in group">
                   <span className={
-                      log.message.includes("Error") ? "text-red-400" :
-                      log.message.includes("Complete") || log.message.includes("finished") ? "text-emerald-400" :
-                      log.message.includes("Round") ? "text-cyan-200 font-bold" :
-                      log.message.includes("Client") ? "text-purple-300" :
-                      log.message.includes("Aggregating") ? "text-blue-300" :
+                      log.includes("Error") || log.includes("error") ? "text-red-400" :
+                      log.includes("Complete") || log.includes("completed") || log.includes("finished") ? "text-emerald-400" :
+                      log.includes("Round") ? "text-cyan-200 font-bold" :
+                      log.includes("Client") ? "text-purple-300" :
+                      log.includes("Aggregating") ? "text-blue-300" :
                       "text-slate-300"
                   }>
-                      {log.message}
+                      {log}
                   </span>
                   {/* Subtle glow on hover */}
                   <div className="absolute left-0 w-1 h-full bg-cyan-500/0 group-hover:bg-cyan-500/20 transition-colors duration-300" />
