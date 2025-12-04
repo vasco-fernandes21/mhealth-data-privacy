@@ -5,6 +5,7 @@ type SimContextType = {
     status: TrainingStatus;
     currentRound: number;
     metricsHistory: TrainingMetrics[];
+    previousMetricsHistory: TrainingMetrics[];
     logs: string[];
     progress: number;
     mode: string;
@@ -25,6 +26,7 @@ export const SimulationProvider = ({ children }: { children: ReactNode }) => {
             status: training.status,
             currentRound: training.currentRound,
             metricsHistory: training.metricsHistory,
+            previousMetricsHistory: training.previousMetricsHistory,
             logs: training.logs,
             progress: training.progress,
             mode: training.mode,

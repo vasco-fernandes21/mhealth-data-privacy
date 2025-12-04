@@ -398,6 +398,8 @@ All experiments were conducted using PyTorch (v2.0+) and Opacus (v1.0+) on syste
     \item \textbf{FL Configurations:} We evaluate client counts of $N \in \{3, 5, 10\}$. For FL+DP, the focus is on $N=5$ with varying $\sigma$, supplemented by $N \in \{3, 10\}$ with $\sigma=1.0$ to study client count effects.
 \end{itemize}
 
+All models are trained with validation-based early stopping, using a patience of 15–20 validation rounds and selecting the checkpoint with the best validation accuracy rather than the final epoch. The effective number of epochs until convergence therefore varies by dataset and configuration, typically ranging from 20–30 epochs for WESAD and up to 40 epochs for Sleep-EDF.
+
 \section{Results and Analysis}
 \label{sec:results}
 

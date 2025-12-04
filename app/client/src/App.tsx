@@ -8,10 +8,21 @@ import { StatGrid } from './components/Dashboard/StatGrid';
 import { ChartsGrid } from './components/Dashboard/ChartsGrid';
 import { TerminalLogs } from './components/Simulation/TerminalLogs';
 import { FairnessAlert } from './components/Simulation/FairnessAlert';
+import clsx from 'clsx';
 
 const DashboardContent = () => {
-  const { status, metricsHistory, metrics, start, stop, currentRound } = useSimulationContext();
-  const [config, setConfig] = useState({ dataset: 'wesad', clients: 0, sigma: 0.0 });
+  const { status, metricsHistory, previousMetricsHistory, metrics, start, stop, currentRound } =
+    useSimulationContext();
+  const [config, setConfig] = useState({
+    dataset: 'wesad',
+    clients: 0,
+    sigma: 0.0,
+    seed: 42,
+    max_grad_norm: 5.0,
+    use_class_weights: true,
+    runs: 1,
+  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   // Get latest minority recall for fairness alert
   const latestRecall = metrics?.minority_recall || 
@@ -19,9 +30,15 @@ const DashboardContent = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-slate-950 bg-aurora flex">
-      <Sidebar history={[]} />
+      <Sidebar onCollapsedChange={setIsSidebarCollapsed} />
       
-      <div className="flex-1 md:ml-64">
+      <div
+        className={clsx(
+          'flex-1',
+          // Alinha conteúdo com a largura atual da sidebar em ecrãs médios+
+          isSidebarCollapsed ? 'md:ml-20' : 'md:ml-72',
+        )}
+      >
       {/* Noise Texture Overlay for texture */}
       <div 
         className="fixed inset-0 opacity-[0.03] pointer-events-none" 
@@ -78,7 +95,7 @@ const DashboardContent = () => {
         {/* Data Section */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
            <div className="xl:col-span-2 glass-panel rounded-3xl p-6 lg:p-8">
-              <ChartsGrid metrics={metricsHistory} />
+              <ChartsGrid metrics={metricsHistory} previousMetrics={previousMetricsHistory} />
            </div>
            <div className="xl:col-span-1 glass-panel rounded-3xl p-6 h-[400px] xl:h-auto flex flex-col">
               <TerminalLogs />

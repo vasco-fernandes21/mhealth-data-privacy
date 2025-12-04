@@ -2,12 +2,18 @@
 Centralized Training: Baseline and DP (non-federated).
 Integrates BaselineTrainer and DPTrainer logic.
 """
+import time
+
 import torch
 import torch.nn as nn
 import numpy as np
 from typing import Dict, Any, Tuple
 from opacus import PrivacyEngine
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    confusion_matrix,
+)
 
 from .base import BaseTrainer
 
@@ -72,15 +78,39 @@ class BaselineTrainer(BaseTrainer):
         return total_loss / total if total > 0 else 0.0, correct / total if total > 0 else 0.0
     
     def fit(self, train_loader, val_loader) -> Dict[str, Any]:
-        """Execute baseline training."""
-        self.setup_optimizer_and_loss()
-        epochs = self.config['training']['epochs']
+        """
+        Execute baseline training with early stopping and best-model restore.
+        Uses validation accuracy to decide when to stop, mirroring the
+        offline experiment runners.
         
-        self.log(f"Starting Baseline Training for {epochs} epochs...")
+        Returns a rich dict so the API can build JSONs similar to the paper:
+        - total_epochs, best_epoch, epochs_no_improve
+        - best_val_acc
+        - training_time_seconds
+        """
+        self._reset_training_state()
+        self.setup_optimizer_and_loss()
+        epochs = int(self.config["training"].get("epochs", 40))
+        patience = int(self.config["training"].get("early_stopping_patience", 20))
+        
+        self.log(f"Starting Baseline Training for {epochs} epochs (patience={patience})...")
+        
+        start_time = time.time()
+        best_epoch = 0
+        last_v_acc = 0.0
+        last_v_loss = 0.0
+        last_t_loss = 0.0
+        last_t_acc = 0.0
+        last_epoch = 0
         
         for epoch in range(1, epochs + 1):
             t_loss, t_acc = self.train_epoch(train_loader)
             v_loss, v_acc = self.validate(val_loader)
+            last_v_acc = v_acc
+            last_v_loss = v_loss
+            last_t_loss = t_loss
+            last_t_acc = t_acc
+            last_epoch = epoch
             
             # Update history
             self.history['epoch'].append(epoch)
@@ -89,19 +119,67 @@ class BaselineTrainer(BaseTrainer):
             self.history['val_loss'].append(v_loss)
             self.history['val_acc'].append(v_acc)
             
+            # Early stopping on validation accuracy
+            if v_acc > self.best_val_acc:
+                self.best_val_acc = v_acc
+                self.epochs_no_improve = 0
+                best_epoch = epoch
+                # Keep in-memory snapshot of the best model
+                self.best_model_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in self.model.state_dict().items()
+                }
+            else:
+                self.epochs_no_improve += 1
+                if self.epochs_no_improve >= patience:
+                    self.log(
+                        f"Early stopping at epoch {epoch} "
+                        f"(no improvement for {self.epochs_no_improve} epochs)"
+                    )
+                    break
+            
             # Update UI
             progress = int((epoch / epochs) * 100)
-            self.callback(progress=progress, metrics={
-                "accuracy": v_acc, "loss": v_loss, "epsilon": 0.0, "epoch": epoch
-            })
+            self.callback(
+                progress=progress,
+                metrics={"accuracy": v_acc, "loss": v_loss, "epsilon": 0.0, "epoch": epoch},
+            )
             
             if epoch % 5 == 0:
                 self.log(f"Epoch {epoch}/{epochs}: Train Acc {t_acc:.4f}, Val Acc {v_acc:.4f}")
         
-        return {"final_acc": v_acc, "epochs": epochs}
+        # Restore best model (for downstream test evaluation)
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
+        
+        elapsed = time.time() - start_time
+        final_acc = self.best_val_acc if best_epoch > 0 else last_v_acc
+        
+        return {
+            # Paper-style fields
+            "total_epochs": last_epoch,
+            "best_epoch": best_epoch or last_epoch,
+            "epochs_no_improve": self.epochs_no_improve,
+            "training_time_seconds": elapsed,
+            "best_val_acc": final_acc,
+            # Extra diagnostics (optional)
+            "final_train_loss": last_t_loss,
+            "final_train_acc": last_t_acc,
+            "final_val_loss": last_v_loss,
+            "final_val_acc": last_v_acc,
+            "history": self.history,
+            # Backwards-compatible keys used elsewhere in the API
+            "final_acc": final_acc,
+            "epochs": best_epoch or last_epoch,
+        }
     
     def evaluate_full(self, test_loader) -> Dict[str, Any]:
-        """Full evaluation with fairness metrics."""
+        """
+        Full evaluation with metrics aligned to the offline experiments:
+        - accuracy, precision, recall, f1_score
+        - per-class metrics and confusion matrix
+        - minority_recall (for fairness view in the UI)
+        """
         self.model.eval()
         y_true, y_pred = [], []
         
@@ -112,21 +190,60 @@ class BaselineTrainer(BaseTrainer):
                 y_true.extend(by.cpu().numpy())
                 y_pred.extend(torch.max(out, 1)[1].cpu().numpy())
         
-        # Calculate Fairness (Recall of minority class - typically class 1)
         y_true = np.array(y_true)
         y_pred = np.array(y_pred)
+        unique_labels = np.unique(y_true)
         
-        # Get minority class (class with fewer samples)
+        precision_per_class, recall_per_class, f1_per_class, _ = (
+            precision_recall_fscore_support(
+                y_true, y_pred, labels=unique_labels, zero_division=0
+            )
+        )
+        
+        cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
+        
+        # Minority class recall (fairness metric)
         unique, counts = np.unique(y_true, return_counts=True)
         minority_class = unique[np.argmin(counts)]
-        
-        prec, rec, f1, _ = precision_recall_fscore_support(
+        _, minority_rec, _, _ = precision_recall_fscore_support(
             y_true, y_pred, labels=[minority_class], zero_division=0
         )
         
         return {
             "accuracy": float(accuracy_score(y_true, y_pred)),
-            "minority_recall": float(rec[0]) if len(rec) > 0 else 0.0
+            "precision": float(
+                precision_recall_fscore_support(
+                    y_true,
+                    y_pred,
+                    labels=unique_labels,
+                    average="weighted",
+                    zero_division=0,
+                )[0]
+            ),
+            "recall": float(
+                precision_recall_fscore_support(
+                    y_true,
+                    y_pred,
+                    labels=unique_labels,
+                    average="weighted",
+                    zero_division=0,
+                )[1]
+            ),
+            "f1_score": float(
+                precision_recall_fscore_support(
+                    y_true,
+                    y_pred,
+                    labels=unique_labels,
+                    average="weighted",
+                    zero_division=0,
+                )[2]
+            ),
+            "precision_per_class": precision_per_class.tolist(),
+            "recall_per_class": recall_per_class.tolist(),
+            "f1_per_class": f1_per_class.tolist(),
+            "confusion_matrix": cm.tolist(),
+            "class_names": self.config["dataset"].get("class_names", []),
+            "minority_recall": float(minority_rec[0]) if len(minority_rec) > 0 else 0.0,
         }
 
 
@@ -139,9 +256,17 @@ class DPTrainer(BaselineTrainer):
         self.privacy_engine = PrivacyEngine()
     
     def fit(self, train_loader, val_loader) -> Dict[str, Any]:
-        """Execute DP training with PrivacyEngine."""
+        """
+        Execute DP training with PrivacyEngine.
+        Mirrors the offline DP trainer behaviour:
+        - tracks best validation accuracy
+        - applies early stopping
+        - restores the best model before final evaluation
+        """
+        self._reset_training_state()
         self.setup_optimizer_and_loss()
-        epochs = self.config['training']['epochs']
+        epochs = int(self.config['training'].get('epochs', 40))
+        patience = int(self.config['training'].get('early_stopping_patience', 20))
         dp_cfg = self.config['differential_privacy']
         
         # Attach Privacy Engine (matching paper: max_grad_norm=5.0, poisson_sampling=True)
@@ -168,11 +293,15 @@ class DPTrainer(BaselineTrainer):
                 grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
             )
         
-        self.log(f"DP Training Started (Sigma={dp_cfg['noise_multiplier']})")
+        self.log(f"DP Training Started (Sigma={dp_cfg['noise_multiplier']}, patience={patience})")
+        
+        best_epoch = 0
+        last_v_acc = 0.0
         
         for epoch in range(1, epochs + 1):
             t_loss, t_acc = self.train_epoch(train_loader)
             v_loss, v_acc = self.validate(val_loader)
+            last_v_acc = v_acc
             
             # Get epsilon
             epsilon = 0.0
@@ -187,6 +316,22 @@ class DPTrainer(BaselineTrainer):
             self.history['train_acc'].append(t_acc)
             self.history['val_loss'].append(v_loss)
             self.history['val_acc'].append(v_acc)
+            
+            # Early stopping on validation accuracy (same criterion as offline experiments)
+            if v_acc > self.best_val_acc:
+                self.best_val_acc = v_acc
+                self.epochs_no_improve = 0
+                best_epoch = epoch
+                # Keep in-memory snapshot of the best model
+                self.best_model_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in self.model.state_dict().items()
+                }
+            else:
+                self.epochs_no_improve += 1
+                if self.epochs_no_improve >= patience:
+                    self.log(f"Early stopping at epoch {epoch} (no improvement for {self.epochs_no_improve} epochs)")
+                    break
             
             # Update UI
             progress = int((epoch / epochs) * 100)
@@ -204,7 +349,16 @@ class DPTrainer(BaselineTrainer):
         except:
             pass
         
-        return {"final_acc": v_acc, "final_epsilon": final_epsilon, "epochs": epochs}
+        # Restore best model (for downstream test evaluation)
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
+        
+        final_acc = self.best_val_acc if best_epoch > 0 else last_v_acc
+        return {
+            "final_acc": final_acc,
+            "final_epsilon": final_epsilon,
+            "epochs": best_epoch or epoch,
+        }
     
     def evaluate_full(self, test_loader) -> Dict[str, Any]:
         """Full evaluation (same as baseline)."""

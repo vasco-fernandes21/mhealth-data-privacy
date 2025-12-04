@@ -31,20 +31,28 @@ export const TerminalLogs = () => {
             </div>
           )}
           {logs.map((log, idx) => (
-              <div key={idx} className="flex gap-3 animate-fade-in group">
-                  <span className={
-                      log.includes("Error") || log.includes("error") ? "text-red-400" :
-                      log.includes("Complete") || log.includes("completed") || log.includes("finished") ? "text-emerald-400" :
-                      log.includes("Round") ? "text-cyan-200 font-bold" :
-                      log.includes("Client") ? "text-purple-300" :
-                      log.includes("Aggregating") ? "text-blue-300" :
-                      "text-slate-300"
-                  }>
-                      {log}
-                  </span>
-                  {/* Subtle glow on hover */}
-                  <div className="absolute left-0 w-1 h-full bg-cyan-500/0 group-hover:bg-cyan-500/20 transition-colors duration-300" />
-              </div>
+            <div key={idx} className="flex gap-3 animate-fade-in group relative">
+              <span
+                className={
+                  log.includes('Error') || log.includes('error')
+                    ? 'text-red-400'
+                    : log.includes('Complete') ||
+                      log.includes('completed') ||
+                      log.includes('finished')
+                    ? 'text-emerald-400'
+                    : log.includes('Round')
+                    ? 'text-cyan-200 font-bold'
+                    : log.includes('Client')
+                    ? 'text-purple-300'
+                    : log.includes('Aggregating')
+                    ? 'text-blue-300'
+                    : 'text-slate-300'
+                }
+              >
+                {log}
+              </span>
+              <div className="absolute left-0 w-1 h-full bg-cyan-500/0 group-hover:bg-cyan-500/20 transition-colors duration-300" />
+            </div>
           ))}
       </div>
     </div>

@@ -2,14 +2,20 @@ from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
 
-API_KEY_HEADER = APIKeyHeader(name="X-Session-ID", auto_error=False)
+from .config import settings
 
 
-async def validate_session(session_id: str = Security(API_KEY_HEADER)):
-    """Simple session validation. In prod, check against Redis/DB."""
-    if not session_id:
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def get_api_key(api_key: str = Security(api_key_header)) -> str:
+    expected = settings.API_KEY
+    if not expected:
+        return api_key or ""
+    if api_key != expected:
         raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN, detail="Could not validate credentials"
+            status_code=HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
         )
-    return session_id
+    return api_key
 

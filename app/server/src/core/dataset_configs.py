@@ -120,7 +120,12 @@ SLEEP_EDF_CONFIG = {
     }
 }
 
-def get_config(dataset_name: str, n_clients: int, sigma: float, train_y: np.ndarray = None) -> dict:
+def get_config(
+    dataset_name: str,
+    n_clients: int,
+    sigma: float,
+    train_y: np.ndarray = None,
+) -> dict:
     """
     Get configuration for dataset, overriding with UI parameters.
     Computes class_weights dynamically from training data (matching paper).
@@ -151,16 +156,18 @@ def get_config(dataset_name: str, n_clients: int, sigma: float, train_y: np.ndar
             raise ValueError(f"Unknown dataset: {dataset_name}")
     
     # Compute class_weights dynamically from training data (matching paper preprocessing)
-    if train_y is not None and config['dataset'].get('use_class_weights', False):
+    if train_y is not None and config["dataset"].get("use_class_weights", False):
         weights_dict = compute_class_weights(train_y)
-        config['dataset']['class_weights'] = {str(k): float(v) for k, v in weights_dict.items()}
+        config["dataset"]["class_weights"] = {
+            str(k): float(v) for k, v in weights_dict.items()
+        }
     
-    # Override with UI parameters
+    # Override with core UI parameters
     config["federated_learning"]["n_clients"] = n_clients
     config["differential_privacy"]["noise_multiplier"] = sigma
     config["differential_privacy"]["enabled"] = sigma > 0
     
-    # Ensure epochs is always 40 (no early stopping in MVP)
+    # Ensure epochs is always 40 (no early stopping in MVP config; trainers may still early-stop)
     config["training"]["epochs"] = 40
     
     return config

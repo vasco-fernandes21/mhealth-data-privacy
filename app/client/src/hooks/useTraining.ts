@@ -16,6 +16,7 @@ export const useTraining = () => {
     const [status, setStatus] = useState<TrainingStatus>('idle');
     const [metrics, setMetrics] = useState<TrainingMetrics | null>(null);
     const [metricsHistory, setMetricsHistory] = useState<TrainingMetrics[]>([]);
+    const [previousMetricsHistory, setPreviousMetricsHistory] = useState<TrainingMetrics[]>([]);
     const [logs, setLogs] = useState<string[]>([]);
     const [jobId, setJobId] = useState<string | null>(() => {
         // Load from localStorage on mount
@@ -116,7 +117,9 @@ export const useTraining = () => {
 
     const start = useCallback(async (config: any) => {
         try {
-            // Reset state
+            if (metricsHistory.length > 0) {
+                setPreviousMetricsHistory(metricsHistory);
+            }
             setMetricsHistory([]);
             setLogs([]);
             setProgress(0);
@@ -173,6 +176,7 @@ export const useTraining = () => {
         status, 
         metrics, 
         metricsHistory, 
+        previousMetricsHistory,
         logs, 
         mode, 
         progress, 

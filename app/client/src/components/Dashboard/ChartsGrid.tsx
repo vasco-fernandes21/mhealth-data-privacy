@@ -1,4 +1,14 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  ComposedChart,
+  Area,
+} from 'recharts';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -20,8 +30,66 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
-  const data = metrics.map((m, i) => ({ round: i + 1, ...m }));
+export const ChartsGrid = ({
+  metrics,
+  previousMetrics,
+}: {
+  metrics: any[];
+  previousMetrics?: any[];
+}) => {
+  const data = metrics.map((m, i) => ({
+    round: m.epoch ?? m.round ?? i + 1,
+    ...m,
+  }));
+  const prevData = (previousMetrics || []).map((m, i) => ({ round: i + 1, ...m }));
+
+  const hasMultiRun = metrics.some((m) => m.run_index != null);
+
+  const aggregatedAccuracyData = hasMultiRun
+    ? Object.values(
+        data.reduce<Record<number, any[]>>((acc, point) => {
+          const r = point.round ?? 0;
+          if (!acc[r]) acc[r] = [];
+          acc[r].push(point);
+          return acc;
+        }, {}),
+      ).map((points) => {
+        const round = points[0].round;
+        const accs = points.map((p) => p.accuracy).filter((v) => typeof v === 'number');
+        const eps = points.map((p) => p.epsilon).filter((v) => typeof v === 'number');
+        const recalls = points
+          .map((p) => p.minority_recall)
+          .filter((v) => typeof v === 'number');
+
+        if (!accs.length) {
+          return {
+            round,
+            accuracy: 0,
+            acc_min: 0,
+            acc_max: 0,
+            epsilon: 0,
+            minority_recall: 0,
+          };
+        }
+
+        const accMin = Math.min(...accs);
+        const accMax = Math.max(...accs);
+        const accMean = accs.reduce((a, b) => a + b, 0) / accs.length;
+        const epsMax = eps.length ? Math.max(...eps) : 0;
+        const recMean = recalls.length
+          ? recalls.reduce((a, b) => a + b, 0) / recalls.length
+          : 0;
+
+        return {
+          round,
+          accuracy: accMean,
+          acc_min: accMin,
+          acc_max: accMax,
+          epsilon: epsMax,
+          minority_recall: recMean,
+        };
+      })
+    : data;
 
   return (
     <div className="flex flex-col gap-6 w-full">
@@ -40,9 +108,54 @@ export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
            </div>
        </div>
 
-       {/* Main Accuracy Chart - Fixed Height */}
        <div className="w-full h-[220px] bg-slate-900/30 rounded-xl border border-white/5 p-2">
          <ResponsiveContainer width="100%" height="100%">
+            {hasMultiRun ? (
+              <ComposedChart data={aggregatedAccuracyData}>
+                <defs>
+                  <linearGradient id="accRange" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis
+                  dataKey="round"
+                  stroke="#475569"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#475569"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                  domain={[0, 1]}
+                  tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
+                />
+                <Tooltip
+                  content={<CustomTooltip />}
+                  cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="acc_max"
+                  stroke="none"
+                  fill="url(#accRange)"
+                  name="accuracy_range"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="accuracy"
+                  stroke="#06b6d4"
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 6, fill: '#06b6d4', stroke: '#fff' }}
+                  animationDuration={500}
+                />
+              </ComposedChart>
+            ) : (
             <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                 <XAxis 
@@ -61,6 +174,16 @@ export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
                   tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
                 />
                 <Tooltip content={<CustomTooltip />} cursor={{stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1}} />
+                {prevData.length > 0 && (
+                  <Line
+                    type="monotone"
+                    dataKey="accuracy"
+                    stroke="#64748b"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
                 <Line 
                     type="monotone" 
                     dataKey="accuracy" 
@@ -71,6 +194,7 @@ export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
                     animationDuration={500}
                 />
             </LineChart>
+            )}
          </ResponsiveContainer>
        </div>
 
@@ -86,6 +210,16 @@ export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
                  <XAxis dataKey="round" stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
                  <YAxis stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
                  <Tooltip content={<CustomTooltip />} cursor={{stroke: 'rgba(255,255,255,0.1)'}} />
+                 {prevData.length > 0 && (
+                   <Line
+                     type="monotone"
+                     dataKey="epsilon"
+                     stroke="#475569"
+                     strokeWidth={2}
+                     dot={false}
+                     isAnimationActive={false}
+                   />
+                 )}
                  <Line 
                    type="monotone" 
                    dataKey="epsilon" 
@@ -109,6 +243,16 @@ export const ChartsGrid = ({ metrics }: { metrics: any[] }) => {
                  <XAxis dataKey="round" stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
                  <YAxis stroke="#475569" fontSize={8} tickLine={false} axisLine={false} domain={[0, 1]} />
                  <Tooltip content={<CustomTooltip />} cursor={{stroke: 'rgba(255,255,255,0.1)'}} />
+                 {prevData.length > 0 && (
+                   <Line
+                     type="monotone"
+                     dataKey="minority_recall"
+                     stroke="#475569"
+                     strokeWidth={2}
+                     dot={false}
+                     isAnimationActive={false}
+                   />
+                 )}
                  <Line 
                    type="monotone" 
                    dataKey="minority_recall" 

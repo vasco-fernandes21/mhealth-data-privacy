@@ -70,8 +70,25 @@ class FLClient:
             self.scheduler = None
     
     def setup_criterion(self) -> None:
-        label_smoothing = float(self.config['training'].get('label_smoothing', 0.0))
-        self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        training_cfg = self.config.get('training', {})
+        dataset_cfg = self.config.get('dataset', {})
+
+        use_class_weights = bool(dataset_cfg.get('use_class_weights', False))
+        label_smoothing = float(training_cfg.get('label_smoothing', 0.0))
+
+        class_weights = None
+        if use_class_weights and 'class_weights' in dataset_cfg:
+            weights_dict = dataset_cfg['class_weights']
+            n_classes = int(dataset_cfg.get('n_classes', len(weights_dict)))
+            class_weights = torch.zeros(n_classes, dtype=torch.float32)
+            for class_idx, weight in weights_dict.items():
+                class_weights[int(class_idx)] = float(weight)
+            class_weights = class_weights.to(self.device)
+
+        self.criterion = nn.CrossEntropyLoss(
+            weight=class_weights,
+            label_smoothing=label_smoothing,
+        )
     
     def train_local(self) -> Dict[str, float]:
         total_loss = 0.0

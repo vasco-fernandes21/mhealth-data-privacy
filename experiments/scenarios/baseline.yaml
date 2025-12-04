@@ -1,4 +1,5 @@
 # Baseline Experiments (No Privacy)
+
 # Config base vem de: configs/datasets/{dataset}.yaml
 # Method: configs/methods/baseline.yaml
 
@@ -18,7 +19,7 @@ experiments:
     enabled: true
     dataset: "sleep-edf"
     method: "baseline"
-    seed: 43
+    seed: 123
     tags: ["baseline", "sleep-edf", "tier1"]
   
   baseline_sleep_edf_run3:
@@ -26,7 +27,7 @@ experiments:
     enabled: true
     dataset: "sleep-edf"
     method: "baseline"
-    seed: 44
+    seed: 456
     tags: ["baseline", "sleep-edf", "tier1"]
 
   # ===== WESAD Baseline =====
@@ -44,7 +45,7 @@ experiments:
     enabled: true
     dataset: "wesad"
     method: "baseline"
-    seed: 43
+    seed: 123
     tags: ["baseline", "wesad", "tier1"]
   
   baseline_wesad_run3:
@@ -52,5 +53,5 @@ experiments:
     enabled: true
     dataset: "wesad"
     method: "baseline"
-    seed: 44
+    seed: 456
     tags: ["baseline", "wesad", "tier1"]

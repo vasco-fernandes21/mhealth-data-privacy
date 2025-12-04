@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "PrivacyHealth API"
     PORT: int = 8000
     ENV: str = "development"
+    API_KEY: str = "mhealth-secret-2024"
     
     # Data Paths - Defaults to relative path but overridable via env
     # From app/server/src/core/config.py -> app/server -> project root

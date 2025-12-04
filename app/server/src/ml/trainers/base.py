@@ -29,6 +29,8 @@ class BaseTrainer(ABC):
         }
         self.best_val_acc = 0.0
         self.epochs_no_improve = 0
+        # In-memory best model snapshot for early stopping
+        self.best_model_state = None
     
     @abstractmethod
     def fit(self, *args, **kwargs) -> Dict[str, Any]:

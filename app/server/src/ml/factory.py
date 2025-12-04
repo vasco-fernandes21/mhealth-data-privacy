@@ -35,7 +35,14 @@ def get_trainer_mode(clients: int, sigma: float) -> str:
         return "FEDERATED_LEARNING_DP"
 
 
-def build_config(dataset_name: str, clients: int, sigma: float, train_y: np.ndarray = None) -> Dict[str, Any]:
+def build_config(
+    dataset_name: str,
+    clients: int,
+    sigma: float,
+    train_y: np.ndarray = None,
+    max_grad_norm: float | None = None,
+    use_class_weights: bool | None = None,
+) -> Dict[str, Any]:
     """
     Build full configuration from dataset defaults and user selections.
     Merges YAML configs with runtime parameters.
@@ -51,7 +58,15 @@ def build_config(dataset_name: str, clients: int, sigma: float, train_y: np.ndar
     base_cfg['differential_privacy']['enabled'] = sigma > 0
     base_cfg['differential_privacy']['noise_multiplier'] = sigma
     base_cfg['differential_privacy']['delta'] = 1e-5
-    # max_grad_norm and poisson_sampling come from config (5.0 and True per paper)
+    # max_grad_norm and poisson_sampling come from config (5.0 and True per paper),
+    # but allow the UI to override the clipping norm C.
+    if max_grad_norm is not None:
+        base_cfg['differential_privacy']['max_grad_norm'] = float(max_grad_norm)
+    
+    # Optionally override use_class_weights from UI toggle
+    if use_class_weights is not None:
+        base_cfg.setdefault("dataset", {})
+        base_cfg["dataset"]["use_class_weights"] = bool(use_class_weights)
     
     # Ensure FL config
     if clients > 0:
@@ -76,16 +91,18 @@ def create_trainer(job_id: str, config: Dict[str, Any], callback: Any) -> Any:
     Returns:
         Trainer instance (BaselineTrainer, DPTrainer, or FederatedTrainer)
     """
-    # Set seed FIRST for reproducibility (matching paper: seed=42)
+    # Set seed FIRST for reproducibility (matching paper; overridable from UI)
     import random
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+    seed = config.get("seed", 42)
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
     
     # 1. Prepare Data
     dataset_name = config["dataset"]
@@ -130,7 +147,14 @@ def create_trainer(job_id: str, config: Dict[str, Any], callback: Any) -> Any:
         # Centralized: use train only (matching paper)
         X_train_full, y_train_full = X_train, y_train
     
-    full_config = build_config(dataset_name, config["clients"], config["sigma"], train_y=y_train_full)
+    full_config = build_config(
+        dataset_name,
+        config["clients"],
+        config["sigma"],
+        train_y=y_train_full,
+        max_grad_norm=config.get("max_grad_norm"),
+        use_class_weights=config.get("use_class_weights"),
+    )
     
     # 3. Instantiate Model
     model = get_model(data_meta['input_dim'], data_meta['n_classes'])

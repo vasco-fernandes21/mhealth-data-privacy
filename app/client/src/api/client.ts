@@ -1,11 +1,13 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_KEY = import.meta.env.VITE_API_KEY || 'mhealth-secret-2024';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-API-Key': API_KEY,
   },
 });
 
@@ -14,6 +16,10 @@ export const startTraining = async (config: {
   dataset: 'wesad' | 'sleep-edf';
   clients: number;
   sigma: number;
+  // Advanced scientific controls (all optional on the frontend side)
+  seed?: number | null;
+  max_grad_norm?: number;
+  use_class_weights?: boolean;
   batch_size?: number;
   epochs?: number;
 }) => {
@@ -43,5 +49,20 @@ export const estimatePrivacy = async (config: {
 
 export const stopTraining = async (jobId: string) => {
   const response = await apiClient.post(`/stop/${jobId}`);
+  return response.data;
+};
+
+export const getHistory = async (limit = 20) => {
+  const response = await apiClient.get(`/history?limit=${limit}`);
+  return response.data;
+};
+
+export const deleteHistoryRun = async (id: string) => {
+  const response = await apiClient.delete(`/history/${id}`);
+  return response.data;
+};
+
+export const exportRun = async (id: string) => {
+  const response = await apiClient.get(`/export/${id}`);
   return response.data;
 };

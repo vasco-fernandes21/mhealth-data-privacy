@@ -148,8 +148,7 @@ class DPTrainer(BaseTrainer):
                     noise_multiplier=self.dp_config.noise_multiplier,
                     max_grad_norm=self.dp_config.max_grad_norm,
                     poisson_sampling=self.dp_config.poisson_sampling,
-                    clipping_mode='flat',
-                    grad_sample_mode=self.dp_config.grad_sample_mode
+                    grad_sample_mode=self.dp_config.grad_sample_mode,
                 )
             )
             self.privacy_engine = privacy_engine
