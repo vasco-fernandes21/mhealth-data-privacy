@@ -1,0 +1,807 @@
+openapi: 3.0.3
+info:
+  title: Federated Learning Training API
+  description: |
+    API for managing federated and centralized machine learning training jobs with differential privacy.
+    Supports multiple runs, experiment tracking, and real-time WebSocket updates.
+  version: 2.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: /api
+    description: API base path
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /train:
+    post:
+      summary: Start a new training job
+      description: |
+        Starts a new training job (federated or centralized) and returns immediately with a job ID for polling.
+        The training runs asynchronously in the background. Supports multiple independent runs with different seeds.
+      operationId: startTraining
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingConfig'
+            examples:
+              federatedWithDP:
+                summary: Federated Learning with Differential Privacy
+                value:
+                  dataset: wesad
+                  clients: 5
+                  sigma: 1.5
+                  seed: 42
+                  max_grad_norm: 5.0
+                  use_class_weights: true
+                  runs: 1
+                  batch_size: 128
+                  epochs: 40
+              centralized:
+                summary: Centralized Training (No Privacy)
+                value:
+                  dataset: sleep-edf
+                  clients: 0
+                  sigma: 0.0
+                  seed: 42
+                  max_grad_norm: 5.0
+                  use_class_weights: true
+                  runs: 1
+                  batch_size: 256
+                  epochs: 50
+              multipleRuns:
+                summary: Multiple Independent Runs
+                value:
+                  dataset: wesad
+                  clients: 3
+                  sigma: 2.0
+                  runs: 5
+                  batch_size: 128
+                  epochs: 40
+      responses:
+        '200':
+          description: Training job queued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingResponse'
+              example:
+                job_id: "550e8400-e29b-41d4-a716-446655440000"
+                status: "queued"
+                mode_detected: "FL + DP"
+                message: "Training job queued. Mode: FL + DP"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /status/{job_id}:
+    get:
+      summary: Get training job status
+      description: |
+        Poll this endpoint to get the current status, progress, logs, and metrics of a training job.
+        Recommended polling interval: 1-2 seconds.
+      operationId: getJobStatus
+      security: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier for the training job
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+              example:
+                job_id: "550e8400-e29b-41d4-a716-446655440000"
+                status: "running"
+                progress: 65
+                current_round: 26
+                logs:
+                  - "Initialized FL + DP"
+                  - "Run 1/1 started"
+                  - "Round 26/40: Train Loss=0.234, Val Acc=0.856"
+                metrics:
+                  accuracy: 0.856
+                  round: 26
+                  run_index: 1
+                error: null
+                mode_detected: "FL + DP"
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Job not found"
+
+  /stop/{job_id}:
+    post:
+      summary: Stop a running training job
+      description: |
+        Send a stop signal to a pending or running training job.
+        The job will complete the current training step before stopping.
+      operationId: stopTraining
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier for the training job to stop
+      responses:
+        '200':
+          description: Stop signal sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [stopping, cannot_stop]
+                  message:
+                    type: string
+              examples:
+                stopping:
+                  value:
+                    status: "stopping"
+                    message: "Stop signal sent to training job"
+                alreadyCompleted:
+                  value:
+                    status: "cannot_stop"
+                    message: "Job is completed, cannot stop"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /jobs:
+    get:
+      summary: List recent training jobs
+      description: Retrieve a list of recent training jobs for debugging or admin purposes
+      operationId: listJobs
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Maximum number of jobs to return
+      responses:
+        '200':
+          description: Jobs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JobStatus'
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /estimate-privacy:
+    post:
+      summary: Estimate privacy budget
+      description: |
+        Calculate the epsilon value (privacy budget) for given training parameters
+        without actually running the training. Uses RDP accountant for quick estimation.
+        Delta is fixed at 1e-5.
+      operationId: estimatePrivacy
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dataset_size:
+                  type: integer
+                  default: 5000
+                  minimum: 1
+                  description: Size of the training dataset
+                batch_size:
+                  type: integer
+                  default: 128
+                  minimum: 1
+                  description: Batch size for training
+                epochs:
+                  type: integer
+                  default: 40
+                  minimum: 1
+                  description: Number of training epochs
+                sigma:
+                  type: number
+                  format: float
+                  default: 1.0
+                  minimum: 0.0
+                  description: DP noise multiplier
+            examples:
+              strongPrivacy:
+                summary: Strong Privacy (ε < 3)
+                value:
+                  dataset_size: 5000
+                  batch_size: 128
+                  epochs: 40
+                  sigma: 2.5
+              moderatePrivacy:
+                summary: Moderate Privacy (3 ≤ ε < 10)
+                value:
+                  dataset_size: 5000
+                  batch_size: 128
+                  epochs: 40
+                  sigma: 1.5
+              weakPrivacy:
+                summary: Weak Privacy (ε ≥ 10)
+                value:
+                  dataset_size: 5000
+                  batch_size: 128
+                  epochs: 40
+                  sigma: 0.8
+      responses:
+        '200':
+          description: Privacy estimate calculated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  epsilon:
+                    type: number
+                    format: float
+                    description: Calculated privacy budget (epsilon)
+                  classification:
+                    type: string
+                    enum: [Strong, Moderate, Weak, No Privacy]
+                    description: Privacy level classification
+              examples:
+                strongPrivacy:
+                  value:
+                    epsilon: 2.45
+                    classification: "Strong"
+                noPrivacy:
+                  value:
+                    epsilon: 0.0
+                    classification: "No Privacy"
+
+  /history:
+    get:
+      summary: Get experiment history
+      description: |
+        Retrieve a list of completed experiment runs from the database.
+        Includes full training results and metrics.
+      operationId: getHistory
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: History retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExperimentRun'
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /export/{run_id}:
+    get:
+      summary: Export experiment run as JSON
+      description: |
+        Download the full experiment results in JSON format, compatible with
+        offline experiment format. Includes all metrics, hyperparameters, and timing data.
+      operationId: exportRun
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier for the experiment run
+      responses:
+        '200':
+          description: Experiment data exported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentExport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /history/{run_id}:
+    delete:
+      summary: Delete experiment run
+      description: Permanently delete an experiment run from the database
+      operationId: deleteHistory
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier for the experiment run to delete
+      responses:
+        '200':
+          description: Run deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "deleted"
+                  id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ws/training/{client_id}:
+    get:
+      summary: WebSocket endpoint for real-time training updates
+      description: |
+        Establishes a WebSocket connection for real-time training progress updates.
+        
+        **Client Messages:**
+        - `{"action": "start", "config": {...}}` - Start training with given configuration
+        - `{"action": "stop"}` - Stop the current training
+        
+        **Server Messages:**
+        - `{"type": "log", "message": "..."}` - Log message
+        - `{"type": "progress", "progress": 50, "metrics": {...}}` - Progress update
+        - `{"type": "error", "message": "..."}` - Error message
+      tags:
+        - WebSocket
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique client identifier (e.g., session ID)
+      responses:
+        '101':
+          description: WebSocket connection established
+        '400':
+          description: Bad request or invalid message format
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  schemas:
+    TrainingConfig:
+      type: object
+      required:
+        - dataset
+        - clients
+        - sigma
+      properties:
+        dataset:
+          type: string
+          enum: [wesad, sleep-edf]
+          description: Dataset to use for training
+        clients:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Number of federated clients (0 for centralized training)
+        sigma:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 5.0
+          description: DP noise multiplier (0 for no privacy)
+        seed:
+          type: integer
+          nullable: true
+          default: 42
+          description: Random seed for reproducibility (null for no explicit seeding)
+        max_grad_norm:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 10.0
+          default: 5.0
+          description: Gradient clipping threshold (max grad norm)
+        use_class_weights:
+          type: boolean
+          default: true
+          description: Enable weighted loss to handle class imbalance
+        runs:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 1
+          description: Number of independent runs with different seeds
+        batch_size:
+          type: integer
+          minimum: 1
+          maximum: 512
+          default: 128
+          description: Training batch size
+        epochs:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 40
+          description: Number of epochs (global rounds for FL, epochs for centralized)
+
+    TrainingResponse:
+      type: object
+      required:
+        - job_id
+        - status
+        - mode_detected
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the training job
+        status:
+          type: string
+          enum: [queued]
+          description: Initial status of the job
+        mode_detected:
+          type: string
+          description: Detected training mode (e.g., FL + DP, CENTRALIZED, FL + DP-SGD)
+        message:
+          type: string
+          default: "Training job queued successfully"
+          description: Human-readable message
+
+    JobStatus:
+      type: object
+      required:
+        - job_id
+        - status
+        - progress
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the training job
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+          description: Current status of the job
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Progress percentage (0-100)
+        current_round:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Current training round or epoch
+        logs:
+          type: array
+          items:
+            type: string
+          default: []
+          description: Array of log messages from training
+        metrics:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Current training and evaluation metrics
+          properties:
+            accuracy:
+              type: number
+              format: float
+            run_index:
+              type: integer
+            round:
+              type: integer
+            epoch:
+              type: integer
+        error:
+          type: string
+          nullable: true
+          description: Error message if job failed
+        mode_detected:
+          type: string
+          nullable: true
+          description: Detected training mode
+
+    ExperimentRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique run identifier
+        dataset:
+          type: string
+          enum: [wesad, sleep-edf]
+        mode:
+          type: string
+          description: Training mode (e.g., FL + DP)
+        sigma:
+          type: number
+          format: float
+          description: DP noise multiplier used
+        clients:
+          type: integer
+          description: Number of clients (0 for centralized)
+        final_accuracy:
+          type: number
+          format: float
+          description: Final test accuracy achieved
+        final_epsilon:
+          type: number
+          format: float
+          nullable: true
+          description: Final privacy budget consumed
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when run was created
+        config_json:
+          type: string
+          description: JSON string of training configuration
+        result_json:
+          type: string
+          description: JSON string of full experiment results
+
+    ExperimentExport:
+      type: object
+      properties:
+        experiment_info:
+          type: object
+          properties:
+            name:
+              type: string
+            dataset:
+              type: string
+            method:
+              type: string
+              enum: [dp, baseline, fl]
+            seed:
+              type: integer
+        training_metrics:
+          type: object
+          properties:
+            total_epochs:
+              type: integer
+            best_epoch:
+              type: integer
+            epochs_no_improve:
+              type: integer
+            best_val_acc:
+              type: number
+              format: float
+            training_time_seconds:
+              type: number
+              format: float
+            convergence:
+              type: object
+              properties:
+                early_stopped:
+                  type: boolean
+                epochs_without_improvement:
+                  type: integer
+        privacy_metrics:
+          type: object
+          properties:
+            decentralized:
+              type: boolean
+            formal_privacy:
+              type: boolean
+            final_epsilon:
+              type: number
+              format: float
+              nullable: true
+            n_clients:
+              type: integer
+              nullable: true
+            total_rounds:
+              type: integer
+              nullable: true
+            local_epochs:
+              type: integer
+              nullable: true
+        test_metrics:
+          type: object
+          properties:
+            accuracy:
+              type: number
+              format: float
+            precision:
+              type: number
+              format: float
+            recall:
+              type: number
+              format: float
+            f1_score:
+              type: number
+              format: float
+            minority_recall:
+              type: number
+              format: float
+            confusion_matrix:
+              type: array
+              items:
+                type: array
+                items:
+                  type: integer
+        hyperparameters:
+          type: object
+          properties:
+            batch_size:
+              type: integer
+            epochs:
+              type: integer
+            noise_multiplier:
+              type: number
+              format: float
+            max_grad_norm:
+              type: number
+              format: float
+            n_clients:
+              type: integer
+              nullable: true
+        runs:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              run_index:
+                type: integer
+              seed:
+                type: integer
+              mode:
+                type: string
+              metrics:
+                type: object
+                additionalProperties: true
+        runs_summary:
+          type: object
+          nullable: true
+          properties:
+            n_runs:
+              type: integer
+            seeds:
+              type: array
+              items:
+                type: integer
+            accuracy:
+              type: object
+              properties:
+                values:
+                  type: array
+                  items:
+                    type: number
+                    format: float
+                mean:
+                  type: number
+                  format: float
+                std:
+                  type: number
+                  format: float
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                description: Location of the error in the request
+              msg:
+                type: string
+                description: Error message
+              type:
+                type: string
+                description: Error type
+
+  responses:
+    UnauthorizedError:
+      description: API key is missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Invalid API key"
+
+tags:
+  - name: Training
+    description: Training job management endpoints
+  - name: History
+    description: Experiment history and export endpoints
+  - name: Privacy
+    description: Privacy estimation utilities
+  - name: WebSocket
+    description: Real-time communication endpoints
