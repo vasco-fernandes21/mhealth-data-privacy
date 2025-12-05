@@ -34,4 +34,4 @@ ENV/
 # Environment
 .env.local
 .env.*.local
-
+.env
