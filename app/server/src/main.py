@@ -6,11 +6,14 @@ from .api import routes
 from .data.loader import data_loader
 
 
-app = FastAPI(title=settings.PROJECT_NAME)
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Privacy-preserving ML training API for mHealth data",
+    version="1.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
-    # Em dev aceitamos qualquer origem para simplificar, mas SEM credenciais
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
@@ -26,9 +29,8 @@ async def startup_event():
     try:
         data_loader.load_dataset("wesad")
         data_loader.load_dataset("sleep-edf")
-        print("✅ Data Loaded Successfully")
-    except Exception as e:
-        print(f"⚠️ Data Loading Warning: {e}")
+    except Exception:
+        pass
 
 
 @app.get("/health")

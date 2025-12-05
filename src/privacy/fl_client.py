@@ -31,7 +31,7 @@ class FLClient:
     def setup_optimizer(self) -> None:
         optimizer_name = self.config['training'].get('optimizer', 'adamw').lower()
         lr = self.config['training'].get('learning_rate', 0.001)
-        wd = self.config['training'].get('weight_decay', 1e-4)
+        wd = self.config['training'].get('weight_decay', 1e-5)
         
         if optimizer_name == 'adam':
             self.optimizer = torch.optim.Adam(

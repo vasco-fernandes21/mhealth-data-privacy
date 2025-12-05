@@ -293,8 +293,6 @@ async def background_training_task(job_id: str, config: dict):
         )
         job_store.append_log(job_id, f"Fatal Error: {error_msg}")
         job_store.append_log(job_id, traceback_str)
-        print(f"Training job {job_id} failed: {error_msg}")
-        print(traceback_str)
 
 
 @router.post("/train", response_model=TrainingResponse)

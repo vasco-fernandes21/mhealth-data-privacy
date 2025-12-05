@@ -9,20 +9,18 @@ class Settings(BaseSettings):
     PORT: int = 8000
     ENV: str = "development"
     API_KEY: str = "mhealth-secret-2024"
-    
-    # Data Paths - Defaults to relative path but overridable via env
-    # From app/server/src/core/config.py -> app/server -> project root
+
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
-    # Use symlink at app/server/data/processed or fallback to project root
+
     DATA_DIR: Path = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data" / "processed")))
     
     # ML Defaults
     DEFAULT_BATCH_SIZE: int = 128
-    DEFAULT_MAX_GRAD_NORM: float = 1.0
+    DEFAULT_MAX_GRAD_NORM: float = 5.0
     
     class Config:
         env_file = ".env"
-        extra = "ignore"  # Ignore extra fields in .env
+        extra = "ignore"  
 
 
 settings = Settings()

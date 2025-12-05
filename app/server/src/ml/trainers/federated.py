@@ -81,6 +81,11 @@ class FLClient:
     
     def _setup_dp(self):
         dp_cfg = self.config['differential_privacy']
+        noise_multiplier = dp_cfg.get('noise_multiplier', 0.0)
+        
+        if noise_multiplier <= 0:
+            return
+        
         self.privacy_engine = PrivacyEngine()
         
         try:
@@ -88,17 +93,17 @@ class FLClient:
                 module=self.model,
                 optimizer=self.optimizer,
                 data_loader=self.loader,
-                noise_multiplier=dp_cfg['noise_multiplier'],
-                max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),  # Paper uses 5.0
-                poisson_sampling=dp_cfg.get('poisson_sampling', True),  # Paper uses True
+                noise_multiplier=noise_multiplier,
+                max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),
+                poisson_sampling=dp_cfg.get('poisson_sampling', True),
                 grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
             )
-        except Exception as e:
+        except Exception:
             self.model, self.optimizer, self.loader = self.privacy_engine.make_private(
                 module=self.model,
                 optimizer=self.optimizer,
                 data_loader=self.loader,
-                noise_multiplier=dp_cfg['noise_multiplier'],
+                noise_multiplier=noise_multiplier,
                 max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),
                 poisson_sampling=False,
                 grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
@@ -117,8 +122,7 @@ class FLClient:
                 adjusted_weights[k] = v
         try:
             self.model.load_state_dict(adjusted_weights, strict=True)
-        except RuntimeError as e:
-            print(f"[WARN] Strict loading failed for client {self.id}, trying non-strict. Error: {e}")
+        except RuntimeError:
             self.model.load_state_dict(adjusted_weights, strict=False)
 
         self.model.train()
@@ -147,9 +151,32 @@ class FLClient:
         epsilon = 0.0
         if self.use_dp and self.privacy_engine is not None:
             try:
-                epsilon = float(self.privacy_engine.get_epsilon(delta=self.config['differential_privacy'].get('delta', 1e-5)))
-            except:
-                pass
+                delta = self.config['differential_privacy'].get('delta', 1e-5)
+                epsilon = float(self.privacy_engine.get_epsilon(delta=delta))
+                if not isinstance(epsilon, (int, float)) or epsilon == float('inf') or epsilon != epsilon or epsilon < 0:
+                    epsilon = 0.0
+            except Exception as e:
+                error_msg = str(e)
+                if "Discrete mean differs" in error_msg or "discrete mean" in error_msg.lower():
+                    try:
+                        from ..privacy import estimate_epsilon
+                        dataset_size = len(self.X)
+                        batch_size = len(self.loader.dataset) if hasattr(self.loader, 'dataset') else dataset_size
+                        sample_rate = batch_size / dataset_size if dataset_size > 0 else 0.001
+                        local_epochs = self.config['federated_learning'].get('local_epochs', 1)
+                        batches_per_epoch = len(self.loader)
+                        total_steps = local_epochs * batches_per_epoch
+                        epsilon = estimate_epsilon(
+                            self.config['differential_privacy'].get('noise_multiplier', 1.0),
+                            sample_rate,
+                            total_steps,
+                            self.config['differential_privacy'].get('delta', 1e-5),
+                            is_steps=True
+                        )
+                    except Exception:
+                        epsilon = 0.0
+                else:
+                    epsilon = 0.0
         
         avg_loss = loss_accum / total_samples if total_samples > 0 else 0.0
         
@@ -167,16 +194,18 @@ class FederatedTrainer(BaseTrainer):
     
     def setup_clients(self, train_data_full):
         X_full, y_full, subjects = train_data_full
-        unique_subs = np.unique(subjects)
-        sub_splits = np.array_split(unique_subs, self.n_clients)
+        n_train = len(X_full)
+        train_per_client = n_train // self.n_clients
         
         self.clients = []
-        for i, subs in enumerate(sub_splits):
-            mask = np.isin(subjects, subs)
-            if mask.sum() == 0:
+        for i in range(self.n_clients):
+            start_train = i * train_per_client
+            end_train = (start_train + train_per_client 
+                        if i < self.n_clients - 1 else n_train)
+            
+            if end_train <= start_train:
                 continue
             
-            # Instantiate fresh model per client
             c_model = get_model(
                 self.config['dataset']['input_dim'], 
                 self.config['dataset']['n_classes']
@@ -185,7 +214,7 @@ class FederatedTrainer(BaseTrainer):
             client = FLClient(
                 client_id=i,
                 model=c_model,
-                data=(X_full[mask], y_full[mask]),
+                data=(X_full[start_train:end_train], y_full[start_train:end_train]),
                 config=self.config,
                 device=str(self.device),
                 use_dp=self.use_dp
@@ -203,11 +232,42 @@ class FederatedTrainer(BaseTrainer):
             avg_weights[k] = torch.div(avg_weights[k], len(client_weights))
         return avg_weights
     
+    def _calculate_minority_recall(self, val_loader):
+        """Calculate minority class recall during validation."""
+        self.model.eval()
+        all_preds = []
+        all_labels = []
+        
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                outputs = self.model(batch_x)
+                _, predicted = torch.max(outputs, 1)
+                all_preds.extend(predicted.cpu().numpy())
+                all_labels.extend(batch_y.cpu().numpy())
+        
+        if len(all_labels) == 0:
+            return 0.0
+        
+        y_true = np.array(all_labels)
+        y_pred = np.array(all_preds)
+        
+        # Find minority class
+        unique, counts = np.unique(y_true, return_counts=True)
+        if len(unique) == 0:
+            return 0.0
+        
+        minority_idx = int(np.argmin(counts))
+        minority_class = unique[minority_idx]
+        
+        # Calculate recall for minority class
+        _, minority_rec, _, _ = precision_recall_fscore_support(
+            y_true, y_pred, labels=[minority_class], zero_division=0
+        )
+        
+        return float(minority_rec[0]) if len(minority_rec) > 0 else 0.0
+    
     def fit(self, train_data, val_loader) -> Dict[str, Any]:
-        """
-        Federated training with round-based early stopping.
-        Mirrors the FLTrainer structure from the offline experiments.
-        """
         self._reset_training_state()
         self.setup_clients(train_data)
 
@@ -251,12 +311,21 @@ class FederatedTrainer(BaseTrainer):
 
             v_loss, v_acc = self.validate(val_loader)
             avg_loss = total_loss / len(self.clients) if self.clients else 0.0
+            
+            # Calculate minority_recall during validation
+            minority_recall = self._calculate_minority_recall(val_loader)
 
             self.history["epoch"].append(r)
             self.history["train_loss"].append(avg_loss)
             self.history["train_acc"].append(v_acc)
             self.history["val_loss"].append(v_loss)
             self.history["val_acc"].append(v_acc)
+            if "epsilon" not in self.history:
+                self.history["epsilon"] = []
+            if "minority_recall" not in self.history:
+                self.history["minority_recall"] = []
+            self.history["epsilon"].append(max_epsilon)
+            self.history["minority_recall"].append(minority_recall)
 
             last_round = r
             last_train_loss = avg_loss
@@ -286,6 +355,7 @@ class FederatedTrainer(BaseTrainer):
                     "accuracy": v_acc,
                     "loss": avg_loss,
                     "epsilon": max_epsilon,
+                    "minority_recall": minority_recall,
                     "round": r,
                 },
             )
@@ -322,7 +392,6 @@ class FederatedTrainer(BaseTrainer):
         }
 
     def evaluate_full(self, test_loader) -> Dict[str, Any]:
-        """Full evaluation with metrics, aligned with offline FL experiments."""
         self.model.eval()
         y_true, y_pred = [], []
 

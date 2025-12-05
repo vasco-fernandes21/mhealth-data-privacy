@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Experiment Runner - Optimized for MLP + Features
-With integrated data caching for faster experiment runs
-"""
+"""Experiment runner for MLP + Features with data caching."""
 
 import sys
 import yaml
@@ -19,7 +16,6 @@ from copy import deepcopy
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.utils.seed_utils import set_reproducible
 from src.utils.logging_utils import get_logger
 from src.models import UnifiedMLPModel
 from src.training.trainers.baseline_trainer import BaselineTrainer
@@ -30,23 +26,20 @@ from src.preprocessing.sleep_edf import load_windowed_sleep_edf
 from src.preprocessing.wesad import load_processed_wesad
 
 
-# ================================================================
-# DATA CACHE - Prevents reloading data for each run
-# ================================================================
 class DataCache:
-    """Global data cache - loads data once, reuses N times."""
-    
+    """Global data cache."""
+
     _cache: Dict[str, Tuple] = {}
-    
+
     @classmethod
     def load_data(cls, dataset: str, data_dir: Path) -> Tuple:
         if dataset in cls._cache:
             print(f"Using cached {dataset}", flush=True)
             return cls._cache[dataset]
-        
+
         print(f"Loading {dataset}...", flush=True)
         data_path = data_dir / dataset
-        
+
         try:
             if dataset == 'sleep-edf':
                 data = load_windowed_sleep_edf(str(data_path))
@@ -54,47 +47,39 @@ class DataCache:
                 data = load_processed_wesad(str(data_path))
             else:
                 raise ValueError(f"Unknown dataset: {dataset}")
-            
+
             cls._cache[dataset] = data
             return data
-        
         except Exception as e:
             raise RuntimeError(f"Failed to load {dataset}: {e}")
-    
+
     @classmethod
     def clear(cls) -> None:
         cls._cache.clear()
         print("Cache cleared", flush=True)
-    
+
     @classmethod
     def get_stats(cls) -> Dict[str, str]:
-        """Get cache statistics."""
         stats = {}
         for dataset, data in cls._cache.items():
             if isinstance(data, tuple) and len(data) >= 6:
                 X_train, X_val, X_test = data[0], data[1], data[2]
-                size_mb = (X_train.nbytes + X_val.nbytes + X_test.nbytes) / 1e6
+                size_mb = (
+                    X_train.nbytes + X_val.nbytes + X_test.nbytes
+                ) / 1e6
                 stats[dataset] = f"{size_mb:.1f} MB"
         return stats
 
 
-# ================================================================
-# UTILITY FUNCTIONS
-# ================================================================
-
 def get_device() -> str:
-    """Get best available device."""
-    if torch.cuda.is_available():
-        return 'cuda'
-    return 'cpu'
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def set_seed_everywhere(seed: int, device: str) -> None:
-    """Set seed EVERYWHERE before any random operation."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    
+
     if device == 'cuda':
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
@@ -102,9 +87,10 @@ def set_seed_everywhere(seed: int, device: str) -> None:
         torch.backends.cudnn.benchmark = False
 
 
-def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                      batch_size=64, device='cpu'):
-    """Create dataloaders for standard training."""
+def create_dataloaders(
+    X_train, y_train, X_val, y_val, X_test, y_test,
+    batch_size=64, device='cpu'
+):
     from torch.utils.data import TensorDataset, DataLoader
 
     pin_memory = device == 'cuda'
@@ -126,24 +112,23 @@ def create_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
 
 
 def compute_class_weights(y: np.ndarray) -> Dict:
-    """Compute balanced class weights."""
     class_counts = np.bincount(y.astype(int))
     n_classes = len(class_counts)
     n_samples = len(y)
 
     weights = {}
     for c in range(n_classes):
-        if class_counts[c] > 0:
-            weights[c] = n_samples / (n_classes * class_counts[c])
-        else:
-            weights[c] = 1.0
-
+        weights[c] = (
+            n_samples / (n_classes * class_counts[c])
+            if class_counts[c] > 0 else 1.0
+        )
     return weights
 
 
-def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
-                         n_clients, batch_size=64, device='cpu'):
-    """Create dataloaders for federated learning."""
+def create_fl_dataloaders(
+    X_train, y_train, X_val, y_val, X_test, y_test,
+    n_clients, batch_size=64, device='cpu'
+):
     from torch.utils.data import TensorDataset, DataLoader
 
     pin_memory = device == 'cuda'
@@ -157,8 +142,10 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
 
     for i in range(n_clients):
         start_train = i * train_per_client
-        end_train = (start_train + train_per_client 
-                    if i < n_clients - 1 else n_train)
+        end_train = (
+            start_train + train_per_client
+            if i < n_clients - 1 else n_train
+        )
 
         X_client = torch.from_numpy(
             X_train[start_train:end_train].astype(np.float32)
@@ -173,7 +160,9 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
         ))
 
         start_val = i * val_per_client
-        end_val = start_val + val_per_client if i < n_clients - 1 else n_val
+        end_val = (
+            start_val + val_per_client if i < n_clients - 1 else n_val
+        )
 
         X_val_client = torch.from_numpy(
             X_val[start_val:end_val].astype(np.float32)
@@ -198,17 +187,14 @@ def create_fl_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test,
     return train_loaders, val_loaders, test_loader
 
 
-# ================================================================
-# EXPERIMENT RUNNER
-# ================================================================
-
 class ExperimentRunner:
-    """Experiment runner for MLP + Features with data caching."""
 
-    def __init__(self, scenarios_dir='experiments/scenarios',
-                 data_dir='./data/processed',
-                 config_dir='./src/configs',
-                 results_dir='./results'):
+    def __init__(
+        self, scenarios_dir='experiments/scenarios',
+        data_dir='./data/processed',
+        config_dir='./src/configs',
+        results_dir='./results'
+    ):
         self.scenarios_dir = Path(scenarios_dir)
         self.data_dir = Path(data_dir)
         self.config_dir = Path(config_dir)
@@ -218,121 +204,127 @@ class ExperimentRunner:
         self.data_cache = DataCache()
 
     def _load_config(self, config_path: str) -> dict:
-        """Load YAML config."""
-        try:
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            self.logger.error(f"Config not found: {config_path}")
-            raise
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
 
     def _merge_configs(self, base: dict, override: dict) -> dict:
-        """Deep merge configs."""
         if override is None:
             return deepcopy(base) if base else {}
         if base is None:
             return deepcopy(override) if override else {}
-        
+
         result = deepcopy(base)
         for key, value in override.items():
-            if (key in result and isinstance(result[key], dict) and
-                    isinstance(value, dict)):
+            if (
+                key in result and isinstance(result[key], dict) and
+                isinstance(value, dict)
+            ):
                 result[key] = self._merge_configs(result[key], value)
             else:
                 result[key] = deepcopy(value)
         return result
 
-    def _extract_privacy_metrics(self, method: str, training_results: dict, 
-                                  config: dict) -> dict:
-        """
-        Extract privacy metrics relevant for the paper.
-        
-        For DP: final_epsilon, delta, noise_multiplier
-        For FL: n_clients, total_rounds (decentralization info)
-        For FL+DP: all of the above
-        """
-        privacy_metrics = {}
-        
+    def _extract_privacy_metrics(
+        self, method: str, training_results: dict, config: dict
+    ) -> dict:
         if method == 'dp':
-            # Pure DP: epsilon from training_results
-            privacy_metrics = {
+            return {
                 'final_epsilon': training_results.get('final_epsilon'),
-                'epsilon_history': training_results.get('epsilon_history', []),
-                'delta': config.get('differential_privacy', {}).get('target_delta', 1e-5),
-                'noise_multiplier': config.get('differential_privacy', {}).get('noise_multiplier'),
+                'epsilon_history': training_results.get(
+                    'epsilon_history', []
+                ),
+                'delta': config.get('differential_privacy', {}).get(
+                    'target_delta', 1e-5
+                ),
+                'noise_multiplier': config.get(
+                    'differential_privacy', {}
+                ).get('noise_multiplier'),
             }
         elif method == 'fl':
-            # Pure FL: decentralization metrics (no formal privacy)
-            privacy_metrics = {
+            return {
                 'n_clients': training_results.get('n_clients'),
-                'total_rounds': training_results.get('total_epochs'),  # FL uses 'total_epochs' for rounds
+                'total_rounds': training_results.get('total_epochs'),
                 'local_epochs': training_results.get('local_epochs'),
-                'decentralized': True,  # Data never leaves clients
-                'formal_privacy': False,  # No epsilon/delta guarantees
+                'decentralized': True,
+                'formal_privacy': False,
             }
         elif method == 'dp_fl':
-            # FL+DP: both decentralization and formal privacy
             dp_info = training_results.get('differential_privacy', {})
-            privacy_metrics = {
+            return {
                 'n_clients': training_results.get('n_clients'),
-                'total_rounds': training_results.get('total_rounds', training_results.get('total_epochs')),
+                'total_rounds': training_results.get(
+                    'total_rounds',
+                    training_results.get('total_epochs')
+                ),
                 'local_epochs': training_results.get('local_epochs'),
                 'decentralized': True,
                 'formal_privacy': True,
                 'final_epsilon': dp_info.get('final_epsilon'),
                 'epsilon_history': dp_info.get('epsilon_history', []),
-                'delta': dp_info.get('delta', config.get('differential_privacy', {}).get('target_delta', 1e-5)),
-                'noise_multiplier': dp_info.get('noise_multiplier', config.get('differential_privacy', {}).get('noise_multiplier')),
-                'max_grad_norm': dp_info.get('max_grad_norm', config.get('differential_privacy', {}).get('max_grad_norm', 1.0)),
+                'delta': dp_info.get(
+                    'delta',
+                    config.get('differential_privacy', {}).get(
+                        'target_delta', 1e-5
+                    )
+                ),
+                'noise_multiplier': dp_info.get(
+                    'noise_multiplier',
+                    config.get('differential_privacy', {}).get(
+                        'noise_multiplier'
+                    )
+                ),
+                'max_grad_norm': dp_info.get(
+                    'max_grad_norm',
+                    config.get('differential_privacy', {}).get(
+                        'max_grad_norm', 1.0
+                    )
+                ),
             }
         else:
-            # Baseline: no privacy mechanisms
-            privacy_metrics = {
+            return {
                 'decentralized': False,
                 'formal_privacy': False,
             }
-        
-        return privacy_metrics
 
-    def _compute_class_imbalance_metrics(self, confusion_matrix: list, 
-                                         class_names: list) -> dict:
-        """Compute class imbalance metrics from confusion matrix."""
+    def _compute_class_imbalance_metrics(
+        self, confusion_matrix: list, class_names: list
+    ) -> dict:
         if not confusion_matrix or not class_names:
             return {}
-        
+
         cm = np.array(confusion_matrix)
-        
-        # True positives per class (diagonal)
-        tp_per_class = np.diag(cm)
-        # Total samples per class (row sums)
         total_per_class = cm.sum(axis=1)
-        # Predicted samples per class (column sums)
-        predicted_per_class = cm.sum(axis=0)
-        
-        # Class distribution
+
         class_distribution = {
-            name: int(count) for name, count in zip(class_names, total_per_class)
+            name: int(count)
+            for name, count in zip(class_names, total_per_class)
         }
-        
-        # Imbalance ratio (max/min)
+
         if len(total_per_class) > 1 and total_per_class.min() > 0:
-            imbalance_ratio = float(total_per_class.max() / total_per_class.min())
+            imbalance_ratio = float(
+                total_per_class.max() / total_per_class.min()
+            )
         else:
             imbalance_ratio = 1.0
-        
+
         return {
             'class_distribution': class_distribution,
             'imbalance_ratio': imbalance_ratio,
             'total_samples': int(total_per_class.sum()),
-            'minority_class': class_names[int(np.argmin(total_per_class))] if len(total_per_class) > 0 else None,
-            'majority_class': class_names[int(np.argmax(total_per_class))] if len(total_per_class) > 0 else None,
+            'minority_class': (
+                class_names[int(np.argmin(total_per_class))]
+                if len(total_per_class) > 0 else None
+            ),
+            'majority_class': (
+                class_names[int(np.argmax(total_per_class))]
+                if len(total_per_class) > 0 else None
+            ),
         }
 
     def _extract_hyperparameters(self, config: dict, method: str) -> dict:
-        """Extract hyperparameters used in training."""
         training_cfg = config.get('training', {})
         model_cfg = config.get('model', {})
-        
+
         hyperparams = {
             'batch_size': training_cfg.get('batch_size', 128),
             'learning_rate': training_cfg.get('learning_rate', 1e-4),
@@ -343,66 +335,63 @@ class ExperimentRunner:
             'dropout': model_cfg.get('dropout', 0.3),
             'hidden_dims': model_cfg.get('hidden_dims', [256, 128]),
         }
-        
+
         if method in ['fl', 'dp_fl']:
             fl_cfg = config.get('federated_learning', {})
             hyperparams.update({
                 'n_clients': fl_cfg.get('n_clients', 10),
                 'local_epochs': fl_cfg.get('local_epochs', 1),
-                'aggregation_method': fl_cfg.get('aggregation_method', 'fedavg'),
+                'aggregation_method': fl_cfg.get(
+                    'aggregation_method', 'fedavg'
+                ),
             })
-        
+
         if method in ['dp', 'dp_fl']:
             dp_cfg = config.get('differential_privacy', {})
             hyperparams.update({
                 'noise_multiplier': dp_cfg.get('noise_multiplier', 1.0),
                 'max_grad_norm': dp_cfg.get('max_grad_norm', 1.0),
-                'delta': dp_cfg.get('target_delta', dp_cfg.get('delta', 1e-5)),
+                'delta': dp_cfg.get(
+                    'target_delta', dp_cfg.get('delta', 1e-5)
+                ),
             })
-        
+
         return hyperparams
 
     def _get_config(self, dataset: str, method: str, hyperparams=None):
-        """Get merged config with proper defaults."""
         dataset_cfg = self._load_config(
             self.config_dir / 'datasets' / f'{dataset}.yaml'
         )
         method_cfg = self._load_config(
             self.config_dir / 'methods' / f'{method}.yaml'
         )
-        
-        if dataset_cfg is None:
-            raise ValueError(f"Dataset config not found: {dataset}")
-        if method_cfg is None:
-            raise ValueError(f"Method config not found: {method}")
-        
-        # Baseline uses dataset training config
+
         if method == 'baseline':
             config = deepcopy(dataset_cfg)
         else:
             config = self._merge_configs(dataset_cfg, method_cfg)
 
-        # Apply hyperparameter overrides
         if hyperparams:
             for section, params in hyperparams.items():
                 config[section] = self._merge_configs(
                     config.get(section, {}), params
                 )
-        
+
         return config
 
     def load_scenario(self, scenario_name: str) -> Dict:
-        """Load scenario YAML."""
-        with open(self.scenarios_dir / f'{scenario_name}.yaml', 'r') as f:
+        with open(
+            self.scenarios_dir / f'{scenario_name}.yaml', 'r'
+        ) as f:
             return yaml.safe_load(f)
 
     def _load_data(self, dataset: str) -> Tuple:
-        """Load dataset using cache."""
         return self.data_cache.load_data(dataset, self.data_dir)
 
-    def run_experiment(self, exp_name: str, exp_config: Dict,
-                      device: str, save_model: bool = True) -> Dict:
-        """Execute single experiment."""
+    def run_experiment(
+        self, exp_name: str, exp_config: Dict,
+        device: str, save_models: bool = False
+    ) -> Dict:
         dataset = exp_config['dataset']
         method = exp_config['method']
         seed = exp_config['seed']
@@ -414,52 +403,53 @@ class ExperimentRunner:
         start_time = time.time()
 
         try:
-            # Set seed first
             set_seed_everywhere(seed=seed, device=device)
-            
+
             config = self._get_config(
                 dataset, method, exp_config.get('hyperparameters')
             )
 
-            # Load data and metadata
             data_tuple = self._load_data(dataset)
-            X_train, X_val, X_test, y_train, y_val, y_test = data_tuple[:6]
-            
-            # Extract metadata (info) if available (index 7 for both datasets)
+            X_train, X_val, X_test, y_train, y_val, y_test = (
+                data_tuple[:6]
+            )
+
             dataset_cfg = config.get('dataset', {})
             use_class_weights = dataset_cfg.get('use_class_weights', False)
             has_manual_weights = (
-                'class_weights' in dataset_cfg and dataset_cfg['class_weights']
+                'class_weights' in dataset_cfg
+                and dataset_cfg['class_weights']
             )
+
             if use_class_weights and not has_manual_weights:
                 if len(data_tuple) > 7:
                     metadata = data_tuple[7]
-                    # Load class weights from metadata (computed during preprocessing)
                     if metadata and 'class_weights' in metadata:
-                        config['dataset']['class_weights'] = metadata['class_weights']
-                        self.logger.info(f"[CONFIG] Loaded class weights from preprocessing metadata")
+                        config['dataset']['class_weights'] = (
+                            metadata['class_weights']
+                        )
                     else:
-                        # Fallback: calculate dynamically if not in metadata (legacy data)
                         class_weights = compute_class_weights(y_train)
                         config['dataset']['class_weights'] = class_weights
-                        self.logger.warning(f"[CONFIG] Class weights not in metadata, computed dynamically (consider re-running preprocessing)")
                 else:
-                    # Fallback: no metadata available, calculate from training data
                     class_weights = compute_class_weights(y_train)
                     config['dataset']['class_weights'] = class_weights
-                    self.logger.warning(f"[CONFIG] No metadata available, computed class weights dynamically (consider re-running preprocessing)")
 
-            # Diagnostics: ensure test labels are consistent across runs
             try:
                 checksum = int(y_test.sum())
                 yhash = hash(y_test.tobytes())
                 binc = np.bincount(y_test.astype(int)).tolist()
-                print(f"[DATA] {dataset} y_test: sum={checksum} hash={yhash} dist={binc}")
+                print(
+                    f"[DATA] {dataset} y_test: sum={checksum} "
+                    f"hash={yhash} dist={binc}"
+                )
             except Exception:
                 pass
 
-            print(f"Data: train={X_train.shape} val={X_val.shape} "
-                  f"test={X_test.shape}")
+            print(
+                f"Data: train={X_train.shape} val={X_val.shape} "
+                f"test={X_test.shape}"
+            )
 
             config['dataset']['input_dim'] = X_train.shape[1]
 
@@ -467,21 +457,22 @@ class ExperimentRunner:
             n_params = sum(p.numel() for p in model.parameters())
             print(f"Model: {n_params:,} params")
 
-            # New structure: results/experiments/method/dataset/
-            results_dir = self.results_dir / 'experiments' / method / dataset
+            results_dir = (
+                self.results_dir / 'experiments' / method / dataset
+            )
             results_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Output dir for models (only if save_model is True)
+
             output_dir = None
-            if save_model:
+            if save_models:
                 output_dir = results_dir / 'models' / exp_name
                 output_dir.mkdir(parents=True, exist_ok=True)
 
             batch_size = config['training'].get('batch_size', 64)
             epochs = config['training'].get('epochs', 40)
-            patience = config['training'].get('early_stopping_patience', 10)
+            patience = config['training'].get(
+                'early_stopping_patience', 10
+            )
 
-            # Train
             if method == 'baseline':
                 train_loader, val_loader, test_loader = create_dataloaders(
                     X_train, y_train, X_val, y_val, X_test, y_test,
@@ -490,7 +481,8 @@ class ExperimentRunner:
                 trainer = BaselineTrainer(model, config, device=device)
                 training_results = trainer.fit(
                     train_loader, val_loader, epochs=epochs,
-                    patience=patience, output_dir=str(output_dir) if output_dir else None
+                    patience=patience,
+                    output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -502,7 +494,8 @@ class ExperimentRunner:
                 trainer = DPTrainer(model, config, device=device)
                 training_results = trainer.fit(
                     train_loader, val_loader, epochs=epochs,
-                    patience=patience, output_dir=str(output_dir) if output_dir else None
+                    patience=patience,
+                    output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -523,7 +516,8 @@ class ExperimentRunner:
                     epochs=config['federated_learning'].get(
                         'global_rounds', 40
                     ),
-                    patience=patience, output_dir=str(output_dir) if output_dir else None
+                    patience=patience,
+                    output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -545,7 +539,8 @@ class ExperimentRunner:
                     epochs=config['federated_learning'].get(
                         'global_rounds', 40
                     ),
-                    patience=patience, output_dir=str(output_dir) if output_dir else None
+                    patience=patience,
+                    output_dir=str(output_dir) if output_dir else None
                 )
                 test_metrics = trainer.evaluate_full(test_loader)
 
@@ -563,16 +558,29 @@ class ExperimentRunner:
                     'timestamp': datetime.now().isoformat(),
                 },
                 'training_metrics': {
-                    'total_epochs': training_results.get('total_epochs', training_results.get('total_rounds', 0)),
-                    'best_epoch': training_results.get('best_epoch', training_results.get('best_round', 0)),
-                    'epochs_no_improve': training_results.get('epochs_no_improve', 0),
+                    'total_epochs': training_results.get(
+                        'total_epochs',
+                        training_results.get('total_rounds', 0)
+                    ),
+                    'best_epoch': training_results.get(
+                        'best_epoch',
+                        training_results.get('best_round', 0)
+                    ),
+                    'epochs_no_improve': training_results.get(
+                        'epochs_no_improve', 0
+                    ),
                     'best_val_acc': training_results.get('best_val_acc', 0),
                     'training_time_seconds': training_results.get(
                         'training_time_seconds', 0
                     ),
                     'convergence': {
-                        'early_stopped': training_results.get('epochs_no_improve', 0) > 0,
-                        'epochs_without_improvement': training_results.get('epochs_no_improve', 0),
+                        'early_stopped': (
+                            training_results.get('epochs_no_improve', 0)
+                            > 0
+                        ),
+                        'epochs_without_improvement': (
+                            training_results.get('epochs_no_improve', 0)
+                        ),
                     }
                 },
                 'privacy_metrics': self._extract_privacy_metrics(
@@ -583,35 +591,49 @@ class ExperimentRunner:
                     'precision': test_metrics.get('precision', 0),
                     'recall': test_metrics.get('recall', 0),
                     'f1_score': test_metrics.get('f1_score', 0),
-                    'precision_per_class': test_metrics.get('precision_per_class', []),
-                    'recall_per_class': test_metrics.get('recall_per_class', []),
+                    'precision_per_class': test_metrics.get(
+                        'precision_per_class', []
+                    ),
+                    'recall_per_class': test_metrics.get(
+                        'recall_per_class', []
+                    ),
                     'f1_per_class': test_metrics.get('f1_per_class', []),
-                    'confusion_matrix': test_metrics.get('confusion_matrix', []),
+                    'confusion_matrix': test_metrics.get(
+                        'confusion_matrix', []
+                    ),
                     'class_names': test_metrics.get('class_names', []),
-                    'class_imbalance': self._compute_class_imbalance_metrics(
-                        test_metrics.get('confusion_matrix', []),
-                        test_metrics.get('class_names', [])
+                    'class_imbalance': (
+                        self._compute_class_imbalance_metrics(
+                            test_metrics.get('confusion_matrix', []),
+                            test_metrics.get('class_names', [])
+                        )
                     ),
                 },
                 'timing': {
                     'total_time_seconds': elapsed,
                 },
-                'hyperparameters': self._extract_hyperparameters(config, method),
+                'hyperparameters': self._extract_hyperparameters(
+                    config, method
+                ),
                 'communication': training_results.get('communication', {}),
-                'model_path': str(output_dir / 'best_model.pth') if output_dir else None
+                'model_path': (
+                    str(output_dir / 'best_model.pth')
+                    if output_dir else None
+                )
             }
 
-            # Save results as exp_name.json in results/experiments/method/dataset/
             results_file = results_dir / f'{exp_name}.json'
             with open(results_file, 'w') as f:
                 json.dump(results_data, f, indent=2)
 
-            print(f"Done: {test_metrics.get('accuracy', 0):.4f} acc "
-                  f"| {test_metrics.get('f1_score', 0):.4f} f1 "
-                  f"| {elapsed:.1f}s")
-            print(f"  Results saved: {results_file}")
+            print(
+                f"Done: {test_metrics.get('accuracy', 0):.4f} acc "
+                f"| {test_metrics.get('f1_score', 0):.4f} f1 "
+                f"| {elapsed:.1f}s"
+            )
+            print(f"  Results: {results_file}")
             if output_dir:
-                print(f"  Model saved: {output_dir / 'best_model.pth'}")
+                print(f"  Model: {output_dir / 'best_model.pth'}")
 
             result = {
                 'name': exp_name,
@@ -642,21 +664,25 @@ class ExperimentRunner:
         self.results.append(result)
         return result
 
-    def run_all(self, experiments: Dict, device: str, save_model: bool = True):
-        """Run all experiments."""
+    def run_all(
+        self, experiments: Dict, device: str, save_models: bool = False
+    ):
         total = len(experiments)
         print(f"\n{'='*60}")
         print(f"Running {total} experiments on {device.upper()}")
         print(f"{'='*60}")
 
-        for idx, (exp_name, exp_config) in enumerate(experiments.items(), 1):
+        for idx, (exp_name, exp_config) in enumerate(
+            experiments.items(), 1
+        ):
             print(f"\n[{idx}/{total}]", flush=True)
-            self.run_experiment(exp_name, exp_config, device, save_model=save_model)
+            self.run_experiment(
+                exp_name, exp_config, device, save_models=save_models
+            )
 
         return self.results
 
     def save_results(self, output_file='experiments/results_log.json'):
-        """Save results summary."""
         if not self.results:
             print("No results to save")
             return
@@ -668,12 +694,17 @@ class ExperimentRunner:
             'total_experiments': len(self.results),
             'successful': len(successful),
             'failed': len(self.results) - len(successful),
-            'average_accuracy': (np.mean([r['accuracy'] for r in successful])
-                                if successful else 0),
-            'average_f1': (np.mean([r['f1_score'] for r in successful])
-                          if successful else 0),
-            'total_time_hours': sum(r['time_seconds']
-                                   for r in self.results) / 3600,
+            'average_accuracy': (
+                np.mean([r['accuracy'] for r in successful])
+                if successful else 0
+            ),
+            'average_f1': (
+                np.mean([r['f1_score'] for r in successful])
+                if successful else 0
+            ),
+            'total_time_hours': (
+                sum(r['time_seconds'] for r in self.results) / 3600
+            ),
             'results': self.results
         }
 
@@ -682,15 +713,17 @@ class ExperimentRunner:
             json.dump(summary, f, indent=2)
 
         print(f"\n{'='*60}")
-        print(f"RESULTS")
+        print("RESULTS")
         print(f"{'='*60}")
-        print(f"Success: {summary['successful']}/{summary['total_experiments']}")
+        print(
+            f"Success: {summary['successful']}/"
+            f"{summary['total_experiments']}"
+        )
         print(f"Avg Accuracy: {summary['average_accuracy']:.4f}")
         print(f"Avg F1: {summary['average_f1']:.4f}")
         print(f"Time: {summary['total_time_hours']:.2f}h")
         print(f"Saved: {output_file}\n")
-        
-        # Show cache stats
+
         cache_stats = self.data_cache.get_stats()
         if cache_stats:
             print("Cache Statistics:")
@@ -708,25 +741,40 @@ Examples:
   python experiments/run_experiments.py --scenario baseline \\
     --n_experiments 3 --auto
   python experiments/run_experiments.py --scenario all --datasets wesad \\
-    --auto
+    --auto --save-models
         """
     )
 
-    parser.add_argument('--scenario', 
-                       choices=['baseline', 'dp', 'fl', 'dp_fl', 'all'],
-                       default='baseline', help='Scenario to run')
-    parser.add_argument('--device', default='auto',
-                       help='Device (cuda/cpu/auto)')
-    parser.add_argument('--datasets',
-                       help='Datasets (comma-separated: sleep-edf,wesad)')
-    parser.add_argument('--n_experiments', type=int,
-                       help='Limit number of experiments')
-    parser.add_argument('--auto', action='store_true', 
-                       help='Skip confirmation')
-    parser.add_argument('--nomodel', action='store_true',
-                       help='Do not save model checkpoints (.pth files)')
-    parser.add_argument('--output_file', 
-                       default='experiments/results_log.json')
+    parser.add_argument(
+        '--scenario',
+        choices=['baseline', 'dp', 'fl', 'dp_fl', 'all'],
+        default='baseline',
+        help='Scenario to run'
+    )
+    parser.add_argument(
+        '--device', default='auto',
+        help='Device (cuda/cpu/auto)'
+    )
+    parser.add_argument(
+        '--datasets',
+        help='Datasets (comma-separated: sleep-edf,wesad)'
+    )
+    parser.add_argument(
+        '--n_experiments', type=int,
+        help='Limit number of experiments'
+    )
+    parser.add_argument(
+        '--auto', action='store_true',
+        help='Skip confirmation'
+    )
+    parser.add_argument(
+        '--save-models', action='store_true',
+        help='Save model checkpoints (.pth files)'
+    )
+    parser.add_argument(
+        '--output_file',
+        default='experiments/results_log.json'
+    )
 
     args = parser.parse_args()
 
@@ -737,9 +785,11 @@ Examples:
         torch.cuda.empty_cache()
 
     runner = ExperimentRunner()
-    scenarios = ['baseline', 'dp', 'fl', 'dp_fl'] if args.scenario == 'all' else [
-        args.scenario
-    ]
+    scenarios = (
+        ['baseline', 'dp', 'fl', 'dp_fl']
+        if args.scenario == 'all'
+        else [args.scenario]
+    )
 
     all_experiments = {}
     for scenario in scenarios:
@@ -748,7 +798,8 @@ Examples:
             experiments = scenario_data.get('experiments', {})
             enabled = {
                 name: config for name, config in experiments.items()
-                if isinstance(config, dict) and config.get('enabled', True)
+                if isinstance(config, dict)
+                and config.get('enabled', True)
             }
             all_experiments.update(enabled)
         except FileNotFoundError:
@@ -785,11 +836,12 @@ Examples:
 
     start_time = time.time()
     try:
-        runner.run_all(all_experiments, device, save_model=not args.nomodel)
+        runner.run_all(
+            all_experiments, device, save_models=args.save_models
+        )
     finally:
-        # Always clear cache at the end
         runner.data_cache.clear()
-    
+
     elapsed = time.time() - start_time
 
     runner.save_results(args.output_file)

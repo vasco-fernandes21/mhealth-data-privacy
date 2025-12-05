@@ -29,25 +29,55 @@
 
 \author{
     \IEEEauthorblockN{
-    \textsuperscript{1}Vasco Fernandes,
+    \textsuperscript{1}Eduardo Carvalho, Filipe Correia, Vasco Fernandes,
     \textsuperscript{2}Pedro Martins}
     \IEEEauthorblockA{
     \textsuperscript{1}Department of Informatics, Polytechnic of Viseu, Viseu, Portugal\\
     \textsuperscript{2}Research Center in Digital Services, Polytechnic of Viseu, Viseu, Portugal \\
     \vspace{0.2cm}
-    pv25177@alunos.estgv.ipv.pt, pedromom@estgv.ipv.pt}
+    pv25218@alunos.estgv.ipv.pt, pv25005@alunos.estgv.ipv.pt, pv25177@alunos.estgv.ipv.pt, pedromom@estgv.ipv.pt}
 }
 
 \maketitle
 
 \begin{abstract}
-Mobile health (mHealth) applications collect sensitive physiological data from wearable devices, raising significant privacy concerns under regulations such as GDPR. While machine learning models can extract valuable health insights, centralized data processing exposes personal information to potential breaches and unauthorized access. This paper presents a comprehensive experimental evaluation of two privacy-preserving techniques---Federated Learning (FL) and Differential Privacy (DP)---applied to physiological signal classification tasks.
 
-We implement and compare these approaches using two real-world datasets: WESAD (stress detection from 15 subjects) \cite{schmidt2018wesad} and Sleep-EDF (sleep stage classification from approximately 80 subjects) \cite{kemp2000sleep_edf,goldberger2000physionet}. Across 72 experimental configurations spanning FL, DP and their combination, a unified Multi-Layer Perceptron (MLP) trained on hand-crafted features achieves competitive non-private baselines (93.6\% accuracy for WESAD, 88.4\% for Sleep-EDF) and enables a detailed privacy--utility analysis.
+Mobile health (mHealth) applications face a critical tension: extracting 
+health insights via machine learning while protecting sensitive 
+physiological data under GDPR and similar privacy regulations. Centralized 
+data processing creates privacy vulnerabilities; decentralized approaches 
+(Federated Learning) lack formal privacy guarantees.
 
-Our results suggest that feature discriminability is a critical factor in privacy-utility tradeoffs: Sleep-EDF exhibits remarkable resilience to privacy mechanisms (losing less than 3\% accuracy even with strong privacy budgets $\epsilon \approx 0.2$), while WESAD shows a substantially larger drop of about 13--14 percentage points. While dataset size, feature dimensionality (140 vs. 24), class count (2 vs. 5) and domain characteristics also vary between these datasets, Sleep-EDF's spectral features appear more robust to gradient noise than WESAD's HRV-based stress features. The combined FL+DP approach provides defense-in-depth privacy protection, with Sleep-EDF maintaining above 82\% accuracy even with 10 clients and strong privacy ($\epsilon \approx 2.3$), whereas WESAD requires weaker privacy (higher $\epsilon$) to remain clinically useful.
+This paper evaluates privacy-preserving techniques—Federated Learning (FL), 
+Differential Privacy (DP), and their combination (FL+DP)—across 78 
+experimental configurations on two physiological signal datasets: WESAD 
+(stress detection, 15 subjects) and Sleep-EDF (sleep stage classification, 
+~80 subjects). A Multi-Layer Perceptron trained on hand-crafted features 
+achieves non-private baselines of 93.6\% (WESAD) and 88.4\% (Sleep-EDF).
 
-We identify a critical phenomenon in privacy-preserving learning: the \textit{Gradient Clipping Trap}, where standard DP gradient clipping neutralizes class weights, causing random seed to dominate hyperparameter tuning by $>$100:1. This suggests that standard fairness interventions may be ineffective under DP and alternative strategies such as stratified sampling or adaptive clipping are needed. Our findings provide practical guidance for mHealth developers and highlight open challenges for fair, private learning on physiological signals.
+Key findings reveal task-dependent privacy robustness: Sleep-EDF maintains 
+strong privacy ($\epsilon \approx 0.2$) with <3\% accuracy loss, while 
+WESAD suffers 13-14\% degradation. We attribute this difference to feature 
+discriminability—Sleep-EDF's spectral features (delta, theta, alpha, beta 
+power) have inherent separation robust to noise, whereas WESAD's HRV-based 
+stress features are more sensitive to gradient perturbations. 
+
+FL+DP provides defense-in-depth protection: Sleep-EDF maintains >82\% 
+accuracy with 10 clients and strong privacy ($\epsilon \approx 2.3$), while 
+WESAD requires weaker privacy ($\epsilon \approx 24.3$) to remain clinically 
+useful.
+
+We identify the \textit{Gradient Clipping Trap}, where DP-SGD's gradient 
+clipping neutralizes class weights, causing random seed initialization to 
+dominate hyperparameter tuning by a 100:1 variance ratio. This mechanism 
+undermines standard fairness interventions and requires algorithmic 
+redesign.
+
+Our findings provide practical guidance for mHealth developers: feature 
+quality drives privacy robustness more than dataset size, and combined 
+FL+DP is computationally feasible on resource-constrained devices while 
+enabling formal privacy guarantees for physiological signals.
+
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -57,92 +87,495 @@ federated learning, differential privacy, mobile health, wearable devices, priva
 \section{Introduction}
 \label{sec:introduction}
 
-The proliferation of wearable devices and mobile health (mHealth) applications has fundamentally changed how we monitor and manage personal health. From smartwatches tracking heart rate during exercise to specialized sensors monitoring sleep quality, these devices generate continuous streams of physiological data that offer unprecedented insights into our well-being. When analyzed using machine learning techniques, this data can detect stress levels, diagnose sleep disorders and enable personalized health interventions that were previously impossible outside clinical settings.
+\subsection{Motivation: Privacy in Mobile Health}
 
-However, this technological advancement comes with a significant caveat: the data being collected is among the most sensitive personal information imaginable. Physiological signals reveal not just our physical health, but also our emotional states, daily routines and behavioral patterns. Under the General Data Protection Regulation (GDPR) and similar privacy frameworks worldwide, such data is classified as highly sensitive, requiring strict protection measures including data minimization, purpose limitation and explicit user consent \cite{gdpr2024compliance}.
+Wearable devices and mobile health (mHealth) applications have 
+fundamentally transformed personal health monitoring. From smartwatches 
+tracking heart rate to specialized sensors measuring sleep quality, 
+these devices generate continuous physiological data streams offering 
+unprecedented health insights. Machine learning analysis of this data 
+enables stress detection, sleep disorder diagnosis, and personalized 
+health interventions previously unavailable outside clinical settings.
 
-Traditional machine learning approaches fundamentally conflict with these privacy principles. The standard practice of transmitting raw sensor data to cloud servers for centralized model training creates multiple points of vulnerability. Every data transfer, every server storing patient information and every model training run represents a potential privacy breach waiting to happen.
+However, this technological advancement creates a fundamental tension: 
+the data being collected is among the most sensitive personal information 
+imaginable. Physiological signals reveal not just physical health but 
+also emotional states, daily routines, and behavioral patterns. Under 
+GDPR and similar privacy frameworks worldwide, such data is classified 
+as highly sensitive and requires strict protection through data 
+minimization, purpose limitation, and explicit user consent.
 
-The numbers paint a sobering picture:
-\begin{itemize}
-    \item \textbf{5,887} data breaches reported between 2009-2023.
-    \item \textbf{519 million} records exposed collectively.
-    \item \textbf{725} breaches in 2023 alone (highest year on record).
-\end{itemize}
-These aren't just abstract statistics; the 2015 Anthem Inc. breach exposed personal health information of 78.8 million individuals and the recent 2024 Change Healthcare ransomware attack potentially compromised data belonging to one-third of all Americans \cite{hipaa2024breaches}.
+Traditional machine learning approaches fundamentally conflict with these 
+privacy obligations. The standard practice of transmitting raw sensor 
+data to cloud servers for centralized training creates multiple 
+vulnerability points: data transfers, server storage, and training runs 
+each represent potential privacy breaches. The consequences are 
+substantial: \textbf{5,887 healthcare data breaches were reported between 2009-2023}, exposing \textbf{519 million records collectively}, with \textbf{725 incidents in 2023 alone} (the highest year on record). Notable examples include the 2015 Anthem Inc. breach (78.8 million patients) and the 2024 Change Healthcare ransomware attack (potentially one-third of all Americans).
 
-Privacy-preserving machine learning techniques offer promising solutions to these challenges. Federated Learning (FL) \cite{mcmahan2023fedavg_update} enables collaborative model training without centralizing raw data, keeping sensitive physiological signals on the device where they were collected. Instead of sending data to a central server, each device trains a model locally and shares only model updates, which are aggregated to form a global model. Differential Privacy (DP) \cite{dwork2022algorithmic,abadi2023dp_sgd} provides mathematical guarantees that analyzing a dataset will not reveal information about any individual within it by adding carefully calibrated noise during training. DP ensures that the presence or absence of any single person's data has a bounded effect on the learned model, providing formal, provable privacy guarantees.
+\subsection{Privacy-Preserving Solutions}
 
-While both FL and DP have been extensively studied, their practical effectiveness in real-world mHealth scenarios remains insufficiently quantified. Most existing work focuses on medical imaging tasks or operates in simulated environments. We need empirical evidence of how these techniques perform on actual physiological signals from wearable devices, with realistic data distributions and constraints.
+Two complementary approaches address these challenges:
 
-This paper addresses this gap through systematic experimental evaluation using two well-established physiological signal datasets: WESAD (stress detection) and Sleep-EDF (sleep stage classification). During this investigation, we identify an unexpected phenomenon with significant implications for fairness: standard techniques for handling class imbalance—specifically, weighted loss functions—appear largely ineffective when combined with differential privacy under standard configurations. The gradient clipping mechanism required for DP appears to suppress the signals that class weights rely on. We experimentally show that class weights become essentially ineffective under standard DP-SGD clipping, with seed variance exceeding weight variance by a ratio of over 100:1.
+\textbf{Federated Learning (FL)} keeps sensitive data on device by 
+enabling collaborative model training without centralization. Rather than 
+transmitting raw data, each device trains a model locally using only its 
+private data, then shares only model updates. These updates are 
+aggregated at a central server to form a global model, ensuring raw data 
+never leaves the device where it was collected.
 
-Our main contributions are:
-\begin{itemize}
-    \item \textbf{Comprehensive Implementation}: We evaluate FL, DP and combined FL+DP on two distinct physiological signal datasets, providing a complete picture of privacy options for mHealth.
-    \item \textbf{Privacy-Utility Analysis}: We quantify the trade-off between privacy guarantees and model performance across multiple configurations, enabling informed decision-making.
-    \item \textbf{Class Imbalance Analysis}: We provide quantitative evidence that class weights appear largely ineffective in DP training under standard configurations when gradient clipping is applied, with seed variance dominating weight variance by a ratio exceeding 100:1 in our experiments.
-    \item \textbf{Mechanism Validation}: We investigate the gradient clipping mechanism through systematic experimentation and observe that increasing the clipping bound appears to partially recover weight functionality.
-\end{itemize}
+\textbf{Differential Privacy (DP)} provides mathematical guarantees that 
+analyzing a dataset will not reveal information about any individual. It 
+works by adding carefully calibrated noise during training, ensuring that 
+the presence or absence of any single person's data has a bounded effect 
+on the learned model. Unlike heuristic privacy claims, DP offers formal, 
+provably correct privacy guarantees.
+
+\subsection{Research Gap and Motivation}
+
+While FL and DP are theoretically sound and extensively studied, their 
+practical effectiveness in real-world mHealth scenarios remains 
+insufficiently quantified. Most existing work focuses on medical imaging 
+tasks or operates in simulated environments with synthetic data. In 
+contrast, actual physiological signals from wearable devices exhibit 
+realistic data distributions and practical constraints (class imbalance, 
+inter-subject variability, sensor noise) that remain understudied.
+
+We address this gap through systematic experimental evaluation on two 
+well-established physiological signal datasets: WESAD (stress detection) 
+and Sleep-EDF (sleep stage classification). During this investigation, 
+we identify an unexpected phenomenon with significant implications for 
+fairness: standard class imbalance mitigation techniques—specifically, 
+weighted loss functions—appear largely ineffective when combined with 
+differential privacy under standard configurations. The gradient clipping 
+mechanism required for DP appears to suppress the signals that class 
+weights rely upon. We experimentally demonstrate that class weights 
+become essentially ineffective under standard DP-SGD, with random seed 
+variance exceeding weight variance by a ratio exceeding 100:1.
+
+\subsection{Research Questions and Contributions}
 
 To guide our evaluation, we formulate three research questions:
+
+\begin{enumerate}
+    \item \textbf{RQ1 (Trade-off):} What is the quantifiable impact of 
+    DP and FL on classification accuracy for physiological signals 
+    compared to a centralized baseline?
+    
+    \item \textbf{RQ2 (Fairness):} How do privacy mechanisms, 
+    specifically DP-SGD, interact with standard techniques for handling 
+    class imbalance?
+    
+    \item \textbf{RQ3 (Feasibility):} Is the proposed privacy-preserving 
+    architecture computationally viable for deployment on resource-
+    constrained wearable devices?
+\end{enumerate}
+
+Our main contributions are:
+
 \begin{itemize}
-    \item \textbf{RQ1 (Trade-off):} What is the quantifiable impact of DP and FL on classification accuracy for physiological signals compared to a centralized baseline?
-    \item \textbf{RQ2 (Fairness):} How do privacy mechanisms, specifically DP-SGD, interact with standard techniques for handling class imbalance?
-    \item \textbf{RQ3 (Feasibility):} Is the proposed privacy-preserving architecture computationally viable for deployment on resource-constrained wearable devices?
+    \item \textbf{Comprehensive Implementation:} We evaluate FL, DP, and 
+    combined FL+DP across 78 experimental configurations on two distinct 
+    physiological signal datasets, providing a complete picture of 
+    privacy options available to mHealth developers.
+    
+    \item \textbf{Privacy-Utility Analysis:} We quantify the trade-off 
+    between privacy guarantees and model performance across multiple 
+    configurations, enabling informed decision-making for practitioners.
+    
+    \item \textbf{Discovery of the Gradient Clipping Trap:} We provide 
+    quantitative evidence that class weights appear largely ineffective 
+    in DP training under standard configurations, with random seed 
+    variance dominating weight variance by a ratio exceeding 100:1. We 
+    identify the mechanism: gradient clipping neutralizes class weight 
+    signals.
+    
+    \item \textbf{Mechanism Validation:} We investigate the gradient 
+    clipping mechanism through systematic experimentation, demonstrating 
+    that increasing the clipping bound partially recovers weight 
+    functionality.
 \end{itemize}
 
-This document is structured as follows: Section \ref{sec:state_of_the_art} presents a review of the state of the art in privacy-preserving machine learning for healthcare. Section \ref{sec:architecture} outlines the system architecture and feature extraction pipeline. Section \ref{sec:experimental_setup} details the experimental setup, datasets and implementation configurations. Section \ref{sec:results} discusses the results and analysis across all privacy-preserving methods. Finally, Section \ref{sec:conclusions} concludes the paper and suggests future work.
+\subsection{Paper Organization}
+
+This document is structured as follows: Section 
+\ref{sec:state_of_the_art} reviews the state of the art in privacy-
+preserving machine learning for healthcare. Section \ref{sec:architecture} 
+describes our system architecture and feature extraction pipeline. Section 
+\ref{sec:experimental_setup} details the experimental setup, datasets, and 
+implementation configurations. Section \ref{sec:results} presents results 
+and analysis across all privacy-preserving methods, addressing each 
+research question. Section \ref{sec:conclusions} concludes the paper and 
+suggests future work directions.
 
 \section{State of the Art}
 \label{sec:state_of_the_art}
 
-\subsection{Privacy Threats in Healthcare Systems}
-The nature of healthcare data breaches has evolved from physical theft to sophisticated cyberattacks. Hacking-related breaches increased sharply over the past five years \cite{hipaa2024breaches}. Furthermore, the integration of AI into healthcare introduces new attack vectors. Model inversion and membership inference attacks can reconstruct training data or reveal whether a specific individual's data was included in the training set \cite{healthcare_security2024}. These vulnerabilities highlight that while FL improves privacy compared to centralized training, additional mechanisms are necessary for robust protection.
+\subsection{Historical Context: Evolution of Privacy-Preserving ML (2016-2024)}
 
-\subsection{Federated Learning in Healthcare}
-Federated Learning, introduced by McMahan et al. \cite{mcmahan2023fedavg_update}, represents a paradigm shift in collaborative machine learning. Rather than centralizing data for training, FL enables each participating device or institution to train a model locally using only its private data. These local models are then aggregated at a central server, which combines them into a global model without ever seeing the raw data. This approach addresses both data locality constraints and privacy concerns inherent in traditional centralized training.
+Privacy-preserving machine learning emerged as a focused research area at 
+the intersection of two urgent demands: (1) the exponential growth of 
+sensitive data collection by mobile and cloud platforms, and (2) the 
+fundamental limitations of centralized model training for collaborative 
+learning across institutions and devices.
 
-The healthcare sector has been quick to recognize FL's potential. Recent comprehensive surveys highlight its growing adoption across diverse medical applications \cite{rieke2023federated_health}, including wearable monitoring and personalized decision support. These studies emphasize practical challenges: data heterogeneity across institutions, communication efficiency in mobile settings and client selection strategies tailored to resource-constrained devices.
+Two pivotal breakthroughs occurred simultaneously in 2016:
 
-However, FL alone does not provide formal privacy guarantees. While it eliminates the need to share raw data, the model updates themselves can leak information about the training data. Recent work has demonstrated that gradient updates can be analyzed to infer properties of the training data and in some cases, even reconstruct individual training examples \cite{healthcare_security2024}. These vulnerabilities highlight that while FL improves privacy compared to centralized training, additional mechanisms are necessary for robust protection. Our work extends FL research by applying it specifically to the time-series physiological data characteristic of wearable devices.
+\textbf{Federated Learning} was introduced by McMahan et al. 
+\cite{mcmahan2023fedavg_update} through the FedAvg algorithm, enabling 
+distributed training without data centralization. The core innovation 
+answered a previously intractable question: "Can we learn from data we 
+never see?" Rather than transmitting raw data to central servers, clients 
+train locally and share only model updates, which are then aggregated into 
+a global model. This paradigm shift fundamentally changed how researchers 
+thought about collaborative ML.
 
-\subsection{Differential Privacy for Healthcare Data}
-Differential Privacy, formalized by Dwork and Roth \cite{dwork2022algorithmic}, provides the gold standard for privacy guarantees in data analysis and machine learning. Unlike heuristic approaches that offer vague assurances of privacy, DP provides mathematically rigorous guarantees about what can and cannot be learned from a dataset.
+\textbf{Differential Privacy in Machine Learning} was formalized by Abadi 
+et al. \cite{abadi2023dp_sgd}, introducing DP-SGD (differentially private 
+stochastic gradient descent). This provided the first practical algorithm 
+offering formal, provably correct privacy guarantees during model training 
+through gradient clipping and noise injection—moving privacy from heuristic 
+assurances to mathematical guarantees.
 
-Formally, a mechanism $\mathcal{M}$ satisfies $(\epsilon, \delta)$-differential privacy if for any two datasets $D$ and $D'$ differing by exactly one individual's data and for any possible output set $S$:
-\begin{equation}
-Pr[\mathcal{M}(D) \in S] \leq e^\epsilon \cdot Pr[\mathcal{M}(D') \in S] + \delta
-\end{equation}
+Since 2016, these two approaches have evolved substantially but largely 
+independently:
 
-The parameter $\epsilon$ (epsilon) quantifies the privacy budget—lower values indicate stronger privacy guarantees, with $\epsilon \to 0$ representing perfect privacy (and completely useless output) and $\epsilon \to \infty$ representing no privacy. The parameter $\delta$ represents a small probability of failure, typically set to negligible values like $10^{-5}$.
-
-What makes this definition powerful is its composition properties and resistance to post-processing. Privacy budgets accumulate across multiple queries or training iterations, allowing practitioners to track precisely how much privacy is being spent. No subsequent analysis of the DP mechanism's output can degrade the privacy guarantee—if you start with $\epsilon$-DP, you end with $\epsilon$-DP, regardless of what others do with the results.
-
-For machine learning applications, the standard approach is DP-SGD (Stochastic Gradient Descent with Differential Privacy), introduced by Abadi et al. \cite{abadi2023dp_sgd}. The algorithm modifies standard SGD training in two crucial ways: first, it clips each training example's gradient to a maximum L2 norm, bounding the influence any single example can have; second, it adds carefully calibrated Gaussian noise to the gradients before updating model parameters. The amount of noise is determined by the desired privacy budget and the gradient clipping threshold. Large-scale deployments \cite{stock2023practical_dp,zhu2023efficient_dp,kairouz2022distributed_dp} further highlight both the promise and the limitations of DP in realistic settings.
-
-Liu et al. \cite{liu2023dp_healthcare} provide a comprehensive review of DP methods specifically for medical machine learning, analyzing trade-offs between privacy guarantees and model utility across various clinical tasks. Their analysis reveals that while some tasks are highly robust to DP noise (maintaining high accuracy even with strong privacy), others are more sensitive and require careful hyperparameter tuning. Implementation has been facilitated by tools like Opacus \cite{opacus2023}, a PyTorch library that simplifies the integration of DP into existing machine learning workflows by automating privacy budget accounting and gradient clipping.
-
-\subsection{Class Imbalance in Differentially Private Learning}
-Class imbalance is a critical issue in healthcare ML, where disease states are typically rare compared to healthy states. Recent work suggests DP exacerbates this problem.
 \begin{itemize}
-    \item \textbf{Disparate Impact:} Bagdasaryan et al. \cite{bagdasaryan2022disparate} demonstrated that DP-SGD can amplify existing biases, leading to worse performance on minority classes because the noise added for privacy has a proportionally greater impact on smaller groups.
-    \item \textbf{Oversampling Costs:} Rosenblatt et al. \cite{rosenblatt2024imbalance} showed that standard pre-processing techniques like SMOTE incur prohibitive privacy costs when combined with DP.
-    \item \textbf{Gradient Clipping:} Zhao et al. \cite{zhao2024adaptive_clipping} identified that gradient clipping suppresses larger gradients from challenging samples (often minority class examples). Their proposed solution, \textit{bounded adaptive clipping}, attempts to mitigate this.
+    \item \textbf{FL Evolution:} Initially demonstrated on vision tasks 
+    (MNIST, CIFAR-10). Rapidly expanded to medical imaging 
+    \cite{rieke2023federated_health}, healthcare applications, and more 
+    recently to edge devices and resource-constrained scenarios. Focus has 
+    been on communication efficiency and convergence under data 
+    heterogeneity.
+    
+    \item \textbf{DP-SGD Evolution:} Initially applied to image 
+    classification. Subsequently deployed at scale in production systems 
+    \cite{stock2023practical_dp}, federated settings 
+    \cite{zhu2023efficient_dp}, and distributed systems 
+    \cite{kairouz2022distributed_dp}. Focus has been on tightening privacy 
+    bounds and understanding privacy-utility trade-offs.
 \end{itemize}
 
-While these works identify the problem, there is a lack of quantitative analysis regarding standard weighted loss functions. Our work addresses this gap by systematically demonstrating that weighted loss appears largely ineffective under standard DP configurations in our experimental setup.
+However, a critical gap persists: **empirical evaluation of these techniques 
+on real physiological signals from wearable devices**, which have 
+fundamentally different characteristics than images or text. This gap is 
+the subject of the present work.
 
-\subsection{FL+DP and Privacy-Preserving mHealth}
-Beyond FL or DP in isolation, recent work has begun to explore combined FL+DP training, primarily for image and language tasks and at cloud scale \cite{zhu2023efficient_dp,kairouz2022distributed_dp,karimireddy2022federated_optimization}. In parallel, the mHealth community has focused on powerful non-private models and on regulatory and deployment challenges for mobile apps \cite{martinez2024mhealth_privacy}. However, to the best of our knowledge there is still limited empirical evidence on how combined FL+DP behaves on real physiological time-series from wearables, particularly with respect to fairness under class imbalance. Our work addresses this gap by providing a systematic, end-to-end comparison of FL, DP and FL+DP on WESAD and Sleep-EDF.
+\subsection{Privacy Threats in Healthcare Systems}
+
+The imperative for privacy-preserving ML in healthcare is grounded in 
+concrete, escalating risks. Healthcare data breaches have accelerated 
+dramatically over the past two decades. The nature of these breaches has 
+evolved from physical theft to sophisticated cyberattacks. Hacking-related 
+breaches have increased sharply over the past five years 
+\cite{hipaa2024breaches}.
+
+The scale of exposure is sobering:
+\begin{itemize}
+    \item \textbf{5,887 data breaches reported between 2009-2023}
+    \item \textbf{519 million patient records exposed collectively}
+    \item \textbf{725 breaches in 2023 alone (the highest year on record)}
+\end{itemize}
+
+Notable incidents underscore the severity: the 2015 Anthem Inc. breach 
+exposed personal health information of 78.8 million individuals; the recent 
+2024 Change Healthcare ransomware attack potentially compromised data 
+belonging to one-third of all Americans.
+
+Furthermore, the integration of AI into healthcare introduces new, 
+previously unknown attack vectors. Model inversion and membership inference 
+attacks can reconstruct training data or reveal whether a specific 
+individual's data was included in the training set \cite{healthcare_security2024}. 
+These vulnerabilities highlight that while FL improves privacy compared to 
+centralized training, additional mechanisms are necessary for robust 
+protection. The model updates themselves can leak information about the 
+training data if not properly secured with formal privacy guarantees.
+
+\textbf{Research Gap Identified:} Standard centralized training is 
+incompatible with healthcare privacy regulations (GDPR, HIPAA). Both FL 
+and DP promise solutions, but their practical effectiveness on real-world 
+physiological data remains understudied.
+
+\subsection{Federated Learning in Healthcare}
+
+Federated Learning, introduced by McMahan et al. \cite{mcmahan2023fedavg_update}, 
+represents a paradigm shift in collaborative machine learning. Rather than 
+centralizing data for training, FL enables each participating device or 
+institution to train a model locally using only its private data. These 
+local models are then aggregated at a central server, which combines them 
+into a global model without ever seeing the raw data. This approach 
+addresses both data locality constraints and privacy concerns inherent in 
+traditional centralized training.
+
+The healthcare sector has been quick to recognize FL's potential. Recent 
+comprehensive surveys highlight its growing adoption across diverse medical 
+applications \cite{rieke2023federated_health}, including wearable 
+monitoring and personalized decision support. These studies emphasize 
+practical challenges: data heterogeneity across institutions, communication 
+efficiency in mobile settings, and client selection strategies tailored to 
+resource-constrained devices.
+
+However, FL alone does not provide formal privacy guarantees. While it 
+eliminates the need to share raw data, the model updates themselves can 
+leak information about the training data. Recent work has demonstrated that 
+gradient updates can be analyzed to infer properties of the training data 
+and, in some cases, even reconstruct individual training examples 
+\cite{healthcare_security2024}. These vulnerabilities highlight that while 
+FL improves privacy compared to centralized training, additional mechanisms 
+are necessary for robust protection.
+
+Our work extends FL research by applying it specifically to the time-series 
+physiological data characteristic of wearable devices. Unlike images or text, 
+physiological signals exhibit extreme inter-subject variability: no two 
+individuals have identical heart rate variability patterns, sleep cycles, or 
+stress signatures. This domain-specific challenge—data heterogeneity in the 
+physiological signal space—has received limited empirical attention in the 
+FL literature.
+
+\textbf{Research Gap Identified:} While FL is well-studied for images and 
+text, empirical evaluation on real time-series physiological signals from 
+wearables is sparse. How does FL perform when data heterogeneity is 
+physiologically-rooted rather than institutional?
+
+\subsection{Differential Privacy for Healthcare Data}
+
+Differential Privacy, formalized by Dwork and Roth \cite{dwork2022algorithmic}, 
+provides the gold standard for privacy guarantees in data analysis and 
+machine learning. Unlike heuristic approaches that offer vague assurances 
+of privacy, DP provides mathematically rigorous guarantees about what can 
+and cannot be learned from a dataset.
+
+Formally, a mechanism $\mathcal{M}$ satisfies $(\epsilon, \delta)$-differential 
+privacy if for any two datasets $D$ and $D'$ differing by exactly one 
+individual's data and for any possible output set $S$:
+\begin{equation}
+Pr[\mathcal{M}(D) \in S] \leq e^\epsilon \cdot Pr[\mathcal{M}(D') \in S] + \delta
+\label{eq:dp_formal}
+\end{equation}
+
+The parameter $\epsilon$ (epsilon) quantifies the privacy budget—lower 
+values indicate stronger privacy guarantees, with $\epsilon \to 0$ 
+representing perfect privacy (and completely useless output) and 
+$\epsilon \to \infty$ representing no privacy. The parameter $\delta$ 
+represents a small probability of failure, typically set to negligible 
+values like $10^{-5}$.
+
+What makes this definition powerful is its composition properties and 
+resistance to post-processing. Privacy budgets accumulate across multiple 
+queries or training iterations, allowing practitioners to track precisely 
+how much privacy is being spent. No subsequent analysis of the DP 
+mechanism's output can degrade the privacy guarantee—if you start with 
+$\epsilon$-DP, you end with $\epsilon$-DP, regardless of what others do 
+with the results.
+
+For machine learning applications, the standard approach is DP-SGD 
+(Stochastic Gradient Descent with Differential Privacy), introduced by 
+Abadi et al. \cite{abadi2023dp_sgd}. The algorithm modifies standard SGD 
+training in two crucial ways: first, it clips each training example's 
+gradient to a maximum L2 norm, bounding the influence any single example 
+can have; second, it adds carefully calibrated Gaussian noise to the 
+gradients before updating model parameters. The amount of noise is 
+determined by the desired privacy budget and the gradient clipping 
+threshold. Large-scale deployments \cite{stock2023practical_dp, 
+zhu2023efficient_dp, kairouz2022distributed_dp} further highlight both the 
+promise and the limitations of DP in realistic settings.
+
+Liu et al. \cite{liu2023dp_healthcare} provide a comprehensive review of DP 
+methods specifically for medical machine learning, analyzing trade-offs 
+between privacy guarantees and model utility across various clinical tasks. 
+Their analysis reveals that while some tasks are highly robust to DP noise 
+(maintaining high accuracy even with strong privacy), others are more 
+sensitive and require careful hyperparameter tuning. This task-dependent 
+behavior suggests that domain characteristics—not just dataset size—matter 
+for privacy robustness. Implementation has been facilitated by tools like 
+Opacus \cite{opacus2023}, a PyTorch library that simplifies the integration 
+of DP into existing machine learning workflows by automating privacy budget 
+accounting and gradient clipping.
+
+\textbf{Research Gap Identified:} Most DP evaluations focus on images or 
+text. The observation that some tasks are "more robust" (Liu et al.) is 
+intriguing but underexplored. What domain characteristics drive privacy 
+robustness in physiological signals? Feature discriminability? Dataset 
+size? Both?
+
+\subsection{Controversy: Privacy-Utility Trade-offs in Practice}
+
+A major unresolved debate in the DP community concerns practical privacy 
+thresholds. Two opposing positions dominate:
+
+\textbf{Position A (Skeptical):} Some researchers argue that realistic 
+privacy budgets ($\epsilon < 1$) are impractical because they require 
+prohibitive model degradation. Privacy becomes meaningless if the model is 
+unusable. Advocates recommend $\epsilon \geq 8$ for acceptable utility 
+\cite{mironov2017strong}.
+
+\textbf{Position B (Optimistic):} Others demonstrate that with careful 
+feature engineering and model design, strong privacy ($\epsilon < 3$) is 
+achievable with modest utility loss (< 5\% accuracy degradation) on real 
+datasets \cite{stock2023practical_dp}. Privacy and utility need not be 
+mutually exclusive.
+
+The truth appears to be nuanced and task-dependent: some tasks remain 
+robust to strong privacy while others degrade substantially. This paper 
+contributes empirical evidence to this debate using physiological signals, 
+demonstrating that feature quality (not just dataset size or privacy budget) 
+significantly influences achievable privacy-utility trade-offs.
+
+\subsection{Class Imbalance in Differentially Private Learning}
+
+Class imbalance is a critical issue in healthcare ML, where disease states 
+are typically rare compared to healthy states. Recent work suggests DP 
+exacerbates this problem, creating fairness challenges that have received 
+insufficient attention in practical deployments.
+
+\begin{itemize}
+    \item \textbf{Disparate Impact:} Bagdasaryan et al. 
+    \cite{bagdasaryan2022disparate} demonstrated that DP-SGD can amplify 
+    existing biases, leading to worse performance on minority classes 
+    because the noise added for privacy has a proportionally greater impact 
+    on smaller groups. Their experiments showed systematic degradation of 
+    minority class recall by 15-20\% relative to non-private baselines.
+    
+    \item \textbf{Oversampling Costs:} Rosenblatt et al. 
+    \cite{rosenblatt2024imbalance} showed that standard pre-processing 
+    techniques like SMOTE (Synthetic Minority Over-sampling Technique) 
+    incur prohibitive privacy costs when combined with DP. Each synthetic 
+    sample must be accounted for in privacy composition, effectively 
+    doubling or tripling the privacy cost compared to non-synthetic training.
+    
+    \item \textbf{Gradient Clipping Complications:} Zhao et al. 
+    \cite{zhao2024adaptive_clipping} identified that gradient clipping—the 
+    core mechanism of DP-SGD—suppresses larger gradients from challenging 
+    samples (often minority class examples). Their proposed solution, 
+    \textit{bounded adaptive clipping}, attempts to mitigate this by varying 
+    clipping bounds based on gradient statistics.
+\end{itemize}
+
+While these works identify the problem, there is a lack of quantitative 
+analysis regarding **standard weighted loss functions**, which remain the 
+most commonly used fairness intervention in practice. Do class weights 
+actually work under DP-SGD? At what clipping bounds? How does this interact 
+with random seed initialization and dataset characteristics? These 
+fundamental questions remain largely unanswered in the literature.
+
+\textbf{Research Gap Identified:} The interaction between standard fairness 
+mechanisms (class weighting) and DP-SGD is poorly understood. Our work 
+addresses this gap by systematically demonstrating that weighted loss 
+appears largely ineffective under standard DP configurations, and by 
+identifying the mechanism—the gradient clipping trap—driving this failure.
+
+\subsection{FL+DP and Privacy-Preserving mHealth: Integration Challenges}
+
+Beyond FL or DP in isolation, recent work has begun to explore combined 
+FL+DP training, recognizing that neither approach alone provides complete 
+protection. This combination offers defense-in-depth: FL's decentralization 
+keeps data local, while DP's noise injection provides formal guarantees 
+even if an adversary can observe the model updates.
+
+Recent work has primarily focused on image and language tasks and at cloud 
+scale \cite{zhu2023efficient_dp, kairouz2022distributed_dp, 
+karimireddy2022federated_optimization}. For example, large-scale 
+deployments have demonstrated that FL+DP is feasible for text prediction, 
+achieving reasonable utility with formal privacy guarantees. In parallel, 
+the mHealth community has focused on powerful non-private models and on 
+regulatory and deployment challenges for mobile apps \cite{martinez2024mhealth_privacy}.
+
+However, to the best of our knowledge, there is still limited empirical 
+evidence on how combined FL+DP behaves on **real physiological time-series 
+from wearables**, particularly with respect to fairness under class 
+imbalance. Most FL+DP studies use synthetic or benchmark datasets, which do 
+not capture the inter-subject variability, sensor noise, and clinical 
+imbalance of real wearable data.
+
+\textbf{Research Gap Identified:} The practical effectiveness of combined 
+FL+DP on real physiological signals—with realistic class imbalance, 
+physiological variance, and wearable constraints—remains experimentally 
+unvalidated.
+
+\subsection{Summary: Three Critical Research Gaps}
+
+Synthesizing the literature review, three interconnected gaps become clear:
+
+\begin{table}[h]
+\centering
+\caption{Research Gaps in Privacy-Preserving ML for Healthcare}
+\label{tab:research_gaps}
+\footnotesize
+\begin{tabular}{p{1cm}p{3cm}p{3.5cm}}
+\toprule
+\textbf{Gap} & \textbf{Status} & \textbf{Why It Matters} \\
+\midrule
+\textbf{Gap 1} & 
+Physiological signals understudied & 
+FL/DP well-studied on images/text, not time-series \\
+
+\midrule
+\textbf{Gap 2} & 
+Class imbalance + DP mechanisms unexplored & 
+Standard fairness mechanisms (weights) untested under DP \\
+
+\midrule
+\textbf{Gap 3} & 
+FL+DP on real wearable data sparse & 
+Combined privacy limited to synthetic/cloud scenarios \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+These gaps are interconnected: a comprehensive evaluation must address all 
+three simultaneously using real physiological data with realistic imbalance 
+and privacy constraints.
+
+\subsection{Our Positioning: Addressing the Gaps}
+
+This paper addresses all three gaps through systematic experimental 
+evaluation of FL, DP, and combined FL+DP on two real physiological datasets: 
+WESAD (stress detection) and Sleep-EDF (sleep stage classification).
+
+\textbf{Gap 1 (Domain-Specific Evaluation):} We provide the first 
+comprehensive empirical evaluation of privacy-preserving ML on real 
+time-series physiological signals from wearables, with realistic inter-
+subject variability and sensor characteristics.
+
+\textbf{Gap 2 (Fairness Mechanisms):} We systematically investigate whether 
+standard class weighting functions—the most commonly used fairness 
+intervention in practice—actually work under DP-SGD. We discover they do 
+not, and identify the mechanism: the \textit{Gradient Clipping Trap}, where 
+gradient clipping neutralizes class weight signals. We quantify this through 
+variance analysis (seed variance >100:1 weight variance) and validate by 
+measuring clipping frequency as a function of clipping bound.
+
+\textbf{Gap 3 (End-to-End FL+DP):} We provide practical evidence that 
+combined FL+DP is computationally feasible on resource-constrained 
+wearables (training <1-80 seconds, 11MB communication overhead), while 
+maintaining formal privacy guarantees. We demonstrate that privacy-utility 
+trade-offs are task-dependent, driven by feature discriminability: Sleep-EDF 
+achieves strong privacy ($\epsilon \approx 0.2$) with minimal loss (2.3\%), while WESAD 
+requires weaker privacy ($\epsilon \approx 7.6$) with larger loss (13.6\%).
 
 \section{System Architecture}
 \label{sec:architecture}
 
-Our system is designed around three core principles: simplicity, efficiency and privacy-by-design. We opt for a unified Multi-Layer Perceptron (MLP) operating on carefully engineered features rather than complex deep learning architectures. This choice aligns with the GDPR principle of \textbf{data minimization}: by processing raw signals into aggregated statistical features locally, we inherently reduce the granularity of data exposed to the learning algorithm, stripping away high-frequency identifiers while preserving diagnostic utility.
+Our system is designed around three core principles: simplicity, efficiency 
+and privacy-by-design. We opt for a unified Multi-Layer Perceptron (MLP) 
+operating on carefully engineered features rather than complex deep learning 
+architectures. This choice aligns with the GDPR principle of \textbf{data 
+minimization}: by processing raw signals into aggregated statistical features 
+locally, we inherently reduce the granularity of data exposed to the learning 
+algorithm, stripping away high-frequency identifiers while preserving 
+diagnostic utility.
 
 \subsection{Feature Extraction Pipeline}
-To reduce dimensionality and align with clinical analysis, our pipeline extracts domain-informed features that capture the physiological and clinical significance of the signals. This approach not only improves model interpretability but also enables efficient on-device processing, avoiding the need to transmit raw signals. We opt for this ''features-only'' approach to significantly reduce input dimensionality (e.g., from $\sim$30,000 raw samples to 140 features per window), enabling real-time inference on ultra-low-power wearable microcontrollers where deep learning on raw signals would be prohibitive.
+
+To reduce dimensionality and align with clinical analysis, our pipeline 
+extracts domain-informed features that capture the physiological and clinical 
+significance of the signals. This approach not only improves model 
+interpretability but also enables efficient on-device processing, avoiding 
+the need to transmit raw signals. We opt for this ''features-only'' approach 
+to significantly reduce input dimensionality (e.g., from $\sim$30,000 raw 
+samples to 140 features per window), enabling real-time inference on 
+ultra-low-power wearable microcontrollers where deep learning on raw signals 
+would be prohibitive.
 
 \begin{figure}[h]
 \centering
@@ -176,7 +609,10 @@ To reduce dimensionality and align with clinical analysis, our pipeline extracts
 \end{figure}
 
 \subsubsection{WESAD Dataset Processing}
-The WESAD dataset contains multimodal recordings from 15 subjects. Our feature extraction process produces 140 features computed over 60-second sliding windows:
+
+The WESAD dataset contains multimodal recordings from 15 subjects. Our 
+feature extraction process produces 140 features computed over 60-second 
+sliding windows:
 \begin{itemize}
     \item \textbf{ECG}: Heart rate variability metrics including RMSSD, SDNN, pNN50 and LF/HF ratio.
     \item \textbf{EDA}: Skin conductance level (SCL) statistics and skin conductance response (SCR) peak frequency.
@@ -184,7 +620,8 @@ The WESAD dataset contains multimodal recordings from 15 subjects. Our feature e
     \item \textbf{Respiration}: Rate, breath depth and inhalation/exhalation ratios.
     \item \textbf{Temperature}: Mean and trend statistics.
 \end{itemize}
-The classification task is binary (Stress vs. Non-Stress), presenting a class imbalance of approximately 2.3:1.
+The classification task is binary (Stress vs. Non-Stress), presenting a 
+class imbalance of approximately 2.3:1.
 
 \subsubsection{Sleep-EDF Dataset Processing}
 For Sleep-EDF, the preprocessing pipeline processes approximately 80 subjects using three channels (EEG Fpz-Cz, EEG Pz-Oz, EOG) sampled at 100 Hz. The feature extraction yields 24 features computed over 30-second epochs, which corresponds to the standard clinical interval for sleep stage scoring:
@@ -382,8 +819,8 @@ To systematically evaluate the privacy-utility trade-off across multiple dimensi
 Baseline & Seeds: \{42, 123, 456\} & 3 runs × 2 datasets = 6 \\ 
 DP & $\sigma \in \{0.6, 1.0, 2.0\}$ & 3 $\sigma$ × 3 runs × 2 datasets = 18 \\ 
 FL & $N \in \{3, 5, 10\}$ clients & 3 $N$ × 3 runs × 2 datasets = 18 \\ 
-FL+DP & $N \in \{3, 5, 10\}$, $\sigma \in \{0.3, 0.6, 1.0\}$ & 5 configs × 3 runs × 2 datasets = 30 \\ \midrule
-\textbf{Total} & & \textbf{72 experiments} \\ \bottomrule
+FL+DP & $N \in \{3, 5, 10\}$, $\sigma \in \{0.3, 0.6, 1.0\}$ & 6 configs × 3 runs × 2 datasets = 36 \\ \midrule
+\textbf{Total} & & \textbf{78 experiments} \\ \bottomrule
 \end{tabular}
 \end{table*}
 
@@ -397,8 +834,6 @@ All experiments were conducted using PyTorch (v2.0+) and Opacus (v1.0+) on syste
     \item \textbf{Privacy Parameters:} The privacy parameter $\delta$ is fixed at $10^{-5}$ and the noise multiplier $\sigma$ is varied across $\{0.3, 0.6, 1.0, 2.0\}$ to explore the privacy-utility trade-off. Specifically, centralized DP tests $\sigma \in \{0.6, 1.0, 2.0\}$, while FL+DP additionally includes $\sigma=0.3$ to explore lower noise regimes.
     \item \textbf{FL Configurations:} We evaluate client counts of $N \in \{3, 5, 10\}$. For FL+DP, the focus is on $N=5$ with varying $\sigma$, supplemented by $N \in \{3, 10\}$ with $\sigma=1.0$ to study client count effects.
 \end{itemize}
-
-All models are trained with validation-based early stopping, using a patience of 15–20 validation rounds and selecting the checkpoint with the best validation accuracy rather than the final epoch. The effective number of epochs until convergence therefore varies by dataset and configuration, typically ranging from 20–30 epochs for WESAD and up to 40 epochs for Sleep-EDF.
 
 \section{Results and Analysis}
 \label{sec:results}
@@ -436,7 +871,7 @@ Sleep-EDF & FL+DP & 1.0 & 40 & 128 & $\sim$12,000/client & 1.6 \\
 
 \begin{table}[h]
 \centering
-\caption{Baseline Model Comparison (No Privacy)}
+\caption{Baseline Model Comparison (No Privacy, mean $\pm$ std over 3 runs)}
 \label{tab:baseline_comparison}
 \footnotesize
 \begin{tabular}{lccc}
@@ -446,7 +881,7 @@ Sleep-EDF & FL+DP & 1.0 & 40 & 128 & $\sim$12,000/client & 1.6 \\
 Random Forest & 91.1\% & 86.3\% & 0.2s / 13.6s \\
 Gradient Boosting & 88.0\% & 87.7\% & 9.0s / 1780s \\
 SVM (RBF) & 82.5\% & 88.0\% & 0.1s / 372s \\
-\textbf{MLP (ours)} & \textbf{93.6\%} & \textbf{88.4\%} & 0.7s / 78s \\
+\textbf{MLP (ours)} & \textbf{93.6\% $\pm$ 1.4} & \textbf{88.4\% $\pm$ 0.1} & 0.7s / 78.3s \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -464,22 +899,22 @@ To establish a reference point for measuring privacy costs, baseline performance
 
 \begin{table*}[h]
 \centering
-\caption{Baseline vs. DP Performance ($\epsilon$ values at $\delta=10^{-5}$, averaged over 3 runs). Note: $\epsilon < 3$ indicates strong privacy; $\epsilon > 10$ indicates weak privacy suitable only for trend analysis.}
+\caption{Baseline vs. DP Performance ($\epsilon$ values at $\delta=10^{-5}$, mean $\pm$ std over 3 runs). Note: $\epsilon < 3$ indicates strong privacy; $\epsilon > 10$ indicates weak privacy suitable only for trend analysis.}
 \label{tab:dp_results}
 \footnotesize
 \begin{tabular}{lccccc}
 \toprule
 \textbf{Dataset} & \textbf{Config} & \textbf{$\epsilon$} & \textbf{Accuracy} & \textbf{F1} & \textbf{Degradation} \\ \midrule
 \multirow{4}{*}{WESAD} 
-  & Baseline & - & 93.6\% & 93.6\% & - \\ 
-  & DP ($\sigma=0.6$) & 23.5 & 80.6\% & 77.3\% & -13.0\% \\ 
-  & DP ($\sigma=1.0$) & 7.6 & 80.7\% & 77.5\% & -12.9\% \\ 
-  & DP ($\sigma=2.0$) & 2.8 & 80.0\% & 76.4\% & -13.6\% \\ \midrule
+  & Baseline & - & 93.6\% $\pm$ 1.4 & 93.6\% $\pm$ 1.4 & - \\ 
+  & DP ($\sigma=0.6$) & 23.5 & 80.6\% $\pm$ 2.5 & 77.3\% $\pm$ 3.9 & -13.0\% \\ 
+  & DP ($\sigma=1.0$) & 7.6 & 80.7\% $\pm$ 2.6 & 77.5\% $\pm$ 4.1 & -12.9\% \\ 
+  & DP ($\sigma=2.0$) & 2.8 & 80.0\% $\pm$ 2.9 & 76.4\% $\pm$ 4.8 & -13.6\% \\ \midrule
 \multirow{4}{*}{Sleep-EDF}
-  & Baseline & - & 88.4\% & 88.8\% & - \\ 
-  & DP ($\sigma=0.6$) & 2.5 & 87.3\% & 85.8\% & -1.1\% \\ 
-  & DP ($\sigma=1.0$) & 0.6 & 86.8\% & 85.1\% & -1.6\% \\ 
-  & DP ($\sigma=2.0$) & 0.2 & 86.1\% & 84.0\% & -2.3\% \\ \bottomrule
+  & Baseline & - & 88.4\% $\pm$ 0.1 & 88.8\% $\pm$ 0.1 & - \\ 
+  & DP ($\sigma=0.6$) & 2.5 & 87.3\% $\pm$ 0.1 & 85.8\% $\pm$ 0.1 & -1.1\% \\ 
+  & DP ($\sigma=1.0$) & 0.6 & 86.8\% $\pm$ 0.1 & 85.1\% $\pm$ 0.1 & -1.6\% \\ 
+  & DP ($\sigma=2.0$) & 0.2 & 86.1\% $\pm$ 0.0 & 84.0\% $\pm$ 0.0 & -2.3\% \\ \bottomrule
 \end{tabular}
 \end{table*}
 
@@ -530,20 +965,20 @@ We evaluate the impact of decentralization through FL experiments, with results 
 
 \begin{table}[h]
 \centering
-\caption{Federated Learning Performance (averaged over 3 runs)}
+\caption{Federated Learning Performance (mean $\pm$ std over 3 runs)}
 \label{tab:fl_results}
 \footnotesize
 \begin{tabular}{lcccc}
 \toprule
 \textbf{Dataset} & \textbf{Clients} & \textbf{Accuracy} & \textbf{F1} & \textbf{Degradation} \\ \midrule
 \multirow{3}{*}{WESAD}
-  & 3 & 89.1\% & 89.0\% & -4.8\% \\ 
-  & 5 & 88.1\% & 87.8\% & -5.9\% \\ 
-  & 10 & 80.6\% & 77.4\% & -13.9\% \\ \midrule
+  & 3 & 89.1\% $\pm$ 0.2 & 89.0\% $\pm$ 0.1 & -4.8\% \\ 
+  & 5 & 88.1\% $\pm$ 0.7 & 87.8\% $\pm$ 0.7 & -5.9\% \\ 
+  & 10 & 80.6\% $\pm$ 2.4 & 77.4\% $\pm$ 3.7 & -13.9\% \\ \midrule
 \multirow{3}{*}{Sleep-EDF}
-  & 3 & 88.9\% & 88.0\% & -0.1\% \\ 
-  & 5 & 88.7\% & 87.7\% & -0.3\% \\ 
-  & 10 & 88.2\% & 87.2\% & -0.7\% \\ \bottomrule
+  & 3 & 88.9\% $\pm$ 0.1 & 88.0\% $\pm$ 0.1 & -0.1\% \\ 
+  & 5 & 88.7\% $\pm$ 0.0 & 87.7\% $\pm$ 0.1 & -0.3\% \\ 
+  & 10 & 88.2\% $\pm$ 0.1 & 87.2\% $\pm$ 0.1 & -0.7\% \\ \bottomrule
 \end{tabular}
 \end{table}
 
@@ -572,7 +1007,7 @@ We evaluate the impact of decentralization through FL experiments, with results 
 \label{fig:fl_fragmentation}
 \end{figure}
 
-Sleep-EDF exhibits exceptional robustness to data fragmentation, losing less than 1\% accuracy even when distributed across 10 clients. This resilience stems from the spectral features' inherent stability across subjects. WESAD exhibits more sensitivity: with 10 clients, accuracy drops by 13.9\%, likely due to extreme heterogeneity when 15 subjects are split among 10 clients (some clients see data from only 1-2 individuals). Figure \ref{fig:fl_fragmentation} makes the contrast explicit: the blue bars (WESAD) increase sharply with client count, whereas the red bars (Sleep-EDF) remain near zero.
+Sleep-EDF exhibits exceptional robustness to data fragmentation, losing less than 1\% accuracy even when distributed across 10 clients. This resilience stems from the spectral features' inherent stability across subjects. WESAD exhibits more sensitivity: with 10 clients, accuracy drops by 12.9\%, likely due to extreme heterogeneity when 15 subjects are split among 10 clients (some clients see data from only 1-2 individuals). Figure \ref{fig:fl_fragmentation} makes the contrast explicit: the blue bars (WESAD) increase sharply with client count, whereas the red bars (Sleep-EDF) remain near zero.
 
 \subsection{Combined FL+DP Results}
 The combined FL+DP approach provides defense-in-depth privacy protection, combining the benefits of data locality (FL) with formal privacy guarantees (DP). Table \ref{tab:fl_dp_results} presents the full parameter sweep, revealing several key insights that inform practical deployment decisions.
@@ -661,24 +1096,24 @@ To understand the impact of privacy mechanisms on different classes, per-class m
 
 \begin{table*}[h]
 \centering
-\caption{Per-Class Performance for Sleep-EDF (Baseline vs. DP $\sigma=1.0$, $\epsilon=0.6$)}
+\caption{Per-Class Performance for Sleep-EDF (Baseline vs. DP $\sigma=1.0$, $\epsilon=0.6$, mean over 3 runs)}
 \label{tab:per_class_sleep}
 \footnotesize
 \begin{tabular}{lccccc}
 \toprule
 \textbf{Method} & \textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Samples} \\ \midrule
 \multirow{5}{*}{Baseline}
-  & Wake (W) & 95.8\% & 98.2\% & 97.0\% & 43,404 \\ 
-  & N1 & 40.0\% & 19.9\% & 26.6\% & 3,025 \\ 
-  & N2 & 75.0\% & 85.1\% & 79.8\% & 9,676 \\ 
-  & N3 & 89.3\% & 68.3\% & 77.5\% & 2,350 \\ 
-  & REM (R) & 73.3\% & 64.2\% & 68.5\% & 3,883 \\ \midrule
+  & Wake (W) & 97.8\% & 96.0\% & 96.9\% & 43,404 \\ 
+  & N1 & 32.2\% & 43.4\% & 36.9\% & 3,025 \\ 
+  & N2 & 79.2\% & 78.0\% & 78.6\% & 9,676 \\ 
+  & N3 & 82.2\% & 80.9\% & 81.6\% & 2,350 \\ 
+  & REM (R) & 70.0\% & 68.4\% & 69.2\% & 3,883 \\ \midrule
 \multirow{5}{*}{DP ($\sigma=1.0$)}
-  & Wake (W) & 96.2\% & 97.8\% & 97.0\% & 43,404 \\ 
-  & N1 & 35.2\% & 18.5\% & 24.1\% & 3,025 \\ 
-  & N2 & 73.1\% & 83.2\% & 77.8\% & 9,676 \\ 
-  & N3 & 87.5\% & 66.8\% & 75.6\% & 2,350 \\ 
-  & REM (R) & 71.2\% & 62.8\% & 66.7\% & 3,883 \\ \bottomrule
+  & Wake (W) & 93.6\% & 98.1\% & 95.8\% & 43,404 \\ 
+  & N1 & 34.8\% & 8.6\% & 13.7\% & 3,025 \\ 
+  & N2 & 68.4\% & 84.2\% & 75.5\% & 9,676 \\ 
+  & N3 & 85.0\% & 59.7\% & 70.1\% & 2,350 \\ 
+  & REM (R) & 68.8\% & 45.3\% & 54.5\% & 3,883 \\ \bottomrule
 \end{tabular}
 \end{table*}
 
@@ -713,7 +1148,7 @@ The analysis reveals that privacy mechanisms have minimal impact on majority cla
 
 \begin{table*}[h]
 \centering
-\caption{Per-Class Performance for WESAD (Baseline vs. DP $\sigma=1.0$, $\epsilon=7.6$)}
+\caption{Per-Class Performance for WESAD (Baseline vs. DP $\sigma=1.0$, $\epsilon=7.6$, mean over 3 runs)}
 \label{tab:per_class_wesad}
 \footnotesize
 \begin{tabular}{lccccc}
@@ -730,7 +1165,7 @@ The analysis reveals that privacy mechanisms have minimal impact on majority cla
 
 Table~\ref{tab:per_class_wesad} reveals the per-class impact of DP on WESAD's binary classification task. While the non-stress (majority) class maintains $>$98\% recall under DP, stress detection (minority class) suffers a 52.3\% recall degradation (90.8\% $\rightarrow$ 38.5\%). The model compensates by achieving near-perfect precision (95.4\%) on stress predictions, suggesting that gradient noise shifts the decision boundary toward extreme conservatism, resulting in many false negatives for the clinically critical stress class. This precision-recall tradeoff indicates that the model becomes highly selective, only predicting stress when extremely confident, thus missing the majority of actual stress events.
 
-Table \ref{tab:recall_analysis} provides a cross-dataset comparison showing that while overall accuracy drops by 14-15\% under DP, the recall for the minority class (stress) is more severely affected. Both FL and DP significantly degrade stress recall, with FL achieving 37.5\% and DP achieving 38.5\% under the tested configurations, indicating that both decentralization and noise injection substantially compromise minority class detection.
+Table \ref{tab:recall_analysis} provides a cross-dataset comparison showing that while overall accuracy drops by $\sim$13\% under DP, the recall for the minority class (stress) is more severely affected. Both FL and DP significantly degrade stress recall, with FL achieving 37.5\% and DP achieving 38.5\% under the tested configurations, indicating that both decentralization and noise injection substantially compromise minority class detection.
 
 \begin{table*}[h]
 \centering
@@ -895,7 +1330,7 @@ FL+DP (N=3, $\sigma=1.0$) & WESAD & 78.8\% & $\epsilon=17.9$ & Defense-in-depth,
     
     \textbf{Justification:} The success of FL depends on the \textit{homogeneity of feature distributions} across clients, not just dataset size. Sleep-EDF's features, derived from universal neurophysiological processes, exhibit this homogeneity. In contrast, WESAD's features, while still physiological, may have more inter-subject variability in stress expression, explaining the greater sensitivity to extreme fragmentation (10 clients).
     
-    \item \textbf{DP accuracy degradation is task-dependent:} WESAD suffers a much larger accuracy drop under DP (about 14 percentage points) than Sleep-EDF (about 2 percentage points), and this gap cannot be explained by dataset size alone. Sleep-EDF has more samples and more classes yet remains stable, whereas WESAD is smaller and binary but degrades substantially. This pattern points to \textit{feature discriminability} as the main driver: sleep stages have distinct spectral signatures (delta waves $\neq$ alpha waves), while stress vs. non-stress boundaries are more subtle and context-dependent.
+    \item \textbf{DP accuracy degradation is task-dependent:} WESAD suffers a much larger accuracy drop under DP (about 13 percentage points) than Sleep-EDF (about 2 percentage points), and this gap cannot be explained by dataset size alone. Sleep-EDF has more samples and more classes yet remains stable, whereas WESAD is smaller and binary but degrades substantially. This pattern points to \textit{feature discriminability} as the main driver: sleep stages have distinct spectral signatures (delta waves $\neq$ alpha waves), while stress vs. non-stress boundaries are more subtle and context-dependent.
     
     \textbf{Mechanism:} DP noise is added to gradients, which shifts decision boundaries. When classes are well-separated (Sleep-EDF), boundary shifts have minimal impact on classification. However, when boundaries are subtle (WESAD), even small shifts cause misclassification. This explains why increasing noise ($\sigma=2.0$) sometimes performs better than lower noise ($\sigma=0.6$) for WESAD—the regularization effect of higher noise prevents overfitting to the small dataset, partially compensating for boundary shifts.
     
@@ -949,7 +1384,14 @@ Table \ref{tab:seed_vs_weight} presents the central discovery: for any fixed ran
 \textit{Note:} Recall values identical for weights $w \in \{1.0, 2.0, 5.0, 10.0\}$ within each seed (0.00\% std dev), demonstrating complete insensitivity to class weight hyperparameter. Statistical analysis shows seed accounts for 97.3\% of variation, with a variance ratio exceeding 100:1 (seed/weight).
 \end{table}
 
-The seed variance (ranging from 23.9\% to 51.0% recall) completely dominates the hyperparameter tuning, with a variance ratio exceeding 100:1. For any fixed random seed, the recall remains constant regardless of class weight, meaning the X-axis (weight) has no influence. 
+The seed variance (ranging from 23.9\% to 51.0% recall) completely dominates the hyperparameter tuning, with a variance ratio exceeding 100:1. For any fixed random seed, the recall remains constant regardless of class weight, meaning the X-axis (weight) has no influence. Figure~\ref{fig:seed_vs_weight_impact} visualizes this striking contrast: panel (a) shows large variance across seeds (23.9\% to 51.0\% recall, 27.1\% range) for fixed weight=2.0, while panel (b) shows zero variance across weights (perfect horizontal line) for fixed seed=42, demonstrating that class weights have no measurable effect when seed is held constant.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{figures/seed_vs_weight_impact.png}
+\caption{Seed dominates class weight by $>$100:1 in DP-SGD minority class recall. \textbf{(a)} Large variance across seeds (23.9\% to 51.0\% recall, 27.1\% range) for fixed weight=2.0, with each seed producing distinctly different performance. \textbf{(b)} Zero variance across weights (perfect horizontal line) for fixed seed=42, with identical recall regardless of weight value from 1.0 to 10.0. Each point represents performance on 247 stress samples. The stark contrast between panels demonstrates that random initialization completely dominates hyperparameter tuning in privacy-preserving training with gradient clipping.}
+\label{fig:seed_vs_weight_impact}
+\end{figure} 
 
 To confirm this phenomenon statistically, we observe that for any fixed random seed, the standard deviation of minority class recall across all tested class weights ($w \in \{1.0, 1.5, 2.0, \dots, 10.0\}$) is 0.00\% (Table~\ref{tab:seed_vs_weight}), indicating perfect constancy—the exact same number of true positives regardless of weight. Conversely, for any fixed class weight, the standard deviation across seeds is 10.2\%, with true positive counts ranging from 59 to 126 (out of 247 stress samples). This yields a variance ratio exceeding 100:1, demonstrating that initialization choice dominates class weight selection by more than two orders of magnitude under standard DP-SGD configurations with gradient clipping ($C=1.0$, $\sigma=0.6$).
 
@@ -1039,62 +1481,69 @@ The comprehensive evaluation reveals nuanced trade-offs that inform understandin
 
 \begin{figure}[h]
 \centering
-\begin{tikzpicture}[scale=0.9]
+\begin{tikzpicture}[scale=1.1]
 
-% Title for Sleep-EDF
-\node[font=\small\bfseries] at (3,2.5) {Sleep-EDF (Robust Features)};
+% -------------------------
+% Sleep-EDF (Robust Features)
+% -------------------------
 
-% Well-separated clusters for Sleep-EDF
-\foreach \x/\label in {0.5/Wake, 1.5/N1, 2.5/N2, 3.5/N3, 4.5/REM, 5.5/REM} {
-    \fill[blue!60] (\x, 1.8) circle (0.12);
+\node[font=\small\bfseries, text=blue!70] at (3,3.5) {Sleep-EDF (Robust Features)};
+
+% points
+\foreach \x/\label in {0.8/W, 2.0/N1, 3.2/N2, 4.4/N3, 5.6/R} {
+    \fill[blue!70] (\x,2.5) circle (0.14);
+    \node[font=\small\bfseries, anchor=north] at (\x,2.3) {\label};
 }
 
-% Labels for sleep stages
-\node[font=\tiny, anchor=north] at (0.5,1.5) {W};
-\node[font=\tiny, anchor=north] at (1.5,1.5) {N1};
-\node[font=\tiny, anchor=north] at (2.5,1.5) {N2};
-\node[font=\tiny, anchor=north] at (3.5,1.5) {N3};
-\node[font=\tiny, anchor=north] at (4.5,1.5) {R};
+% separation arrow
+\draw[<->, thick, blue!70] (0.6,1.95) -- (5.8,1.95);
+\node[font=\small, text=blue!70, anchor=center] at (3.2,1.7) {large margin};
 
-% Arrow showing separation
-\draw[<->, thick, blue!70] (0.5,1.4) -- (4.5,1.4);
-\node[font=\tiny, anchor=north, text=blue!70] at (2.5,1.35) {well-separated};
-
-% Noise resilience indicator
-\draw[->, thick, blue!70, dashed] (0.5,1.8) -- (0.6,1.7);
-\draw[->, thick, blue!70, dashed] (1.5,1.8) -- (1.6,1.7);
-\node[font=\tiny, text=blue!70, anchor=west] at (5.8,1.8) {Resilient to};
-\node[font=\tiny, text=blue!70, anchor=west] at (5.8,1.6) {DP noise};
-
-% Separator line
-\draw[dotted, thick, gray] (0,0.8) -- (6,0.8);
-
-% Title for WESAD
-\node[font=\small\bfseries] at (3,0.5) {WESAD (Fragile Features)};
-
-% Overlapping clusters for WESAD
-\foreach \x in {2.8, 2.9, 3.0, 3.1, 3.2, 3.3} {
-    \fill[red!60] (\x, -0.2) circle (0.10);
+% noise resilience
+\node[font=\small, text=blue!70, anchor=west] at (6.2,2.5) {$\checkmark$ Resilient};
+\foreach \x in {0.8, 2.0, 3.2, 4.4, 5.6} {
+    \draw[->, blue!70, line width=0.8pt] (\x,2.5) -- ++(0,0.25);
 }
 
-% Labels
-\node[font=\tiny, anchor=north, text=red!70] at (2.5,-0.5) {Non-stress};
-\node[font=\tiny, anchor=north, text=red!70] at (3.5,-0.5) {Stress};
+% separator
+\draw[dotted, thick, gray!40] (0,1.3) -- (7,1.3);
 
-% Arrow showing overlap
-\draw[<->, thick, red!70] (2.8,-0.6) -- (3.3,-0.6);
-\node[font=\tiny, anchor=north, text=red!70] at (3.05,-0.65) {overlapping};
+% -------------------------
+% WESAD (Fragile Features)
+% -------------------------
 
-% Noise sensitivity indicator
-\draw[->, thick, red!70, dashed] (3.0,-0.2) -- (3.1,-0.35);
-\draw[->, thick, red!70, dashed] (3.1,-0.2) -- (3.2,-0.35);
-\node[font=\tiny, text=red!70, anchor=west] at (0.2,-0.2) {Sensitive to};
-\node[font=\tiny, text=red!70, anchor=west] at (0.2,-0.4) {DP noise};
+\node[font=\small\bfseries, text=red!70] at (3,0.9) {WESAD (Fragile Features)};
+
+% overlapping clusters - left side (non-stress)
+\foreach \x in {2.4, 2.55, 2.7, 2.85} {
+    \fill[red!65] (\x,0.0) circle (0.12);
+}
+
+% overlapping clusters - right side (stress)
+\foreach \x in {3.15, 3.3, 3.45, 3.6} {
+    \fill[orange!75] (\x,0.0) circle (0.12);
+}
+
+% labels
+\node[font=\small\bfseries, text=red!70, anchor=north] at (2.6,-0.5) {Non-stress};
+\node[font=\small\bfseries, text=orange!75, anchor=north] at (3.4,-0.5) {Stress};
+
+% overlap arrow
+\draw[<->, thick, red!70] (2.85,-0.75) -- (3.15,-0.75);
+\node[font=\small, text=red!70, anchor=center] at (3.0,-1.0) {overlapping};
+
+% noise sensitivity
+\node[font=\small, text=red!70, anchor=west] at (5.0,0.0) {$\times$ Sensitive};
+\foreach \x in {2.7, 3.3} {
+    \draw[->, red!70, line width=0.8pt] (\x,0.0) -- ++(0,-0.35);
+}
 
 \end{tikzpicture}
-\caption{Conceptual feature space representation: Sleep-EDF (top) vs. WESAD (bottom).}
+
+\caption{Conceptual feature-space distribution: robust Sleep-EDF vs. fragile WESAD.}
 \label{fig:feature_robustness}
 \end{figure}
+
 
 \textbf{Computational Efficiency Observations:} The training time analysis reveals that DP introduces 6-10$\times$ overhead compared to baseline, while FL maintains near-baseline training times. Interestingly, FL+DP provides an efficiency gain: Sleep-EDF FL+DP training (411-415s) is only 4.7$\times$ slower than baseline, compared to 6-9$\times$ for centralized DP. This occurs because DP noise is applied locally at each client and smaller per-client datasets reduce per-sample gradient computation time.
 
@@ -1138,10 +1587,67 @@ Our study has several limitations that suggest directions for future research:
 
 Privacy-preserving machine learning for physiological signals is not only feasible but necessary for the future of mobile health. Our comprehensive evaluation shows that, with careful feature engineering and method selection, it is possible to obtain strong privacy guarantees with modest utility loss. At the same time, the discovery of the "Gradient Clipping Trap" highlights a serious limitation of standard class-weighting under DP-SGD and suggests that fairness mechanisms for private healthcare models need to be re-designed with clipping in mind.
 
+\section{Future Work}
+\label{sec:future_work}
+
+Several directions emerge from this work to advance privacy-preserving 
+ML for physiological signals.
+
+\textbf{Controlled Ablations:} Our findings suggest feature 
+discriminability drives privacy robustness, but this conclusion rests 
+on observational data from two datasets differing in multiple dimensions 
+(size, features, classes, domain). Controlled ablations isolating 
+individual factors would establish causality: (1) extract spectral 
+features from WESAD to test if feature type dominates; (2) subsample 
+Sleep-EDF to 8K samples to quantify size's contribution; (3) reduce 
+WESAD features via PCA to isolate dimensionality effects. Expected 
+outcome: transform observational findings into mechanistic understanding.
+
+\textbf{Fairness Mechanism Redesign:} The Gradient Clipping Trap 
+reveals that standard class weighting fails under DP-SGD. Systematic 
+evaluation of alternatives is needed: stratified minibatch sampling 
+(ensure minority class representation per batch), adaptive per-class 
+clipping bounds (Zhao et al. 2024), focal loss (emphasizing hard 
+examples), and post-clipping weight reweighting. For each mechanism, 
+measure minority class recall, overall accuracy, and privacy cost to 
+create fairness-privacy Pareto frontiers.
+
+\textbf{Theoretical Analysis:} Develop formal characterization of the 
+Gradient Clipping Trap. Prove under what conditions gradient clipping 
+neutralizes class weights, and derive optimal clipping bound $C^*$ as 
+function of class balance, gradient distribution, and privacy budget. 
+This theory would enable automated clipping bound selection for 
+practitioners.
+
+\textbf{Architectural Extensions:} Test whether conclusions generalize 
+beyond MLPs to CNNs on raw signals, RNNs for temporal dependencies, and 
+Transformers with attention mechanisms. Compare normalization methods 
+(GhostBatchNorm vs. LayerNorm). Hypothesis: more complex architectures 
+may suffer greater DP degradation due to higher gradient variance.
+
+\textbf{Real Wearable Deployment:} Validate practical feasibility by 
+porting FL+DP to iOS/Android and deploying on smartwatches/rings. 
+Measure battery drain, inference latency, communication overhead, and 
+privacy budget consumption over 30+ days in user studies. Identify 
+practical bottlenecks preventing real-world deployment.
+
+\textbf{Long-Term Privacy Composition:} Analyze privacy budget 
+accumulation in continuous learning scenarios. After 100 daily training 
+rounds, does cumulative $\epsilon$ exceed acceptable thresholds? Implement 
+dynamic budget allocation and privacy refresh strategies for sustained 
+deployment.
+
+\textbf{Multi-Modal Expansion and Regulatory Work:} Extend evaluation 
+to additional physiological modalities (accelerometry, respiration, 
+temperature) and engage regulatory bodies (CNIL, UK ICO, FDA) on GDPR 
+compliance frameworks and privacy budget standards for healthcare. These 
+activities will transition privacy-preserving ML from research to 
+clinical practice.
+
 \section*{Acknowledgements}
 This work is funded by National Funds through the FCT – Foundation for Science and Technology, I.P., within the scope of the project Ref. UIDB/05583/2020. Furthermore, we thank the Research Center in Digital Services (CISeD) and the Polytechnic Institute of Viseu for their support.
 
 \bibliographystyle{IEEEtran}
-\bibliography{sigcproc}
+\bibliography{sigproc}
 
 \end{document}

@@ -24,8 +24,6 @@ def estimate_epsilon(sigma: float, sample_rate: float, epochs_or_steps: int, del
     try:
         accountant = RDPAccountant()
         
-        # BUG FIX: If is_steps=True, use epochs_or_steps directly as steps
-        # Otherwise, convert epochs to steps by dividing by sample_rate
         if is_steps:
             steps = int(epochs_or_steps)
         else:
@@ -44,7 +42,6 @@ def estimate_epsilon(sigma: float, sample_rate: float, epochs_or_steps: int, del
             return 0.0
             
         return float(epsilon)
-    except Exception as e:
-        print(f"Warning: Epsilon estimation failed: {e}")
+    except Exception:
         return 0.0
 

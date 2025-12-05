@@ -23,7 +23,6 @@ class UnifiedMLP(nn.Module):
 
 def get_model(input_dim: int, num_classes: int, device="cpu"):
     model = UnifiedMLP(input_dim, num_classes)
-    # Ensure Opacus compatibility
     model = ModuleValidator.fix(model)
     return model.to(device)
 

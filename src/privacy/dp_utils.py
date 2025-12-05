@@ -39,10 +39,7 @@ def setup_privacy_engine(
 ) -> Tuple[nn.Module, torch.optim.Optimizer, Any]:
     
     if not dp_config.enabled:
-        logger.warning("DP not enabled")
         return model, optimizer, None
-    
-    logger.info(f"Setting up PrivacyEngine: {dp_config}")
     
     privacy_engine = PrivacyEngine()
     

@@ -1,7 +1,3 @@
-"""
-Dataset configurations matching the paper's experimental setup.
-Loads from YAML files and computes class weights dynamically.
-"""
 import numpy as np
 from pathlib import Path
 import yaml
@@ -22,7 +18,6 @@ def compute_class_weights(y: np.ndarray) -> dict:
     return weights
 
 def load_yaml_config(dataset_name: str) -> dict:
-    """Load YAML config from src/configs/datasets/"""
     yaml_path = Path(__file__).parent.parent.parent.parent / "src" / "configs" / "datasets" / f"{dataset_name}.yaml"
     if not yaml_path.exists():
         raise FileNotFoundError(f"Config YAML not found: {yaml_path}")
@@ -37,7 +32,6 @@ WESAD_CONFIG = {
         "n_classes": 2,
         "class_names": ["non-stress", "stress"],
         "use_class_weights": True
-        # class_weights will be computed dynamically from data
     },
     "model": {
         "hidden_dims": [256, 128],
@@ -69,9 +63,9 @@ WESAD_CONFIG = {
         "enabled": True,
         "target_delta": 1e-5,
         "noise_multiplier": 0.5,  # Default, can be overridden by sigma from UI
-        "max_grad_norm": 5.0,  # Paper uses 5.0 (not 1.0)
+        "max_grad_norm": 5.0,
         "accounting_method": "rdp",
-        "poisson_sampling": True,  # Paper uses True
+        "poisson_sampling": True,
         "grad_sample_mode": "hooks"
     }
 }
@@ -113,9 +107,9 @@ SLEEP_EDF_CONFIG = {
         "enabled": True,
         "target_delta": 1e-5,
         "noise_multiplier": 0.5,
-        "max_grad_norm": 5.0,  # Paper uses 5.0 (not 1.0)
+        "max_grad_norm": 5.0,
         "accounting_method": "rdp",
-        "poisson_sampling": True,  # Paper uses True
+        "poisson_sampling": True,
         "grad_sample_mode": "hooks"
     }
 }
@@ -128,12 +122,9 @@ def get_config(
 ) -> dict:
     """
     Get configuration for dataset, overriding with UI parameters.
-    Computes class_weights dynamically from training data (matching paper).
     """
-    # Load YAML config first
     try:
         yaml_cfg = load_yaml_config(dataset_name)
-        # Merge YAML with hardcoded defaults
         if dataset_name.lower() == "wesad":
             config = WESAD_CONFIG.copy()
         elif dataset_name.lower() == "sleep-edf":
@@ -141,13 +132,11 @@ def get_config(
         else:
             raise ValueError(f"Unknown dataset: {dataset_name}")
         
-        # Override with YAML values where they exist
         if 'training' in yaml_cfg:
             config['training'].update(yaml_cfg['training'])
         if 'model' in yaml_cfg:
             config['model'].update(yaml_cfg['model'])
     except FileNotFoundError:
-        # Fallback to hardcoded if YAML not found
         if dataset_name.lower() == "wesad":
             config = WESAD_CONFIG.copy()
         elif dataset_name.lower() == "sleep-edf":
@@ -155,19 +144,16 @@ def get_config(
         else:
             raise ValueError(f"Unknown dataset: {dataset_name}")
     
-    # Compute class_weights dynamically from training data (matching paper preprocessing)
     if train_y is not None and config["dataset"].get("use_class_weights", False):
         weights_dict = compute_class_weights(train_y)
         config["dataset"]["class_weights"] = {
             str(k): float(v) for k, v in weights_dict.items()
         }
     
-    # Override with core UI parameters
     config["federated_learning"]["n_clients"] = n_clients
     config["differential_privacy"]["noise_multiplier"] = sigma
     config["differential_privacy"]["enabled"] = sigma > 0
     
-    # Ensure epochs is always 40 (no early stopping in MVP config; trainers may still early-stop)
     config["training"]["epochs"] = 40
     
     return config

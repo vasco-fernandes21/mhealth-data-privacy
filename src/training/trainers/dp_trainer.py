@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-DP Trainer - Differential Privacy training using Opacus.
-"""
+"""Differential Privacy training with Opacus."""
 
 import torch
 import torch.nn as nn
@@ -24,7 +22,7 @@ logger = get_logger(__name__)
 
 
 class DPConfig:
-    """Configuration for Differential Privacy training."""
+    """Differential Privacy configuration."""
 
     def __init__(self, config: Dict[str, Any]):
         dp_cfg = config.get('differential_privacy', {})
@@ -35,15 +33,9 @@ class DPConfig:
         self.poisson_sampling = bool(dp_cfg.get('poisson_sampling', True))
         self.grad_sample_mode = str(dp_cfg.get('grad_sample_mode', 'hooks'))
 
-    def __repr__(self) -> str:
-        return (
-            f"DPConfig(noise_mult={self.noise_multiplier}, "
-            f"max_grad={self.max_grad_norm}, delta={self.delta})"
-        )
-
 
 class DPTrainer(BaseTrainer):
-    """Differential Privacy Trainer using Opacus."""
+    """Differential Privacy trainer with Opacus."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -53,7 +45,6 @@ class DPTrainer(BaseTrainer):
         self.best_model_state = None
 
     def setup_optimizer_and_loss(self) -> None:
-        """Setup optimizer and loss for DP training."""
         cfg = self.config['training']
         lr = float(cfg.get('learning_rate', 1e-3))
         weight_decay = float(cfg.get('weight_decay', 0.0))
@@ -65,14 +56,12 @@ class DPTrainer(BaseTrainer):
                 lr=lr,
                 weight_decay=weight_decay
             )
-            logger.info(f"Using AdamW: lr={lr}, weight_decay={weight_decay}")
         elif opt_name == 'adam':
             self.optimizer = torch.optim.Adam(
                 self.model.parameters(),
                 lr=lr,
                 weight_decay=weight_decay
             )
-            logger.info(f"Using Adam: lr={lr}, weight_decay={weight_decay}")
         else:
             momentum = float(cfg.get('momentum', 0.7))
             self.optimizer = torch.optim.SGD(
@@ -81,39 +70,29 @@ class DPTrainer(BaseTrainer):
                 momentum=momentum,
                 weight_decay=weight_decay
             )
-            logger.info(
-                f"Using SGD: lr={lr}, momentum={momentum}, "
-                f"weight_decay={weight_decay}"
-            )
 
-        # Setup loss with class weights and label smoothing
         dataset_cfg = self.config.get('dataset', {})
         use_class_weights = dataset_cfg.get('use_class_weights', False)
         label_smoothing = float(cfg.get('label_smoothing', 0.0))
-        
+
         class_weights = None
-        if use_class_weights:
-            if 'class_weights' in dataset_cfg:
-                weights_dict = dataset_cfg['class_weights']
-                n_classes = dataset_cfg.get('n_classes', 2)
-                class_weights = torch.zeros(n_classes, dtype=torch.float32)
-                for class_idx, weight in weights_dict.items():
-                    class_weights[int(class_idx)] = float(weight)
-                class_weights = class_weights.to(self.device)
-                logger.info(f"[DP] Using class weights: {class_weights.tolist()}")
-            else:
-                logger.warning("[DP] use_class_weights=True but 'class_weights' not in config")
-        
+        if use_class_weights and 'class_weights' in dataset_cfg:
+            weights_dict = dataset_cfg['class_weights']
+            n_classes = dataset_cfg.get('n_classes', 2)
+            class_weights = torch.zeros(n_classes, dtype=torch.float32)
+            for class_idx, weight in weights_dict.items():
+                class_weights[int(class_idx)] = float(weight)
+            class_weights = class_weights.to(self.device)
+
         self.criterion = nn.CrossEntropyLoss(
             weight=class_weights,
             label_smoothing=label_smoothing,
             reduction='mean'
-        )
-        self.criterion = self.criterion.to(self.device)
+        ).to(self.device)
+
         self._setup_scheduler()
 
     def _setup_scheduler(self) -> None:
-        """Setup learning rate scheduler."""
         cfg = self.config['training']
         epochs = int(cfg.get('epochs', 20))
         scheduler_name = cfg.get('scheduler', 'cosine').lower()
@@ -133,30 +112,22 @@ class DPTrainer(BaseTrainer):
     def setup_privacy_engine(self, train_loader: DataLoader) -> DataLoader:
         """Setup Opacus PrivacyEngine."""
         if not self.dp_config.enabled:
-            logger.info("DP disabled")
             return train_loader
 
-        logger.info(f"Setting up PrivacyEngine: {self.dp_config}")
-
-        try:
-            privacy_engine = PrivacyEngine()
-            self.model, self.optimizer, self.dp_train_loader = (
-                privacy_engine.make_private(
-                    module=self.model,
-                    optimizer=self.optimizer,
-                    data_loader=train_loader,
-                    noise_multiplier=self.dp_config.noise_multiplier,
-                    max_grad_norm=self.dp_config.max_grad_norm,
-                    poisson_sampling=self.dp_config.poisson_sampling,
-                    grad_sample_mode=self.dp_config.grad_sample_mode,
-                )
+        privacy_engine = PrivacyEngine()
+        self.model, self.optimizer, self.dp_train_loader = (
+            privacy_engine.make_private(
+                module=self.model,
+                optimizer=self.optimizer,
+                data_loader=train_loader,
+                noise_multiplier=self.dp_config.noise_multiplier,
+                max_grad_norm=self.dp_config.max_grad_norm,
+                poisson_sampling=self.dp_config.poisson_sampling,
+                grad_sample_mode=self.dp_config.grad_sample_mode,
             )
-            self.privacy_engine = privacy_engine
-            logger.info("PrivacyEngine ready")
-            return self.dp_train_loader
-        except Exception as e:
-            logger.error(f"PrivacyEngine setup failed: {e}")
-            raise
+        )
+        self.privacy_engine = privacy_engine
+        return self.dp_train_loader
 
     def _get_epsilon(self) -> Optional[float]:
         """Get current epsilon."""
@@ -164,21 +135,23 @@ class DPTrainer(BaseTrainer):
             return None
 
         try:
-            return float(
+            epsilon = float(
                 self.privacy_engine.get_epsilon(self.dp_config.delta)
             )
+            if isinstance(epsilon, (int, float)) and 0 <= epsilon < float('inf'):
+                return epsilon
         except Exception:
-            return None
+            pass
+
+        return None
 
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """Train one epoch."""
         self.model.train()
         total_loss = 0.0
         correct = 0
         total = 0
 
-        loader = (self.dp_train_loader if self.dp_train_loader
-                 else train_loader)
+        loader = self.dp_train_loader if self.dp_train_loader else train_loader
 
         for batch_x, batch_y in loader:
             batch_x = batch_x.to(self.device, non_blocking=True)
@@ -206,10 +179,15 @@ class DPTrainer(BaseTrainer):
 
         return total_loss / total, correct / total
 
-    def fit(self, train_loader: DataLoader, val_loader: DataLoader,
-            epochs: int = 20, patience: int = 8,
-            output_dir: Optional[str] = None) -> Dict[str, Any]:
-        """Main training loop with DP."""
+    def fit(
+        self,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        epochs: int = 20,
+        patience: int = 8,
+        output_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Train with DP."""
         output_path = None
         if output_dir is not None:
             output_path = Path(output_dir)
@@ -219,14 +197,9 @@ class DPTrainer(BaseTrainer):
         self.setup_optimizer_and_loss()
         self.setup_privacy_engine(train_loader)
 
+        self._print_header()
+
         start_time = time.time()
-
-        print(f"\nDP Training")
-        print(f"  Noise multiplier: {self.dp_config.noise_multiplier}")
-        print(f"  Max grad norm: {self.dp_config.max_grad_norm}")
-        print(f"  Delta: {self.dp_config.delta}")
-        print(f"  Epochs: {epochs}\n")
-
         best_epoch = 0
         epoch_num = 0
         epsilon_history = []
@@ -235,7 +208,7 @@ class DPTrainer(BaseTrainer):
             train_loss, train_acc = self.train_epoch(train_loader)
             val_loss, val_acc = self.validate(val_loader)
             epsilon = self._get_epsilon()
-            
+
             if epsilon is not None:
                 epsilon_history.append(epsilon)
 
@@ -258,7 +231,6 @@ class DPTrainer(BaseTrainer):
                 self.epochs_no_improve = 0
                 best_epoch = epoch_num
 
-                # Store in memory always
                 self.best_model_state = {
                     k: v.detach().cpu().clone()
                     for k, v in self.model.state_dict().items()
@@ -266,10 +238,6 @@ class DPTrainer(BaseTrainer):
 
                 if output_path:
                     self.save_checkpoint(output_path / 'best_model.pth')
-                    logger.info(
-                        f"Saved best model at epoch {epoch_num} "
-                        f"(val_acc={val_acc:.4f})"
-                    )
             else:
                 self.epochs_no_improve += 1
                 if self.epochs_no_improve >= patience:
@@ -284,15 +252,12 @@ class DPTrainer(BaseTrainer):
 
         elapsed = time.time() - start_time
 
-        # Restore best model
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
-            logger.info("Loaded best model from memory")
         elif output_path and (output_path / 'best_model.pth').exists():
             self.load_checkpoint(output_path / 'best_model.pth')
-            logger.info("Loaded best model from disk")
 
-        epsilon = self._get_epsilon()
+        self._print_summary(epoch_num, best_epoch, elapsed, epsilon_history)
 
         return {
             'total_epochs': epoch_num,
@@ -300,17 +265,31 @@ class DPTrainer(BaseTrainer):
             'epochs_no_improve': self.epochs_no_improve,
             'training_time_seconds': elapsed,
             'best_val_acc': self.best_val_acc,
-            'final_train_loss': train_loss,
-            'final_train_acc': train_acc,
-            'final_val_loss': val_loss,
-            'final_val_acc': val_acc,
             'history': self.history,
-            'final_epsilon': epsilon,
-            'epsilon_history': epsilon_history
+            'final_epsilon': epsilon_history[-1] if epsilon_history else None,
+            'epsilon_history': epsilon_history,
         }
 
+    def _print_header(self) -> None:
+        print(f"\nDP Training")
+        print(f"  Noise multiplier: {self.dp_config.noise_multiplier}")
+        print(f"  Max grad norm: {self.dp_config.max_grad_norm}")
+        print(f"  Delta: {self.dp_config.delta}\n")
+
+    def _print_summary(
+        self,
+        total_epochs: int,
+        best_epoch: int,
+        elapsed: float,
+        epsilon_history: list,
+    ) -> None:
+        print(f"\nCompleted: {total_epochs} epochs in {elapsed:.1f}s")
+        print(f"  Best: epoch {best_epoch} (acc={self.best_val_acc:.4f})")
+        if epsilon_history:
+            print(f"  Final epsilon: {epsilon_history[-1]:.4f}\n")
+
     def evaluate_full(self, test_loader: DataLoader) -> Dict[str, Any]:
-        """Full evaluation with metrics."""
+        """Full evaluation."""
         self.model.eval()
         y_true_list = []
         y_pred_list = []
@@ -337,7 +316,6 @@ class DPTrainer(BaseTrainer):
         )
 
         cm = confusion_matrix(y_true, y_pred, labels=unique_labels)
-        epsilon = self._get_epsilon()
 
         return {
             'accuracy': float(accuracy_score(y_true, y_pred)),
@@ -364,5 +342,4 @@ class DPTrainer(BaseTrainer):
             'f1_per_class': f1_per_class.tolist(),
             'confusion_matrix': cm.tolist(),
             'class_names': self.config['dataset'].get('class_names', []),
-            'final_epsilon': epsilon
         }

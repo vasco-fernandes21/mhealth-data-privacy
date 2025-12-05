@@ -205,10 +205,10 @@ export const ChartsGrid = ({
            <p className="text-[10px] text-slate-500 mb-1 ml-2 uppercase tracking-wider">Privacy Budget (ε)</p>
            <div className="flex-1 min-h-0">
              <ResponsiveContainer width="100%" height="100%">
-               <LineChart data={data}>
+               <LineChart data={hasMultiRun ? aggregatedAccuracyData : data}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                  <XAxis dataKey="round" stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
-                 <YAxis stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
+                 <YAxis stroke="#475569" fontSize={8} tickLine={false} axisLine={false} domain={[0, 'auto']} />
                  <Tooltip content={<CustomTooltip />} cursor={{stroke: 'rgba(255,255,255,0.1)'}} />
                  {prevData.length > 0 && (
                    <Line
@@ -227,6 +227,7 @@ export const ChartsGrid = ({
                    strokeWidth={2} 
                    dot={false}
                    animationDuration={500}
+                   connectNulls={false}
                  />
                </LineChart>
              </ResponsiveContainer>
@@ -238,7 +239,7 @@ export const ChartsGrid = ({
            <p className="text-[10px] text-slate-500 mb-1 ml-2 uppercase tracking-wider">Minority Recall</p>
            <div className="flex-1 min-h-0">
              <ResponsiveContainer width="100%" height="100%">
-               <LineChart data={data}>
+               <LineChart data={hasMultiRun ? aggregatedAccuracyData : data}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                  <XAxis dataKey="round" stroke="#475569" fontSize={8} tickLine={false} axisLine={false} />
                  <YAxis stroke="#475569" fontSize={8} tickLine={false} axisLine={false} domain={[0, 1]} />

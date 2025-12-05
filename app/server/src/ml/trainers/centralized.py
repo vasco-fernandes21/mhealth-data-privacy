@@ -138,11 +138,14 @@ class BaselineTrainer(BaseTrainer):
                     )
                     break
             
+            # Calculate minority_recall during validation
+            minority_recall = self._calculate_minority_recall(val_loader)
+            
             # Update UI
             progress = int((epoch / epochs) * 100)
             self.callback(
                 progress=progress,
-                metrics={"accuracy": v_acc, "loss": v_loss, "epsilon": 0.0, "epoch": epoch},
+                metrics={"accuracy": v_acc, "loss": v_loss, "epsilon": 0.0, "minority_recall": minority_recall, "epoch": epoch},
             )
             
             if epoch % 5 == 0:
@@ -245,6 +248,41 @@ class BaselineTrainer(BaseTrainer):
             "class_names": self.config["dataset"].get("class_names", []),
             "minority_recall": float(minority_rec[0]) if len(minority_rec) > 0 else 0.0,
         }
+    
+    def _calculate_minority_recall(self, val_loader):
+        """Calculate minority class recall during validation."""
+        self.model.eval()
+        all_preds = []
+        all_labels = []
+        
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                outputs = self.model(batch_x)
+                _, predicted = torch.max(outputs, 1)
+                all_preds.extend(predicted.cpu().numpy())
+                all_labels.extend(batch_y.cpu().numpy())
+        
+        if len(all_labels) == 0:
+            return 0.0
+        
+        y_true = np.array(all_labels)
+        y_pred = np.array(all_preds)
+        
+        # Find minority class
+        unique, counts = np.unique(y_true, return_counts=True)
+        if len(unique) == 0:
+            return 0.0
+        
+        minority_idx = int(np.argmin(counts))
+        minority_class = unique[minority_idx]
+        
+        # Calculate recall for minority class
+        _, minority_rec, _, _ = precision_recall_fscore_support(
+            y_true, y_pred, labels=[minority_class], zero_division=0
+        )
+        
+        return float(minority_rec[0]) if len(minority_rec) > 0 else 0.0
 
 
 class DPTrainer(BaselineTrainer):
@@ -269,31 +307,30 @@ class DPTrainer(BaselineTrainer):
         patience = int(self.config['training'].get('early_stopping_patience', 20))
         dp_cfg = self.config['differential_privacy']
         
-        # Attach Privacy Engine (matching paper: max_grad_norm=5.0, poisson_sampling=True)
-        try:
-            self.model, self.optimizer, train_loader = self.privacy_engine.make_private(
-                module=self.model,
-                optimizer=self.optimizer,
-                data_loader=train_loader,
-                noise_multiplier=dp_cfg['noise_multiplier'],
-                max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),  # Paper uses 5.0
-                poisson_sampling=dp_cfg.get('poisson_sampling', True),  # Paper uses True
-                grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
-            )
-        except Exception as e:
-            self.log(f"Warning: poisson_sampling failed, using uniform: {e}")
-            # Fallback to uniform sampling (only if poisson fails)
-            self.model, self.optimizer, train_loader = self.privacy_engine.make_private(
-                module=self.model,
-                optimizer=self.optimizer,
-                data_loader=train_loader,
-                noise_multiplier=dp_cfg['noise_multiplier'],
-                max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),
-                poisson_sampling=False,
-                grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
-            )
+        noise_multiplier = dp_cfg.get('noise_multiplier', 0.0)
+        dp_enabled = dp_cfg.get('enabled', False) or noise_multiplier > 0
         
-        self.log(f"DP Training Started (Sigma={dp_cfg['noise_multiplier']}, patience={patience})")
+        if dp_enabled and noise_multiplier > 0 and self.privacy_engine is not None:
+            try:
+                self.model, self.optimizer, train_loader = self.privacy_engine.make_private(
+                    module=self.model,
+                    optimizer=self.optimizer,
+                    data_loader=train_loader,
+                    noise_multiplier=noise_multiplier,
+                    max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),
+                    poisson_sampling=dp_cfg.get('poisson_sampling', True),
+                    grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
+                )
+            except Exception:
+                self.model, self.optimizer, train_loader = self.privacy_engine.make_private(
+                    module=self.model,
+                    optimizer=self.optimizer,
+                    data_loader=train_loader,
+                    noise_multiplier=noise_multiplier,
+                    max_grad_norm=dp_cfg.get('max_grad_norm', 5.0),
+                    poisson_sampling=False,
+                    grad_sample_mode=dp_cfg.get('grad_sample_mode', 'hooks')
+                )
         
         best_epoch = 0
         last_v_acc = 0.0
@@ -303,12 +340,15 @@ class DPTrainer(BaselineTrainer):
             v_loss, v_acc = self.validate(val_loader)
             last_v_acc = v_acc
             
-            # Get epsilon
             epsilon = 0.0
-            try:
-                epsilon = float(self.privacy_engine.get_epsilon(delta=dp_cfg.get('delta', 1e-5)))
-            except:
-                pass
+            if self.privacy_engine is not None and dp_cfg.get('enabled', False):
+                try:
+                    delta = dp_cfg.get('delta', 1e-5)
+                    epsilon = float(self.privacy_engine.get_epsilon(delta=delta))
+                    if not isinstance(epsilon, (int, float)) or epsilon == float('inf') or epsilon != epsilon or epsilon < 0:
+                        epsilon = 0.0
+                except Exception:
+                    epsilon = 0.0
             
             # Update history
             self.history['epoch'].append(epoch)
@@ -317,7 +357,6 @@ class DPTrainer(BaselineTrainer):
             self.history['val_loss'].append(v_loss)
             self.history['val_acc'].append(v_acc)
             
-            # Early stopping on validation accuracy (same criterion as offline experiments)
             if v_acc > self.best_val_acc:
                 self.best_val_acc = v_acc
                 self.epochs_no_improve = 0
@@ -333,23 +372,25 @@ class DPTrainer(BaselineTrainer):
                     self.log(f"Early stopping at epoch {epoch} (no improvement for {self.epochs_no_improve} epochs)")
                     break
             
-            # Update UI
+            minority_recall = self._calculate_minority_recall(val_loader)
+            
             progress = int((epoch / epochs) * 100)
             self.callback(progress=progress, metrics={
-                "accuracy": v_acc, "loss": v_loss, "epsilon": epsilon, "epoch": epoch
+                "accuracy": v_acc, "loss": v_loss, "epsilon": epsilon, "minority_recall": minority_recall, "epoch": epoch
             })
             
             if epoch % 5 == 0:
                 self.log(f"Epoch {epoch}/{epochs}: Val Acc {v_acc:.4f}, ε={epsilon:.2f}")
         
-        # Final epsilon
         final_epsilon = 0.0
-        try:
-            final_epsilon = float(self.privacy_engine.get_epsilon(delta=dp_cfg.get('delta', 1e-5)))
-        except:
-            pass
+        if self.privacy_engine is not None and dp_cfg.get('enabled', False):
+            try:
+                final_epsilon = float(self.privacy_engine.get_epsilon(delta=dp_cfg.get('delta', 1e-5)))
+                if not isinstance(final_epsilon, (int, float)) or final_epsilon == float('inf') or final_epsilon != final_epsilon or final_epsilon < 0:
+                    final_epsilon = 0.0
+            except Exception:
+                final_epsilon = 0.0
         
-        # Restore best model (for downstream test evaluation)
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
         
