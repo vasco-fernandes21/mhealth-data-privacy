@@ -33,6 +33,13 @@ Frontend runs on `http://localhost:3000`
 
 ## Data
 
+
+To Download Datasets run
+
+```bash
+    gdown --folder https://drive.google.com/drive/folders/1GFuxMK2wnhrg68311Fxht0LYqiNu6xMh -O ../../data --remaining-ok
+``` 
+
 The server expects data in `data/processed/wesad/` and `data/processed/sleep-edf/` directories with the following structure:
 
 - `X_train.npy`, `X_val.npy`, `X_test.npy` - Features
