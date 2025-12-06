@@ -1,0 +1,84 @@
+{
+  "experiment_info": {
+    "name": "baseline_wesad_run1",
+    "dataset": "wesad",
+    "method": "baseline",
+    "seed": 42,
+    "timestamp": "2025-12-04T15:02:56.859031"
+  },
+  "training_metrics": {
+    "total_epochs": 37,
+    "best_epoch": 17,
+    "epochs_no_improve": 20,
+    "best_val_acc": 0.7892156862745098,
+    "training_time_seconds": 1.7154619693756104,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 20
+    }
+  },
+  "privacy_metrics": {
+    "decentralized": false,
+    "formal_privacy": false
+  },
+  "test_metrics": {
+    "accuracy": 0.9436964504283966,
+    "precision": 0.9461434306482647,
+    "recall": 0.9436964504283966,
+    "f1_score": 0.9442891399614775,
+    "precision_per_class": [
+      0.9763636363636363,
+      0.8764044943820225
+    ],
+    "recall_per_class": [
+      0.9421052631578948,
+      0.9473684210526315
+    ],
+    "f1_per_class": [
+      0.9589285714285715,
+      0.9105058365758755
+    ],
+    "confusion_matrix": [
+      [
+        537,
+        33
+      ],
+      [
+        13,
+        234
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 1.7809250354766846
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ]
+  },
+  "communication": {},
+  "model_path": "results/experiments/baseline/wesad/models/baseline_wesad_run1/best_model.pth"
+}

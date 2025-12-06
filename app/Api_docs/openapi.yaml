@@ -1,15 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Federated Learning Training API
+  title: PrivacyHealth API
   description: |
     API for managing federated and centralized machine learning training jobs with differential privacy.
     Supports multiple runs, experiment tracking, and real-time WebSocket updates.
-  version: 2.0.0
-  contact:
-    name: API Support
-
+  version: 1.0.0
 servers:
-  - url: /api
+  - url: /api/v1
     description: API base path
 
 security:

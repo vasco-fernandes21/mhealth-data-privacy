@@ -1,0 +1,95 @@
+{
+  "experiment_info": {
+    "name": "fl_wesad_c5_run3",
+    "dataset": "wesad",
+    "method": "fl",
+    "seed": 456,
+    "timestamp": "2025-12-04T17:53:11.080823"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_epoch": 35,
+    "epochs_no_improve": 1,
+    "best_val_acc": 0.7743079455334431,
+    "training_time_seconds": 1.3928239345550537,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 1
+    }
+  },
+  "privacy_metrics": {
+    "n_clients": 5,
+    "total_rounds": 40,
+    "local_epochs": 1,
+    "decentralized": true,
+    "formal_privacy": false
+  },
+  "test_metrics": {
+    "accuracy": 0.8763769889840881,
+    "precision": 0.8743617665494491,
+    "recall": 0.8763769889840881,
+    "f1_score": 0.8742333907571508,
+    "precision_per_class": [
+      0.8927973199329984,
+      0.8318181818181818
+    ],
+    "recall_per_class": [
+      0.9350877192982456,
+      0.7408906882591093
+    ],
+    "f1_per_class": [
+      0.9134532990574121,
+      0.7837259100642399
+    ],
+    "confusion_matrix": [
+      [
+        533,
+        37
+      ],
+      [
+        64,
+        183
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 1.442267894744873
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "n_clients": 5,
+    "local_epochs": 1,
+    "aggregation_method": "fedavg"
+  },
+  "communication": {
+    "total_rounds": 40,
+    "model_size_bytes": 280072,
+    "total_communication_bytes": 56014400,
+    "communication_per_round_bytes": 1400360
+  },
+  "model_path": "results/experiments/fl/wesad/models/fl_wesad_c5_run3/best_model.pth"
+}

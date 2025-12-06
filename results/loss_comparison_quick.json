@@ -1,0 +1,248 @@
+[
+  {
+    "dataset": "wesad",
+    "loss_type": "crossentropy",
+    "seed": 42,
+    "focal_alpha": null,
+    "focal_gamma": null,
+    "use_weighted_focal": false,
+    "test_accuracy": 0.9253365973072215,
+    "test_precision": 0.9269153688781262,
+    "test_recall": 0.9253365973072215,
+    "test_f1": 0.9258631974217703,
+    "test_precision_per_class": [
+      0.9569120287253142,
+      0.8576923076923076
+    ],
+    "test_recall_per_class": [
+      0.9350877192982456,
+      0.902834008097166
+    ],
+    "test_f1_per_class": [
+      0.9458740017746229,
+      0.8796844181459567
+    ],
+    "best_val_acc": 0.8026960784313726,
+    "total_epochs": 37,
+    "training_time": 1.683913230895996,
+    "confusion_matrix": [
+      [
+        533,
+        37
+      ],
+      [
+        24,
+        223
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  },
+  {
+    "dataset": "wesad",
+    "loss_type": "crossentropy",
+    "seed": 123,
+    "focal_alpha": null,
+    "focal_gamma": null,
+    "use_weighted_focal": false,
+    "test_accuracy": 0.9216646266829865,
+    "test_precision": 0.9209985870014336,
+    "test_recall": 0.9216646266829865,
+    "test_f1": 0.9210974942905852,
+    "test_precision_per_class": [
+      0.9347079037800687,
+      0.8893617021276595
+    ],
+    "test_recall_per_class": [
+      0.9543859649122807,
+      0.8461538461538461
+    ],
+    "test_f1_per_class": [
+      0.9444444444444444,
+      0.8672199170124482
+    ],
+    "best_val_acc": 0.8958333333333334,
+    "total_epochs": 29,
+    "training_time": 1.3181281089782715,
+    "confusion_matrix": [
+      [
+        544,
+        26
+      ],
+      [
+        38,
+        209
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  },
+  {
+    "dataset": "wesad",
+    "loss_type": "focal",
+    "seed": 42,
+    "focal_alpha": 0.25,
+    "focal_gamma": 2.0,
+    "use_weighted_focal": false,
+    "test_accuracy": 0.9167686658506732,
+    "test_precision": 0.918977026380382,
+    "test_recall": 0.9167686658506732,
+    "test_f1": 0.9174818615685949,
+    "test_precision_per_class": [
+      0.9530685920577617,
+      0.8403041825095057
+    ],
+    "test_recall_per_class": [
+      0.9263157894736842,
+      0.8947368421052632
+    ],
+    "test_f1_per_class": [
+      0.9395017793594306,
+      0.8666666666666667
+    ],
+    "best_val_acc": 0.8382352941176471,
+    "total_epochs": 37,
+    "training_time": 1.951977014541626,
+    "confusion_matrix": [
+      [
+        528,
+        42
+      ],
+      [
+        26,
+        221
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  },
+  {
+    "dataset": "wesad",
+    "loss_type": "focal",
+    "seed": 123,
+    "focal_alpha": 0.25,
+    "focal_gamma": 2.0,
+    "use_weighted_focal": false,
+    "test_accuracy": 0.9192166462668299,
+    "test_precision": 0.9184673833455482,
+    "test_recall": 0.9192166462668299,
+    "test_f1": 0.9184236779613024,
+    "test_precision_per_class": [
+      0.9300341296928327,
+      0.8917748917748918
+    ],
+    "test_recall_per_class": [
+      0.956140350877193,
+      0.8340080971659919
+    ],
+    "test_f1_per_class": [
+      0.9429065743944637,
+      0.8619246861924686
+    ],
+    "best_val_acc": 0.9105392156862745,
+    "total_epochs": 29,
+    "training_time": 1.4819672107696533,
+    "confusion_matrix": [
+      [
+        545,
+        25
+      ],
+      [
+        41,
+        206
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  },
+  {
+    "dataset": "wesad",
+    "loss_type": "focal",
+    "seed": 42,
+    "focal_alpha": 0.25,
+    "focal_gamma": 2.0,
+    "use_weighted_focal": true,
+    "test_accuracy": 0.9167686658506732,
+    "test_precision": 0.918977026380382,
+    "test_recall": 0.9167686658506732,
+    "test_f1": 0.9174818615685949,
+    "test_precision_per_class": [
+      0.9530685920577617,
+      0.8403041825095057
+    ],
+    "test_recall_per_class": [
+      0.9263157894736842,
+      0.8947368421052632
+    ],
+    "test_f1_per_class": [
+      0.9395017793594306,
+      0.8666666666666667
+    ],
+    "best_val_acc": 0.8382352941176471,
+    "total_epochs": 37,
+    "training_time": 1.9121050834655762,
+    "confusion_matrix": [
+      [
+        528,
+        42
+      ],
+      [
+        26,
+        221
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  },
+  {
+    "dataset": "wesad",
+    "loss_type": "focal",
+    "seed": 123,
+    "focal_alpha": 0.25,
+    "focal_gamma": 2.0,
+    "use_weighted_focal": true,
+    "test_accuracy": 0.9192166462668299,
+    "test_precision": 0.9184673833455482,
+    "test_recall": 0.9192166462668299,
+    "test_f1": 0.9184236779613024,
+    "test_precision_per_class": [
+      0.9300341296928327,
+      0.8917748917748918
+    ],
+    "test_recall_per_class": [
+      0.956140350877193,
+      0.8340080971659919
+    ],
+    "test_f1_per_class": [
+      0.9429065743944637,
+      0.8619246861924686
+    ],
+    "best_val_acc": 0.9105392156862745,
+    "total_epochs": 29,
+    "training_time": 1.5516722202301025,
+    "confusion_matrix": [
+      [
+        545,
+        25
+      ],
+      [
+        41,
+        206
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ]
+  }
+]

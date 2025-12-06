@@ -1,0 +1,105 @@
+{
+  "experiment_info": {
+    "name": "dp_fl_wesad_c5_noise0_3_run2",
+    "dataset": "wesad",
+    "method": "dp_fl",
+    "seed": 123,
+    "timestamp": "2025-12-05T11:17:59.006965"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_epoch": 15,
+    "epochs_no_improve": 5,
+    "best_val_acc": 0.8849768068232831,
+    "training_time_seconds": 15.206944942474365,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 5
+    }
+  },
+  "privacy_metrics": {
+    "n_clients": 5,
+    "total_rounds": 40,
+    "local_epochs": 1,
+    "decentralized": true,
+    "formal_privacy": true,
+    "final_epsilon": 48.73096894315389,
+    "epsilon_history": [
+      34.84886711818262,
+      48.73096894315389
+    ],
+    "delta": 1e-05,
+    "noise_multiplier": 0.3,
+    "max_grad_norm": 5.0
+  },
+  "test_metrics": {
+    "accuracy": 0.8323133414932681,
+    "precision": 0.8477708946887377,
+    "recall": 0.8323133414932681,
+    "f1_score": 0.8140970309650082,
+    "precision_per_class": [
+      0.8151382823871907,
+      0.9230769230769231
+    ],
+    "recall_per_class": [
+      0.9824561403508771,
+      0.48582995951417
+    ],
+    "f1_per_class": [
+      0.8910103420843277,
+      0.636604774535809
+    ],
+    "confusion_matrix": [
+      [
+        560,
+        10
+      ],
+      [
+        127,
+        120
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 15.517350912094116
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "n_clients": 5,
+    "local_epochs": 1,
+    "aggregation_method": "fedavg",
+    "noise_multiplier": 0.3,
+    "max_grad_norm": 5.0,
+    "delta": "1e-5"
+  },
+  "communication": {
+    "total_rounds": 40,
+    "model_size_bytes": 280072,
+    "total_communication_bytes": 56014400
+  },
+  "model_path": null
+}

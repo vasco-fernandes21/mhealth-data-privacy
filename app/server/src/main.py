@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
 from .core.config import settings
 from .core.database import init_db
 from .api import routes
@@ -21,6 +24,21 @@ app.add_middleware(
 )
 
 app.include_router(routes.router, prefix=settings.API_V1_STR)
+
+base_dir = Path(__file__).resolve().parent.parent.parent.parent
+docs_dir = base_dir / "app" / "api_docs" / "docs"
+openapi_file = base_dir / "app" / "api_docs" / "openapi.yaml"
+
+if docs_dir.exists():
+    @app.get("/api-docs", response_class=FileResponse)
+    async def api_docs():
+        return FileResponse(docs_dir / "index.html")
+    
+    @app.get("/api-docs/openapi.yaml", response_class=FileResponse)
+    async def openapi_spec():
+        if openapi_file.exists():
+            return FileResponse(openapi_file)
+        raise HTTPException(status_code=404, detail="OpenAPI spec not found")
 
 
 @app.on_event("startup")

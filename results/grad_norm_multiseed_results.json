@@ -1,0 +1,230 @@
+{
+  "all_results": [
+    {
+      "max_grad_norm": 1.0,
+      "weight": 2.0,
+      "seed": 42,
+      "recall_stress": 0.3157894736842105,
+      "precision_stress": 1.0,
+      "f1_stress": 0.48,
+      "tp": 78,
+      "epsilon": 23.820324651582336,
+      "accuracy": 0.7931456548347613
+    },
+    {
+      "max_grad_norm": 1.0,
+      "weight": 2.0,
+      "seed": 123,
+      "recall_stress": 0.5506072874493927,
+      "precision_stress": 0.9066666666666666,
+      "f1_stress": 0.6851385390428212,
+      "tp": 136,
+      "epsilon": 31.58715385634893,
+      "accuracy": 0.847001223990208
+    },
+    {
+      "max_grad_norm": 1.0,
+      "weight": 2.0,
+      "seed": 456,
+      "recall_stress": 0.29959514170040485,
+      "precision_stress": 1.0,
+      "f1_stress": 0.46105919003115264,
+      "tp": 74,
+      "epsilon": 23.290353289248063,
+      "accuracy": 0.7882496940024479
+    },
+    {
+      "max_grad_norm": 2.0,
+      "weight": 2.0,
+      "seed": 42,
+      "recall_stress": 0.31983805668016196,
+      "precision_stress": 1.0,
+      "f1_stress": 0.48466257668711654,
+      "tp": 79,
+      "epsilon": 23.820324651582336,
+      "accuracy": 0.7943696450428397
+    },
+    {
+      "max_grad_norm": 2.0,
+      "weight": 2.0,
+      "seed": 123,
+      "recall_stress": 0.5546558704453441,
+      "precision_stress": 0.9013157894736842,
+      "f1_stress": 0.6867167919799498,
+      "tp": 137,
+      "epsilon": 31.58715385634893,
+      "accuracy": 0.847001223990208
+    },
+    {
+      "max_grad_norm": 2.0,
+      "weight": 2.0,
+      "seed": 456,
+      "recall_stress": 0.30364372469635625,
+      "precision_stress": 1.0,
+      "f1_stress": 0.4658385093167702,
+      "tp": 75,
+      "epsilon": 23.290353289248063,
+      "accuracy": 0.7894736842105263
+    },
+    {
+      "max_grad_norm": 5.0,
+      "weight": 2.0,
+      "seed": 42,
+      "recall_stress": 0.32793522267206476,
+      "precision_stress": 1.0,
+      "f1_stress": 0.49390243902439024,
+      "tp": 81,
+      "epsilon": 23.290353289248063,
+      "accuracy": 0.7968176254589964
+    },
+    {
+      "max_grad_norm": 5.0,
+      "weight": 2.0,
+      "seed": 123,
+      "recall_stress": 0.5101214574898786,
+      "precision_stress": 0.9,
+      "f1_stress": 0.6511627906976745,
+      "tp": 126,
+      "epsilon": 24.860438286932645,
+      "accuracy": 0.8347613219094248
+    },
+    {
+      "max_grad_norm": 5.0,
+      "weight": 2.0,
+      "seed": 456,
+      "recall_stress": 0.2874493927125506,
+      "precision_stress": 1.0,
+      "f1_stress": 0.44654088050314467,
+      "tp": 71,
+      "epsilon": 22.753195019981522,
+      "accuracy": 0.784577723378213
+    }
+  ],
+  "by_C": {
+    "1.0": [
+      {
+        "max_grad_norm": 1.0,
+        "weight": 2.0,
+        "seed": 42,
+        "recall_stress": 0.3157894736842105,
+        "precision_stress": 1.0,
+        "f1_stress": 0.48,
+        "tp": 78,
+        "epsilon": 23.820324651582336,
+        "accuracy": 0.7931456548347613
+      },
+      {
+        "max_grad_norm": 1.0,
+        "weight": 2.0,
+        "seed": 123,
+        "recall_stress": 0.5506072874493927,
+        "precision_stress": 0.9066666666666666,
+        "f1_stress": 0.6851385390428212,
+        "tp": 136,
+        "epsilon": 31.58715385634893,
+        "accuracy": 0.847001223990208
+      },
+      {
+        "max_grad_norm": 1.0,
+        "weight": 2.0,
+        "seed": 456,
+        "recall_stress": 0.29959514170040485,
+        "precision_stress": 1.0,
+        "f1_stress": 0.46105919003115264,
+        "tp": 74,
+        "epsilon": 23.290353289248063,
+        "accuracy": 0.7882496940024479
+      }
+    ],
+    "2.0": [
+      {
+        "max_grad_norm": 2.0,
+        "weight": 2.0,
+        "seed": 42,
+        "recall_stress": 0.31983805668016196,
+        "precision_stress": 1.0,
+        "f1_stress": 0.48466257668711654,
+        "tp": 79,
+        "epsilon": 23.820324651582336,
+        "accuracy": 0.7943696450428397
+      },
+      {
+        "max_grad_norm": 2.0,
+        "weight": 2.0,
+        "seed": 123,
+        "recall_stress": 0.5546558704453441,
+        "precision_stress": 0.9013157894736842,
+        "f1_stress": 0.6867167919799498,
+        "tp": 137,
+        "epsilon": 31.58715385634893,
+        "accuracy": 0.847001223990208
+      },
+      {
+        "max_grad_norm": 2.0,
+        "weight": 2.0,
+        "seed": 456,
+        "recall_stress": 0.30364372469635625,
+        "precision_stress": 1.0,
+        "f1_stress": 0.4658385093167702,
+        "tp": 75,
+        "epsilon": 23.290353289248063,
+        "accuracy": 0.7894736842105263
+      }
+    ],
+    "5.0": [
+      {
+        "max_grad_norm": 5.0,
+        "weight": 2.0,
+        "seed": 42,
+        "recall_stress": 0.32793522267206476,
+        "precision_stress": 1.0,
+        "f1_stress": 0.49390243902439024,
+        "tp": 81,
+        "epsilon": 23.290353289248063,
+        "accuracy": 0.7968176254589964
+      },
+      {
+        "max_grad_norm": 5.0,
+        "weight": 2.0,
+        "seed": 123,
+        "recall_stress": 0.5101214574898786,
+        "precision_stress": 0.9,
+        "f1_stress": 0.6511627906976745,
+        "tp": 126,
+        "epsilon": 24.860438286932645,
+        "accuracy": 0.8347613219094248
+      },
+      {
+        "max_grad_norm": 5.0,
+        "weight": 2.0,
+        "seed": 456,
+        "recall_stress": 0.2874493927125506,
+        "precision_stress": 1.0,
+        "f1_stress": 0.44654088050314467,
+        "tp": 71,
+        "epsilon": 22.753195019981522,
+        "accuracy": 0.784577723378213
+      }
+    ]
+  },
+  "summary": {
+    "1.0": {
+      "mean_recall": 0.388663967611336,
+      "std_recall": 0.14048057953763135,
+      "mean_epsilon": 26.23261059905978,
+      "n_seeds": 3
+    },
+    "2.0": {
+      "mean_recall": 0.39271255060728744,
+      "std_recall": 0.14048057953763135,
+      "mean_epsilon": 26.23261059905978,
+      "n_seeds": 3
+    },
+    "5.0": {
+      "mean_recall": 0.37516869095816463,
+      "std_recall": 0.11861265743081613,
+      "mean_epsilon": 23.634662198720743,
+      "n_seeds": 3
+    }
+  }
+}

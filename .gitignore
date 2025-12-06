@@ -57,11 +57,7 @@ models/*.pb
 *.pt
 
 # Results
-results/*.png
-results/*.jpg
-results/*.pdf
-results/**/*.json
-**/results.json
+
 
 # OS
 .DS_Store
@@ -71,6 +67,3 @@ Thumbs.db
 !data/.gitkeep
 !models/.gitkeep
 !results/.gitkeep
-
-# Paper
-paper/

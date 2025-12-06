@@ -1,0 +1,137 @@
+{
+  "experiment_info": {
+    "name": "fl_sleep_edf_c3_run2",
+    "dataset": "sleep-edf",
+    "method": "fl",
+    "seed": 123,
+    "timestamp": "2025-12-04T17:41:29.163081"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_epoch": 40,
+    "epochs_no_improve": 0,
+    "best_val_acc": 0.8757034893069625,
+    "training_time_seconds": 97.92539286613464,
+    "convergence": {
+      "early_stopped": false,
+      "epochs_without_improvement": 0
+    }
+  },
+  "privacy_metrics": {
+    "n_clients": 3,
+    "total_rounds": 40,
+    "local_epochs": 1,
+    "decentralized": true,
+    "formal_privacy": false
+  },
+  "test_metrics": {
+    "accuracy": 0.8793191953543585,
+    "precision": 0.8920940546608547,
+    "recall": 0.8793191953543585,
+    "f1_score": 0.885028405781284,
+    "precision_per_class": [
+      0.9774772652311172,
+      0.3117455896007428,
+      0.7935304793423722,
+      0.8169681309216192,
+      0.6808729139922978
+    ],
+    "recall_per_class": [
+      0.9559026817804811,
+      0.4439669421487603,
+      0.7681893344357172,
+      0.8072340425531915,
+      0.6829770795776462
+    ],
+    "f1_per_class": [
+      0.9665695981362842,
+      0.36628937678985407,
+      0.7806543086698524,
+      0.8120719178082192,
+      0.6819233736178967
+    ],
+    "confusion_matrix": [
+      [
+        41490,
+        1295,
+        202,
+        56,
+        361
+      ],
+      [
+        475,
+        1343,
+        793,
+        11,
+        403
+      ],
+      [
+        307,
+        1108,
+        7433,
+        352,
+        476
+      ],
+      [
+        37,
+        8,
+        405,
+        1897,
+        3
+      ],
+      [
+        137,
+        554,
+        534,
+        6,
+        2652
+      ]
+    ],
+    "class_names": [
+      "W",
+      "N1",
+      "N2",
+      "N3",
+      "R"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "W": 43404,
+        "N1": 3025,
+        "N2": 9676,
+        "N3": 2350,
+        "R": 3883
+      },
+      "imbalance_ratio": 18.469787234042553,
+      "total_samples": 62338,
+      "minority_class": "N3",
+      "majority_class": "W"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 98.27020001411438
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.5,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "n_clients": 3,
+    "local_epochs": 1,
+    "aggregation_method": "fedavg"
+  },
+  "communication": {
+    "total_rounds": 40,
+    "model_size_bytes": 162836,
+    "total_communication_bytes": 19540320,
+    "communication_per_round_bytes": 488508
+  },
+  "model_path": "results/experiments/fl/sleep-edf/models/fl_sleep_edf_c3_run2/best_model.pth"
+}

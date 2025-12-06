@@ -1,0 +1,113 @@
+{
+  "experiment_info": {
+    "name": "dp_wesad_noise0_6_run1",
+    "dataset": "wesad",
+    "method": "dp",
+    "seed": 42,
+    "timestamp": "2025-12-04T17:37:11.229540"
+  },
+  "training_metrics": {
+    "total_epochs": 23,
+    "best_epoch": 3,
+    "epochs_no_improve": 20,
+    "best_val_acc": 0.8088235294117647,
+    "training_time_seconds": 8.536402225494385,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 20
+    }
+  },
+  "privacy_metrics": {
+    "final_epsilon": 23.290353654255288,
+    "epsilon_history": [
+      6.723937381960464,
+      8.279125866682648,
+      9.503525401631432,
+      10.562441080705307,
+      11.517239002128408,
+      12.39875489767529,
+      13.225068501478884,
+      14.007848759529576,
+      14.755157749715215,
+      15.472829668557349,
+      16.16525566865983,
+      16.835835727568277,
+      17.48726880821726,
+      18.12173648526911,
+      18.741036641306394,
+      19.346666768555153,
+      19.939895688816726,
+      20.52180478777839,
+      21.093327477743916,
+      21.6552729922839,
+      22.20835371257991,
+      22.753195369115744,
+      23.290353654255288
+    ],
+    "delta": "1e-5",
+    "noise_multiplier": 0.6
+  },
+  "test_metrics": {
+    "accuracy": 0.7980416156670747,
+    "precision": 0.837400184519454,
+    "recall": 0.7980416156670747,
+    "f1_score": 0.7617161161304307,
+    "precision_per_class": [
+      0.7770177838577291,
+      0.9767441860465116
+    ],
+    "recall_per_class": [
+      0.9964912280701754,
+      0.340080971659919
+    ],
+    "f1_per_class": [
+      0.8731744811683321,
+      0.5045045045045045
+    ],
+    "confusion_matrix": [
+      [
+        568,
+        2
+      ],
+      [
+        163,
+        84
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 8.950995922088623
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "noise_multiplier": 0.6,
+    "max_grad_norm": 5.0,
+    "delta": "1e-5"
+  },
+  "communication": {},
+  "model_path": "results/experiments/dp/wesad/models/dp_wesad_noise0_6_run1/best_model.pth"
+}

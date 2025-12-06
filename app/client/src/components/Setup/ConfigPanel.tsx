@@ -89,7 +89,7 @@ export const ConfigPanel = ({ config, setConfig, isRunning, onStart, onStop }: P
           {/* Sigma Slider */}
           <div>
             <div className="flex justify-between text-xs mb-2">
-              <label className="font-bold text-slate-400">Privacy Noise (σ)</label>
+              <label className="font-bold text-slate-400">Noise Multiplier (σ)</label>
               <span className={config.sigma > 0 ? 'text-purple-400 font-mono' : 'text-slate-600'}>
                 {config.sigma.toFixed(1)}
               </span>

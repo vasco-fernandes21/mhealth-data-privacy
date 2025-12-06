@@ -1,0 +1,165 @@
+\relax 
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{}\protected@file@percent }
+\newlabel{sec:introduction}{{I}{1}{}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-A}}Motivation: Privacy in Mobile Health}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-B}}Privacy-Preserving Solutions}{1}{}\protected@file@percent }
+\citation{mcmahan2023fedavg_update}
+\citation{abadi2023dp_sgd}
+\citation{rieke2023federated_health}
+\citation{stock2023practical_dp}
+\citation{zhu2023efficient_dp}
+\citation{kairouz2022distributed_dp}
+\citation{healthcare_security2024}
+\citation{rieke2023federated_health}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-C}}Research Gap and Motivation}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-D}}Research Questions and Contributions}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-E}}Paper Organization}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {II}State of the Art}{2}{}\protected@file@percent }
+\newlabel{sec:state_of_the_art}{{II}{2}{}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}Historical Evolution: Privacy-Preserving ML (2016-2024)}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}Motivation: Privacy Landscape in Healthcare}{2}{}\protected@file@percent }
+\citation{liu2023dp_healthcare}
+\citation{mironov2017strong}
+\citation{stock2023practical_dp}
+\citation{zhu2023efficient_dp,kairouz2022distributed_dp,karimireddy2022federated_optimization}
+\citation{bagdasaryan2022disparate}
+\citation{zhao2024adaptive_clipping}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-C}}Technical Foundations: FL, DP, and Combined Approaches}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {II-C}1}Federated Learning}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {II-C}2}Differential Privacy}{3}{}\protected@file@percent }
+\newlabel{eq:dp_formal}{{1}{3}{}{equation.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {II-C}3}Combined FL+DP: Defense-in-Depth}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}Critical Challenge: Class Imbalance Under Privacy}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-E}}Research Gaps and This Work's Positioning}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {III}System Architecture}{3}{}\protected@file@percent }
+\newlabel{sec:architecture}{{III}{3}{}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Feature Extraction Pipeline}{3}{}\protected@file@percent }
+\citation{opacus2023}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Feature extraction pipeline transforming high-frequency raw signals into compact feature vectors for efficient processing.}}{4}{}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:feature_pipeline}{{1}{4}{}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-A}1}WESAD Dataset Processing}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-A}2}Sleep-EDF Dataset Processing}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Unified MLP Model Architecture}{4}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces MLP architecture: Input $\rightarrow $ Linear(256) $\rightarrow $ LayerNorm $\rightarrow $ ReLU $\rightarrow $ Dropout(0.3) $\rightarrow $ Linear(128) $\rightarrow $ LayerNorm $\rightarrow $ ReLU $\rightarrow $ Dropout(0.3) $\rightarrow $ Output.}}{4}{}\protected@file@percent }
+\newlabel{fig:mlp_architecture}{{2}{4}{}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Privacy Mechanisms}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-C}1}Differential Privacy (DP)}{4}{}\protected@file@percent }
+\citation{mcmahan2023fedavg_update}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-C}2}Federated Learning (FL)}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-C}3}Combined FL+DP}{5}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces FL+DP Architecture: Clients perform local training with DP (clipping + noise) before sending updates. The server aggregates noisy updates, ensuring no raw data or exact gradients leave the device.}}{5}{}\protected@file@percent }
+\newlabel{fig:fl_dp_architecture}{{3}{5}{}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-C}4}Interactive Validation Platform}{5}{}\protected@file@percent }
+\citation{schmidt2018wesad}
+\citation{goldberger2000physionet}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Interactive validation platform architecture. The web dashboard enables real-time parameter configuration and visualization of privacy-utility trade-offs, while the backend executes the same training pipelines used in batch experiments.}}{6}{}\protected@file@percent }
+\newlabel{fig:mvp_architecture}{{4}{6}{}{figure.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Setup}{6}{}\protected@file@percent }
+\newlabel{sec:experimental_setup}{{IV}{6}{}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Datasets and Protocol}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Ethical Considerations and Compliance}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}1}Data Sources and Approval}{6}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Dataset Characteristics After Preprocessing}}{6}{}\protected@file@percent }
+\newlabel{tab:datasets}{{I}{6}{}{table.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}2}Privacy and Data Protection by Design}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}3}Regulatory Compliance}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}4}Fairness and Bias Considerations}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Experimental Design and Parameter Sweep}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Implementation Details}{7}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Baseline model comparison across architectures.}}{7}{}\protected@file@percent }
+\newlabel{fig:baseline_comparison_chart}{{5}{7}{}{figure.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {V}Results and Analysis}{7}{}\protected@file@percent }
+\newlabel{sec:results}{{V}{7}{}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Baseline and Differential Privacy Results}{7}{}\protected@file@percent }
+\citation{pineau2023improving}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Experimental Design: Parameter Sweep Summary}}{8}{}\protected@file@percent }
+\newlabel{tab:experimental_design}{{II}{8}{}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Privacy Budget Accounting: Impact of Dataset Size and Training Duration}}{8}{}\protected@file@percent }
+\newlabel{tab:privacy_accounting}{{III}{8}{}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Baseline Model Comparison (No Privacy, mean $\pm $ std over 3 runs)}}{8}{}\protected@file@percent }
+\newlabel{tab:baseline_comparison}{{IV}{8}{}{table.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Privacy-utility trade-off under centralized DP.}}{8}{}\protected@file@percent }
+\newlabel{fig:dp_tradeoff}{{6}{8}{}{figure.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Baseline vs. DP Performance ($\epsilon $ values at $\delta =10^{-5}$, mean $\pm $ std over 3 runs). Note: $\epsilon < 3$ indicates strong privacy; $\epsilon > 10$ indicates weak privacy suitable only for trend analysis.}}{9}{}\protected@file@percent }
+\newlabel{tab:dp_results}{{V}{9}{}{table.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Impact of client fragmentation in FL: accuracy drop relative to centralized baseline.}}{9}{}\protected@file@percent }
+\newlabel{fig:fl_fragmentation}{{7}{9}{}{figure.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Federated Learning Results}{9}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {VI}{\ignorespaces Federated Learning Performance (mean $\pm $ std over 3 runs)}}{9}{}\protected@file@percent }
+\newlabel{tab:fl_results}{{VI}{9}{}{table.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Privacy--utility trade-off for FL+DP. Dashed horizontal lines indicate baseline performance.}}{9}{}\protected@file@percent }
+\newlabel{fig:fl_dp_tradeoff}{{8}{9}{}{figure.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Combined FL+DP Results}{9}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {VII}{\ignorespaces Combined FL+DP Performance: Selected Configurations (averaged over 3 runs). $^*$ indicates weak privacy ($\epsilon \gg 10$), included only for noise-utility trend analysis.}}{10}{}\protected@file@percent }
+\newlabel{tab:fl_dp_results}{{VII}{10}{}{table.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Per-Class Performance Analysis}{10}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Per-class recall comparison for Sleep-EDF.}}{10}{}\protected@file@percent }
+\newlabel{fig:sleep_radar}{{9}{10}{}{figure.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {VIII}{\ignorespaces Per-Class Performance for Sleep-EDF (Baseline vs. DP $\sigma =1.0$, $\epsilon =0.6$, mean over 3 runs)}}{11}{}\protected@file@percent }
+\newlabel{tab:per_class_sleep}{{VIII}{11}{}{table.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {IX}{\ignorespaces Per-Class Performance for WESAD (Baseline vs. DP $\sigma =1.0$, $\epsilon =7.6$, mean over 3 runs)}}{11}{}\protected@file@percent }
+\newlabel{tab:per_class_wesad}{{IX}{11}{}{table.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Computational Efficiency and Training Time Analysis (RQ3)}{11}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Training-time comparison across methods.}}{11}{}\protected@file@percent }
+\newlabel{fig:training_time_bars}{{10}{11}{}{figure.10}{}}
+\citation{martinez2024mhealth_privacy,zhu2023efficient_dp}
+\@writefile{lot}{\contentsline {table}{\numberline {X}{\ignorespaces Recall Analysis: Impact on Minority Classes Across Methods}}{12}{}\protected@file@percent }
+\newlabel{tab:recall_analysis}{{X}{12}{}{table.10}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {XI}{\ignorespaces Training Time Comparison (seconds, averaged over 3 runs)}}{12}{}\protected@file@percent }
+\newlabel{tab:training_time}{{XI}{12}{}{table.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-F}}Comparative Analysis}{12}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {XII}{\ignorespaces Comparative Summary: All Methods (Best Configurations)}}{13}{}\protected@file@percent }
+\newlabel{tab:comparative_summary}{{XII}{13}{}{table.12}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Global method comparison scorecard (normalized values) aggregating WESAD and Sleep-EDF.}}{13}{}\protected@file@percent }
+\newlabel{fig:scorecard}{{11}{13}{}{figure.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-G}}The Class Imbalance Paradox in DP (RQ2)}{14}{}\protected@file@percent }
+\newlabel{sec:class_imbalance}{{\mbox  {V-G}}{14}{}{subsection.5.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {V-G}1}Experimental Design}{14}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {V-G}2}Key Finding: Seed Dominance}{14}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {XIII}{\ignorespaces Seed Dominance: Recall Constant Across All Weights (WESAD DP, $\sigma =0.6$, $C=1.0$)}}{14}{}\protected@file@percent }
+\newlabel{tab:seed_vs_weight}{{XIII}{14}{}{table.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Seed dominates class weight by $>$100:1 in DP-SGD minority class recall. \textbf  {(a)} Large variance across seeds (23.9\% to 51.0\% recall, 27.1\% range) for fixed weight=2.0, with each seed producing distinctly different performance. \textbf  {(b)} Zero variance across weights (perfect horizontal line) for fixed seed=42, with identical recall regardless of weight value from 1.0 to 10.0. Each point represents performance on 247 stress samples. The stark contrast between panels demonstrates that random initialization completely dominates hyperparameter tuning in privacy-preserving training with gradient clipping.}}{14}{}\protected@file@percent }
+\newlabel{fig:seed_vs_weight_impact}{{12}{14}{}{figure.12}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {V-G}3}Mechanism: The Gradient Clipping Trap}{14}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces Gradient clipping mechanism neutralizing class weights.}}{15}{}\protected@file@percent }
+\newlabel{fig:gradient_clipping}{{13}{15}{}{figure.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces DP-SGD pipeline with class weighting.}}{15}{}\protected@file@percent }
+\newlabel{fig:clipping_flow}{{14}{15}{}{figure.14}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {V-G}4}Validation: Max Grad Norm Scaling}{15}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {XIV}{\ignorespaces Increasing $C$ (Max Grad Norm) Partially Restores Class Weight Functionality (Weight=2.0, $\sigma =0.6$, averaged over 3 seeds)}}{15}{}\protected@file@percent }
+\newlabel{tab:grad_norm_scaling}{{XIV}{15}{}{table.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {15}{\ignorespaces Effect of increasing clipping bound $C$ on seed variance.}}{15}{}\protected@file@percent }
+\newlabel{fig:grad_norm_effect}{{15}{15}{}{figure.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-H}}Discussion of Findings}{15}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Conclusions}{16}{}\protected@file@percent }
+\newlabel{sec:conclusions}{{VI}{16}{}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}Summary of Findings}{16}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}The Gradient Clipping Trap: A Critical Discovery}{16}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-C}}Limitations and Future Work}{16}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {XV}{\ignorespaces Feature robustness comparison: Sleep-EDF vs WESAD}}{17}{}\protected@file@percent }
+\newlabel{tab:feature_robustness}{{XV}{17}{}{table.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-D}}Final Remarks}{17}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Future Work}{17}{}\protected@file@percent }
+\newlabel{sec:future_work}{{VII}{17}{}{section.7}{}}
+\bibstyle{IEEEtran}
+\bibdata{sigproc}
+\bibcite{mcmahan2023fedavg_update}{1}
+\bibcite{abadi2023dp_sgd}{2}
+\bibcite{rieke2023federated_health}{3}
+\bibcite{stock2023practical_dp}{4}
+\bibcite{zhu2023efficient_dp}{5}
+\bibcite{kairouz2022distributed_dp}{6}
+\bibcite{healthcare_security2024}{7}
+\bibcite{liu2023dp_healthcare}{8}
+\bibcite{mironov2017strong}{9}
+\bibcite{karimireddy2022federated_optimization}{10}
+\bibcite{bagdasaryan2022disparate}{11}
+\bibcite{zhao2024adaptive_clipping}{12}
+\bibcite{opacus2023}{13}
+\bibcite{schmidt2018wesad}{14}
+\bibcite{goldberger2000physionet}{15}
+\bibcite{pineau2023improving}{16}
+\bibcite{martinez2024mhealth_privacy}{17}
+\@writefile{toc}{\contentsline {section}{References}{18}{}\protected@file@percent }
+\gdef \@abspage@last{18}

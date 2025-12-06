@@ -1,0 +1,119 @@
+{
+  "experiment_info": {
+    "name": "dp_wesad_noise1_0_run2",
+    "dataset": "wesad",
+    "method": "dp",
+    "seed": 123,
+    "timestamp": "2025-12-04T17:37:44.900065"
+  },
+  "training_metrics": {
+    "total_epochs": 29,
+    "best_epoch": 9,
+    "epochs_no_improve": 20,
+    "best_val_acc": 0.8933823529411765,
+    "training_time_seconds": 8.257816076278687,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 20
+    }
+  },
+  "privacy_metrics": {
+    "final_epsilon": 8.150584968625132,
+    "epsilon_history": [
+      1.994925108868052,
+      2.4783256928281503,
+      2.8671408112224035,
+      3.2060733432206567,
+      3.51241764115308,
+      3.7951936101934667,
+      4.05985244633301,
+      4.30999999800099,
+      4.548173844021283,
+      4.776242288994199,
+      4.995629393697483,
+      5.207450921420571,
+      5.412600712851581,
+      5.61180826379791,
+      5.805678278602328,
+      5.994718818127245,
+      6.179361627213886,
+      6.359977392829629,
+      6.5368872204494535,
+      6.710371448139648,
+      6.880676574313971,
+      7.048020781508505,
+      7.212598208821028,
+      7.374582601471488,
+      7.534130140961832,
+      7.691381880342361,
+      7.846465696111021,
+      7.99949796419211,
+      8.150584968625132
+    ],
+    "delta": "1e-5",
+    "noise_multiplier": 1.0
+  },
+  "test_metrics": {
+    "accuracy": 0.8347613219094248,
+    "precision": 0.8440331913964406,
+    "recall": 0.8347613219094248,
+    "f1_score": 0.8194283681026491,
+    "precision_per_class": [
+      0.8222222222222222,
+      0.8943661971830986
+    ],
+    "recall_per_class": [
+      0.9736842105263158,
+      0.5141700404858299
+    ],
+    "f1_per_class": [
+      0.891566265060241,
+      0.6529562982005142
+    ],
+    "confusion_matrix": [
+      [
+        555,
+        15
+      ],
+      [
+        120,
+        127
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 8.537776947021484
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "noise_multiplier": 1.0,
+    "max_grad_norm": 5.0,
+    "delta": "1e-5"
+  },
+  "communication": {},
+  "model_path": "results/experiments/dp/wesad/models/dp_wesad_noise1_0_run2/best_model.pth"
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "class_weight_stress": 2.0,
+    "accuracy": 0.7906976744186046,
+    "precision_stress": 1.0,
+    "recall_stress": 0.3076923076923077,
+    "f1_stress": 0.47058823529411764,
+    "tp": 76,
+    "fn": 171,
+    "fp": 171,
+    "file": "results/experiments/dp/wesad/dp_wesad_noise0.6_weight2.0_seed42.json"
+  },
+  {
+    "class_weight_stress": 3.0,
+    "accuracy": 0.7906976744186046,
+    "precision_stress": 1.0,
+    "recall_stress": 0.3076923076923077,
+    "f1_stress": 0.47058823529411764,
+    "tp": 76,
+    "fn": 171,
+    "fp": 171,
+    "file": "results/experiments/dp/wesad/dp_wesad_noise0.6_weight3.0_seed42.json"
+  },
+  {
+    "class_weight_stress": 4.0,
+    "accuracy": 0.7906976744186046,
+    "precision_stress": 1.0,
+    "recall_stress": 0.3076923076923077,
+    "f1_stress": 0.47058823529411764,
+    "tp": 76,
+    "fn": 171,
+    "fp": 171,
+    "file": "results/experiments/dp/wesad/dp_wesad_noise0.6_weight4.0_seed42.json"
+  }
+]

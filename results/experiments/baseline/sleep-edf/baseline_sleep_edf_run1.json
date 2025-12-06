@@ -1,0 +1,126 @@
+{
+  "experiment_info": {
+    "name": "baseline_sleep_edf_run1",
+    "dataset": "sleep-edf",
+    "method": "baseline",
+    "seed": 42,
+    "timestamp": "2025-12-04T14:58:56.965410"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_epoch": 34,
+    "epochs_no_improve": 6,
+    "best_val_acc": 0.8840971217237498,
+    "training_time_seconds": 116.67549204826355,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 6
+    }
+  },
+  "privacy_metrics": {
+    "decentralized": false,
+    "formal_privacy": false
+  },
+  "test_metrics": {
+    "accuracy": 0.8830889666014309,
+    "precision": 0.8956203499932582,
+    "recall": 0.8830889666014309,
+    "f1_score": 0.8885659859052605,
+    "precision_per_class": [
+      0.9777704825774984,
+      0.3205828779599271,
+      0.8006962576153177,
+      0.81931330472103,
+      0.7080465854949709
+    ],
+    "recall_per_class": [
+      0.96069486683255,
+      0.46545454545454545,
+      0.7606448945845391,
+      0.8123404255319149,
+      0.6889003347926861
+    ],
+    "f1_per_class": [
+      0.9691574665891923,
+      0.3796683295132803,
+      0.7801568793724825,
+      0.8158119658119658,
+      0.6983422529695862
+    ],
+    "confusion_matrix": [
+      [
+        41698,
+        1208,
+        181,
+        40,
+        277
+      ],
+      [
+        464,
+        1408,
+        768,
+        12,
+        373
+      ],
+      [
+        302,
+        1200,
+        7360,
+        364,
+        450
+      ],
+      [
+        41,
+        20,
+        377,
+        1909,
+        3
+      ],
+      [
+        141,
+        556,
+        506,
+        5,
+        2675
+      ]
+    ],
+    "class_names": [
+      "W",
+      "N1",
+      "N2",
+      "N3",
+      "R"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "W": 43404,
+        "N1": 3025,
+        "N2": 9676,
+        "N3": 2350,
+        "R": 3883
+      },
+      "imbalance_ratio": 18.469787234042553,
+      "total_samples": 62338,
+      "minority_class": "N3",
+      "majority_class": "W"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 117.3399338722229
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.5,
+    "hidden_dims": [
+      256,
+      128
+    ]
+  },
+  "communication": {},
+  "model_path": "results/experiments/baseline/sleep-edf/models/baseline_sleep_edf_run1/best_model.pth"
+}

@@ -1,0 +1,143 @@
+{
+  "experiment_info": {
+    "name": "dp_fl_wesad_c5_noise1_0_run3",
+    "dataset": "wesad",
+    "method": "dp_fl",
+    "seed": 456,
+    "timestamp": "2025-12-05T11:19:46.963329"
+  },
+  "training_metrics": {
+    "total_epochs": 40,
+    "best_epoch": 35,
+    "epochs_no_improve": 1,
+    "best_val_acc": 0.7930794553344306,
+    "training_time_seconds": 14.435946941375732,
+    "convergence": {
+      "early_stopped": true,
+      "epochs_without_improvement": 1
+    }
+  },
+  "privacy_metrics": {
+    "n_clients": 5,
+    "total_rounds": 40,
+    "local_epochs": 1,
+    "decentralized": true,
+    "formal_privacy": true,
+    "final_epsilon": 24.321703063069563,
+    "epsilon_history": [
+      4.216155971016093,
+      5.467992138290249,
+      6.457578161434504,
+      7.31481667902206,
+      8.088365077541532,
+      8.802793399228245,
+      9.47256713854153,
+      10.107057343113235,
+      10.712747880258101,
+      11.294346614028154,
+      11.855400699179176,
+      12.39866151405516,
+      12.92631499112402,
+      13.440131838386442,
+      13.94157055994686,
+      14.431849407687446,
+      14.911998575515264,
+      15.382898462985771,
+      15.845308592007092,
+      16.29988964058271,
+      16.74722056531754,
+      17.187812139794616,
+      17.62211768064272,
+      18.050541768115767,
+      18.473447261066802,
+      18.891161024373243,
+      19.303978811830763,
+      19.712169330686567,
+      20.115977446575464,
+      20.5156271305308,
+      20.91132388345281,
+      21.303256767576812,
+      21.69160011786497,
+      22.07651530559973,
+      22.458151895599826,
+      22.836648867512277,
+      23.21213560185394,
+      23.58473283925217,
+      23.954553440955962,
+      24.321703063069563
+    ],
+    "delta": 1e-05,
+    "noise_multiplier": 1.0,
+    "max_grad_norm": 5.0
+  },
+  "test_metrics": {
+    "accuracy": 0.791921664626683,
+    "precision": 0.8364075427625045,
+    "recall": 0.791921664626683,
+    "f1_score": 0.751669216904609,
+    "precision_per_class": [
+      0.7710027100271003,
+      0.9873417721518988
+    ],
+    "recall_per_class": [
+      0.9982456140350877,
+      0.3157894736842105
+    ],
+    "f1_per_class": [
+      0.8700305810397554,
+      0.4785276073619632
+    ],
+    "confusion_matrix": [
+      [
+        569,
+        1
+      ],
+      [
+        169,
+        78
+      ]
+    ],
+    "class_names": [
+      "non-stress",
+      "stress"
+    ],
+    "class_imbalance": {
+      "class_distribution": {
+        "non-stress": 570,
+        "stress": 247
+      },
+      "imbalance_ratio": 2.3076923076923075,
+      "total_samples": 817,
+      "minority_class": "stress",
+      "majority_class": "non-stress"
+    }
+  },
+  "timing": {
+    "total_time_seconds": 14.706812858581543
+  },
+  "hyperparameters": {
+    "batch_size": 128,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "label_smoothing": 0.05,
+    "dropout": 0.3,
+    "hidden_dims": [
+      256,
+      128
+    ],
+    "n_clients": 5,
+    "local_epochs": 1,
+    "aggregation_method": "fedavg",
+    "noise_multiplier": 1.0,
+    "max_grad_norm": 5.0,
+    "delta": "1e-5"
+  },
+  "communication": {
+    "total_rounds": 40,
+    "model_size_bytes": 280072,
+    "total_communication_bytes": 56014400
+  },
+  "model_path": null
+}
